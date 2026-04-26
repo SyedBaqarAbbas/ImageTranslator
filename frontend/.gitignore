@@ -1,0 +1,23 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+build/
+
+# Test and coverage output
+coverage/
+test-results/
+playwright-report/
+
+# Local environment
+.env
+.env.*
+!.env.example
+
+# Local editor and OS files
+.DS_Store
+*.local
+
+# Reference design exports
+stitch_mangatranslate_ai/
