@@ -5,6 +5,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.core.config import settings
 from app.core.enums import (
     AssetKind,
     JobStatus,
@@ -171,6 +172,10 @@ class ProcessingService:
 
 
 async def _dispatch_processing_job(job_id: str) -> None:
+    if settings.celery_task_always_eager:
+        await execute_processing_job(job_id)
+        return
+
     from app.workers.tasks import process_job_task
 
     async with AsyncSessionLocal() as session:

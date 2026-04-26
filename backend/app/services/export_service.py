@@ -9,6 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.core.config import settings
 from app.core.enums import AssetKind, ExportFormat, JobStatus, ProjectStatus
 from app.core.errors import AppError
 from app.db.base import utcnow
@@ -56,6 +57,10 @@ class ExportService:
 
 
 async def _dispatch_export_job(export_id: str) -> None:
+    if settings.celery_task_always_eager:
+        await execute_export_job(export_id)
+        return
+
     from app.workers.tasks import export_project_task
 
     export_project_task.delay(export_id)

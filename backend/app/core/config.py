@@ -19,10 +19,9 @@ class Settings(BaseSettings):
     database_url: str = "sqlite+aiosqlite:///./image_translator.db"
     auto_create_tables: bool = False
 
-    redis_url: str = "redis://localhost:6379/0"
-    celery_broker_url: str = "redis://localhost:6379/1"
-    celery_result_backend: str = "redis://localhost:6379/2"
-    celery_task_always_eager: bool = False
+    celery_broker_url: str = "memory://"
+    celery_result_backend: str = "cache+memory://"
+    celery_task_always_eager: bool = True
 
     secret_key: str = "change-me-in-production"
     access_token_expire_minutes: int = 60 * 24 * 7
@@ -72,4 +71,3 @@ def get_settings() -> Settings:
 
 
 settings = get_settings()
-

@@ -4,7 +4,7 @@ FastAPI backend for AI-powered comic, manga, and manhwa page translation.
 
 ## Quick Start
 
-Use Docker Compose for normal local development. It starts the API, Celery worker, PostgreSQL, Redis, and MinIO.
+Use Docker Compose for normal local development. It starts the API and PostgreSQL only. Jobs run inline by default and uploaded/generated assets are stored on the local filesystem.
 
 Prerequisites:
 
@@ -28,9 +28,6 @@ Then open:
 
 - API health: `http://localhost:8000/api/v1/health`
 - API docs: `http://localhost:8000/docs`
-- MinIO console: `http://localhost:9001`
-
-Default local MinIO credentials are `minioadmin` / `minioadmin`.
 
 ## Common Commands
 
@@ -70,10 +67,10 @@ Run syntax/import checks:
 docker compose exec api python -m compileall app migrations
 ```
 
-View worker logs:
+View API logs:
 
 ```bash
-docker compose logs -f worker
+docker compose logs -f api
 ```
 
 ## First API Smoke Test
@@ -130,7 +127,7 @@ The default `.env.example` uses mock OCR and mock translation, so processing wor
 
 ## Running Without Docker
 
-Use this only when you already have PostgreSQL and Redis running locally.
+Use this only when you already have PostgreSQL running locally.
 
 ```bash
 python3.11 -m venv .venv
@@ -139,7 +136,7 @@ pip install -e ".[dev]"
 cp .env.example .env
 ```
 
-Update `.env` so `DATABASE_URL`, `REDIS_URL`, `CELERY_BROKER_URL`, and `CELERY_RESULT_BACKEND` point to your local services. For quick local experimentation without migrations, set:
+Update `.env` so `DATABASE_URL` points to your local database. For quick local experimentation without migrations, set:
 
 ```bash
 AUTO_CREATE_TABLES=true
@@ -151,21 +148,15 @@ Run the API:
 uvicorn app.main:app --reload
 ```
 
-Run the worker in another terminal:
-
-```bash
-celery -A app.workers.celery_app.celery_app worker --loglevel=INFO
-```
-
 ## High-Level Architecture
 
 The backend separates fast request/response operations from slow AI and image work:
 
 - `FastAPI API layer`: authentication, projects, uploads, review edits, job creation, exports, asset access, SSE progress.
 - `Service layer`: project ownership checks, upload validation, job orchestration, per-region edits, export creation.
-- `Worker layer`: Celery tasks for OCR, translation, rendering, retranslation, rerendering, and exports.
+- `Task layer`: Celery tasks for OCR, translation, rendering, retranslation, rerendering, and exports. They run eagerly in the API process by default.
 - `Database layer`: PostgreSQL via SQLAlchemy 2 async models and Alembic migrations.
-- `Storage layer`: pluggable local filesystem or S3/MinIO using `StorageBackend`.
+- `Storage layer`: local filesystem by default, with optional S3-compatible storage through `StorageBackend`.
 - `Provider layer`: swappable `OCRProvider`, `TranslationProvider`, and `RenderEngine`.
 - `Export layer`: ZIP or PDF generation from final rendered page assets.
 
@@ -175,8 +166,8 @@ The backend separates fast request/response operations from slow AI and image wo
 - `PostgreSQL`: durable metadata, project history, job state, and per-region review data.
 - `SQLAlchemy 2 async`: explicit ORM with scalable transaction boundaries.
 - `Alembic`: schema migrations.
-- `Redis + Celery`: production-capable background jobs with retry/backoff.
-- `S3-compatible storage / MinIO`: original, intermediate, preview, final, and export files.
+- `Celery eager mode`: simple inline job execution for the starter app.
+- `Local filesystem storage`: original, intermediate, preview, final, and export files.
 - `Pillow + OpenCV-ready structure`: MVP rendering now, richer preprocessing/inpainting later.
 - Provider abstractions: mock providers for local dev, EasyOCR starter, placeholders for OpenAI/DeepL/Google Vision.
 
@@ -188,12 +179,12 @@ The backend separates fast request/response operations from slow AI and image wo
 4. Upload service validates content type, size, image readability, page limits, stores originals, and creates `Page` rows.
 5. User updates settings through `PATCH /projects/{project_id}/settings`.
 6. User starts processing with `POST /projects/{project_id}/process`.
-7. API creates a `ProcessingJob` and enqueues Celery work.
-8. Worker preprocesses each image, runs OCR, translates text, stores `TextRegion` rows, cleans text areas, renders previews/finals, and updates progress.
+7. API creates a `ProcessingJob` and executes the Celery task eagerly.
+8. The task preprocesses each image, runs OCR, translates text, stores `TextRegion` rows, cleans text areas, renders previews/finals, and updates progress.
 9. Frontend polls `GET /jobs/{job_id}` or streams `GET /projects/{project_id}/events`.
 10. User reviews regions through `GET /pages/{page_id}/regions` and edits translations via `PATCH /regions/{region_id}`.
 11. User rerenders a page or region via `POST /pages/{page_id}/rerender` or `POST /regions/{region_id}/rerender`.
-12. User exports with `POST /projects/{project_id}/export`; worker creates ZIP/PDF and stores it as an export asset.
+12. User exports with `POST /projects/{project_id}/export`; the task creates ZIP/PDF output and stores it as an export asset.
 
 Project statuses: `draft`, `uploading`, `ready`, `processing`, `ocr_complete`, `translation_complete`, `review_required`, `completed`, `export_ready`, `failed`.
 
@@ -289,7 +280,7 @@ Job types:
 - `rerender_page`: use current region text/style metadata and regenerate page outputs.
 - `export_project`: generate ZIP/PDF output.
 
-Celery is configured with Redis broker/result backend, late acknowledgements, retry backoff, and separate `processing` / `exports` queues. Job state is stored in Postgres so the frontend can poll independently of Celery result backend retention.
+Celery is configured to run tasks eagerly by default, so no Redis broker or separate worker process is needed for the starter app. Job state is still stored in Postgres so the frontend can poll or stream progress. If processing becomes too slow for request/response flow, switch `CELERY_TASK_ALWAYS_EAGER=false`, configure a real broker, and run a worker process.
 
 ## File Storage Strategy
 
@@ -301,18 +292,18 @@ Storage keys use stable project-scoped prefixes:
 - `projects/{project_id}/final/`
 - `projects/{project_id}/export/`
 
-Development can use `STORAGE_BACKEND=local`. Production should use `STORAGE_BACKEND=s3` with S3, R2, GCS S3 compatibility, or MinIO. Assets are never trusted by path alone; DB rows enforce ownership for normal API access.
+Development uses `STORAGE_BACKEND=local`. Later deployments can use `STORAGE_BACKEND=s3` with S3, R2, GCS S3 compatibility, or MinIO after installing the backend with the `s3` extra. Assets are never trusted by path alone; DB rows enforce ownership for normal API access.
 
 ## Security and Deployment Notes
 
 - JWT auth protects user data.
 - Every project/page/region/job/export lookup joins through project ownership.
 - Upload validation checks size, content type, ZIP contents, and image readability.
-- Use signed URLs for S3 downloads; local by-key route is a development convenience.
+- Use signed URLs if S3 storage is enabled; local by-key route is a development convenience.
 - Keep secrets in environment variables or a secret manager.
 - Add rate limiting at API gateway or middleware before public launch.
 - Add malware scanning for archives before accepting high-trust enterprise uploads.
-- Run API and worker as separate deployable processes.
+- Add a separate worker/queue only when inline processing becomes a bottleneck.
 - Use structured logs for request completion, job starts, provider calls, and failures.
 - Add OpenTelemetry tracing and Prometheus metrics for provider latency, job duration, failures, and queue depth.
 
@@ -332,27 +323,27 @@ MVP first:
 - Unit test upload validation, ZIP extraction, rendering layout, provider interfaces.
 - API test auth, project CRUD, upload validation, ownership checks.
 - Service test job creation and region edit behavior.
-- Worker test processing with mock OCR/translation/storage and Celery eager mode.
+- Task/service test processing with mock OCR/translation/storage and Celery eager mode.
 - Export test ZIP/PDF generation from fake rendered page assets.
 
 Future:
 
-- Integration tests against Postgres/Redis/MinIO.
+- Integration tests against Postgres and any optional storage/queue services you add later.
 - Contract tests for each OCR/translation provider.
 - Golden-image visual regression tests for rendered previews.
-- Load tests for large ZIP uploads and worker throughput.
+- Load tests for large ZIP uploads and processing throughput.
 
 ## MVP Roadmap
 
 Phase 1: Core backend foundation
 
-- Auth, projects, settings, pages, assets, Postgres migrations, local/S3 storage abstraction.
+- Auth, projects, settings, pages, assets, Postgres migrations, local storage, and optional S3 abstraction.
 - Image/ZIP upload with validation.
 - Mock OCR/translation and Pillow rendering.
 
 Phase 2: Async processing
 
-- Celery workers, progress tracking, retries, project/page/region state transitions.
+- Celery eager tasks, progress tracking, retries, project/page/region state transitions.
 - Review/edit endpoints.
 - Rerender/retranslate jobs.
 

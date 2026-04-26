@@ -2,8 +2,6 @@ from __future__ import annotations
 
 import asyncio
 
-import boto3
-
 from app.core.config import settings
 from app.storage.base import StoredObject
 
@@ -12,6 +10,13 @@ class S3Storage:
     backend_name = "s3"
 
     def __init__(self) -> None:
+        try:
+            import boto3
+        except ImportError as exc:
+            raise RuntimeError(
+                "S3 storage requires installing the backend with the `s3` extra."
+            ) from exc
+
         self.bucket = settings.s3_bucket
         self.client = boto3.client(
             "s3",
@@ -66,4 +71,3 @@ class S3Storage:
             Params={"Bucket": bucket or self.bucket, "Key": key},
             ExpiresIn=expires_in,
         )
-

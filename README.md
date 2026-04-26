@@ -4,9 +4,9 @@ ImageTranslator is a full-stack manga, manhwa, and comic page translation workfl
 
 ## Stack
 
-- Backend: FastAPI, SQLAlchemy 2, Alembic, PostgreSQL, Redis, Celery, MinIO/S3-compatible storage, Pillow, and provider abstractions for OCR, translation, and rendering.
+- Backend: FastAPI, SQLAlchemy 2, Alembic, PostgreSQL, local filesystem storage, Celery eager tasks, Pillow, and provider abstractions for OCR, translation, and rendering.
 - Frontend: Vite, React, TypeScript, Tailwind CSS, React Router, TanStack Query, Vitest, and Playwright.
-- Local development: Docker Compose starts the frontend, API, worker, database, Redis, MinIO, and a one-shot migration service.
+- Local development: Docker Compose starts the frontend, API, database, and a one-shot migration service.
 
 ## Run the Project
 
@@ -24,10 +24,7 @@ The root compose file starts:
 
 - `frontend`: Vite dev server at `http://localhost:5173`
 - `api`: FastAPI server at `http://localhost:8000`
-- `worker`: Celery background worker
 - `postgres`: PostgreSQL at `localhost:5432`
-- `redis`: Redis at `localhost:6379`
-- `minio`: MinIO API at `localhost:9000` and console at `http://localhost:9001`
 - `migrate`: one-shot Alembic migration runner
 
 Open:
@@ -35,11 +32,8 @@ Open:
 - App: `http://localhost:5173`
 - API health: `http://localhost:8000/api/v1/health`
 - API docs: `http://localhost:8000/docs`
-- MinIO console: `http://localhost:9001`
 
-Default local MinIO credentials are `minioadmin` / `minioadmin`.
-
-The frontend is configured to call `http://localhost:8000/api/v1` in Docker. The backend uses the local defaults in `backend/.env.example`, including mock OCR and mock translation providers, so no external AI provider keys are required for local smoke testing.
+The frontend is configured to call `http://localhost:8000/api/v1` in Docker. The backend uses the local defaults in `backend/.env.example`, including local file storage, inline job execution, mock OCR, and mock translation providers, so no Redis, MinIO, or AI provider keys are required for local smoke testing.
 
 ## Common Docker Commands
 
@@ -55,7 +49,7 @@ Stop services:
 docker compose down
 ```
 
-Stop services and remove local database, MinIO, and frontend dependency volumes:
+Stop services and remove local database and frontend dependency volumes:
 
 ```bash
 docker compose down -v
@@ -65,7 +59,6 @@ View logs:
 
 ```bash
 docker compose logs -f api
-docker compose logs -f worker
 docker compose logs -f frontend
 ```
 
@@ -91,7 +84,7 @@ docker compose exec frontend npm test
 
 ## Local Backend Only
 
-Use this when you already have PostgreSQL and Redis running locally.
+Use this when you already have PostgreSQL running locally.
 
 ```bash
 cd backend
@@ -101,7 +94,7 @@ pip install -e ".[dev]"
 cp .env.example .env
 ```
 
-Update `.env` so `DATABASE_URL`, `REDIS_URL`, `CELERY_BROKER_URL`, and `CELERY_RESULT_BACKEND` point to your local services. For quick local experimentation without migrations, set:
+Update `.env` so `DATABASE_URL` points to your local database. For quick local experimentation without migrations, set:
 
 ```bash
 AUTO_CREATE_TABLES=true
@@ -111,12 +104,6 @@ Run the API:
 
 ```bash
 uvicorn app.main:app --reload
-```
-
-Run the worker in another terminal:
-
-```bash
-celery -A app.workers.celery_app.celery_app worker --loglevel=INFO
 ```
 
 ## Local Frontend Only
@@ -194,7 +181,7 @@ curl http://localhost:8000/api/v1/jobs/<JOB_ID> \
 3. The user uploads page images or a ZIP archive.
 4. The backend validates uploads, stores source assets, and creates page records.
 5. The user starts project processing.
-6. Celery runs OCR, translation, rendering, and progress updates in the background.
+6. The backend runs OCR, translation, rendering, and progress updates inline through Celery eager tasks.
 7. The frontend polls job state or streams project events.
 8. The user reviews text regions, edits translations, and rerenders pages or regions.
 9. The user exports translated pages as ZIP or PDF.
@@ -220,7 +207,7 @@ frontend/
 
 - `backend/.env.example` is suitable for local Docker development and uses mock OCR/translation providers by default.
 - Production deployments should provide real secrets through environment variables or a secret manager.
-- The API and worker are separate processes and should remain separate in deployment.
+- A separate worker/queue can be reintroduced later when processing throughput matters.
 - Local asset serving through `/api/v1/assets/by-key/{key}` is a development convenience when `STORAGE_BACKEND=local`.
 - More detailed backend API, model, and pipeline documentation lives in `backend/README.md`.
 - More detailed frontend script and adapter documentation lives in `frontend/README.md`.
