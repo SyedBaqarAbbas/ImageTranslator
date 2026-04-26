@@ -31,31 +31,31 @@ export function RegionPanel({
   }, [selectedRegion?.id, selectedRegion?.translated_text, selectedRegion?.user_text]);
 
   return (
-    <aside className="flex min-h-0 w-full flex-col border-l border-ink-border bg-surface-low md:w-[360px]">
-      <div className="border-b border-ink-border p-4">
+    <aside className="flex h-[52vh] min-h-0 w-full shrink-0 flex-col border-t border-ink-border bg-surface-low lg:h-auto lg:w-[360px] lg:border-l lg:border-t-0">
+      <div className="shrink-0 border-b border-ink-border p-4">
         <p className="text-xs font-bold uppercase text-secondary">Translation Cards</p>
         <h2 className="mt-1 font-display text-lg font-bold text-white">{regions.length} detected regions</h2>
       </div>
 
-      <div className="scrollbar-thin flex-1 overflow-y-auto p-4">
+      <div className="scrollbar-thin min-h-0 flex-1 overflow-y-auto p-4">
         <div className="space-y-3">
           {regions.map((region) => (
             <button
               key={region.id}
               type="button"
               onClick={() => onSelect(region.id)}
-              className={`w-full rounded-lg border p-3 text-left transition ${
+              className={`w-full rounded-lg border p-2 text-left transition lg:p-3 ${
                 region.id === selectedRegion?.id ? "border-secondary bg-secondary/10" : "border-ink-border bg-surface hover:border-primary/50"
               }`}
             >
               <div className="mb-2 flex items-center justify-between gap-3">
-                <span className="text-xs font-bold uppercase text-text-muted">
+                <span className="text-[11px] font-bold uppercase text-text-muted lg:text-xs">
                   #{region.region_index} {statusLabel(region.region_type)}
                 </span>
                 <StatusPill status={region.status} />
               </div>
-              <p className="line-clamp-2 text-sm text-text-main">{region.user_text || region.translated_text || "Untranslated"}</p>
-              <p className="mt-2 text-xs text-text-muted">
+              <p className="line-clamp-1 text-sm text-text-main lg:line-clamp-2">{region.user_text || region.translated_text || "Untranslated"}</p>
+              <p className="mt-2 hidden text-xs text-text-muted lg:block">
                 OCR {Math.round((region.ocr_confidence ?? 0) * 100)}% · Translation {Math.round((region.translation_confidence ?? 0) * 100)}%
               </p>
             </button>
@@ -64,7 +64,7 @@ export function RegionPanel({
       </div>
 
       {selectedRegion ? (
-        <div className="border-t border-ink-border bg-surface p-4">
+        <div className="shrink-0 border-t border-ink-border bg-surface p-4">
           <div className="mb-3 flex items-center justify-between gap-3">
             <div>
               <p className="text-xs font-bold uppercase text-text-muted">Source</p>
@@ -83,7 +83,7 @@ export function RegionPanel({
             <textarea
               value={draft}
               onChange={(event) => setDraft(event.target.value)}
-              className="mt-2 min-h-28 w-full resize-none rounded-instrument border border-ink-border bg-background p-3 text-sm text-text-main outline-none transition focus:border-secondary focus:ring-1 focus:ring-secondary"
+              className="mt-2 min-h-20 w-full resize-none rounded-instrument border border-ink-border bg-background p-3 text-sm text-text-main outline-none transition focus:border-secondary focus:ring-1 focus:ring-secondary lg:min-h-28"
             />
           </label>
           <div className="mt-3 grid grid-cols-2 gap-3">

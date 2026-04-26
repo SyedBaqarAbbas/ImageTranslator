@@ -17,7 +17,7 @@ export function ProjectCard({ project, coverUrl }: { project: ProjectRead; cover
             <Sparkles className="h-10 w-10" />
           </div>
         )}
-        <button className="absolute right-3 top-3 rounded-instrument border border-ink-border bg-background/80 p-1.5 text-text-muted opacity-0 backdrop-blur transition hover:text-white group-hover:opacity-100" aria-label={`Open ${project.name} options`}>
+        <button className="absolute right-3 top-3 flex h-9 w-9 items-center justify-center rounded-instrument border border-ink-border bg-background/80 text-text-muted opacity-0 backdrop-blur transition hover:text-white group-hover:opacity-100" aria-label={`Open ${project.name} options`}>
           <MoreHorizontal className="h-4 w-4" />
         </button>
       </div>
@@ -32,7 +32,7 @@ export function ProjectCard({ project, coverUrl }: { project: ProjectRead; cover
           <span className="text-xs font-bold uppercase text-text-muted">
             {project.source_language.toUpperCase()} to {project.target_language.toUpperCase()}
           </span>
-          <Link to={routeForProject(project)} className="inline-flex items-center gap-1.5 text-sm font-bold text-primary-soft transition hover:text-secondary">
+          <Link to={routeForProject(project)} className="inline-flex min-h-9 items-center gap-1.5 rounded-instrument px-2 text-sm font-bold text-primary-soft transition hover:bg-primary/10 hover:text-secondary">
             <PenLine className="h-4 w-4" />
             Open
           </Link>

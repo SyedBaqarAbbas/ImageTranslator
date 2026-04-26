@@ -23,7 +23,7 @@ export function WorkspaceShell({ children, fullHeight = false }: { children: Rea
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-instrument border border-ink-border bg-surface-high text-primary-soft">
               <FileStack className="h-5 w-5" />
             </div>
-            <div className="min-w-0 opacity-0 transition-opacity duration-200 group-hover:opacity-100 [aside:hover_&]:opacity-100">
+            <div className="w-0 min-w-0 overflow-hidden opacity-0 transition-all duration-200 [aside:hover_&]:w-auto [aside:hover_&]:opacity-100">
               <p className="font-display text-base font-bold text-white">Workspace</p>
               <p className="text-xs font-semibold uppercase text-text-muted">Darkroom</p>
             </div>
@@ -45,7 +45,7 @@ export function WorkspaceShell({ children, fullHeight = false }: { children: Rea
                 key={label}
                 to={href}
                 className={({ isActive }) =>
-                  `flex items-center gap-4 border-l-4 px-5 py-3 text-sm font-semibold transition ${
+                  `flex items-center gap-4 overflow-hidden border-l-4 px-5 py-3 text-sm font-semibold transition ${
                     isActive
                       ? "border-primary bg-primary/12 text-primary-soft"
                       : "border-transparent text-text-muted hover:bg-surface-high hover:text-white"
@@ -53,19 +53,19 @@ export function WorkspaceShell({ children, fullHeight = false }: { children: Rea
                 }
               >
                 <Icon className="h-5 w-5 shrink-0" />
-                <span className="whitespace-nowrap opacity-0 transition-opacity [aside:hover_&]:opacity-100">{label}</span>
+                <span className="w-0 overflow-hidden whitespace-nowrap opacity-0 transition-all [aside:hover_&]:w-auto [aside:hover_&]:opacity-100">{label}</span>
               </NavLink>
             ))}
           </nav>
 
           <div className="border-t border-ink-border px-5 pt-4 text-text-muted">
-            <a className="flex items-center gap-4 py-2 text-sm transition hover:text-white" href="mailto:support@example.com">
+            <a className="flex items-center gap-4 overflow-hidden py-2 text-sm transition hover:text-white" href="mailto:support@example.com">
               <Contact className="h-5 w-5 shrink-0" />
-              <span className="whitespace-nowrap opacity-0 transition-opacity [aside:hover_&]:opacity-100">Support</span>
+              <span className="w-0 overflow-hidden whitespace-nowrap opacity-0 transition-all [aside:hover_&]:w-auto [aside:hover_&]:opacity-100">Support</span>
             </a>
-            <a className="flex items-center gap-4 py-2 text-sm transition hover:text-white" href="/projects">
+            <a className="flex items-center gap-4 overflow-hidden py-2 text-sm transition hover:text-white" href="/projects">
               <Settings className="h-5 w-5 shrink-0" />
-              <span className="whitespace-nowrap opacity-0 transition-opacity [aside:hover_&]:opacity-100">Account</span>
+              <span className="w-0 overflow-hidden whitespace-nowrap opacity-0 transition-all [aside:hover_&]:w-auto [aside:hover_&]:opacity-100">Account</span>
             </a>
           </div>
         </aside>

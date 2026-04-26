@@ -100,8 +100,8 @@ export function Editor() {
             </div>
           </div>
 
-          <div className="flex min-h-0 flex-1">
-            <aside className="hidden w-28 shrink-0 overflow-y-auto border-r border-ink-border bg-surface-low p-3 md:block">
+          <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
+            <aside className="hidden w-28 shrink-0 overflow-y-auto border-r border-ink-border bg-surface-low p-3 lg:block">
               <div className="space-y-3">
                 {pages.map((page) => (
                   <button
