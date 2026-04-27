@@ -122,23 +122,14 @@ By default, the frontend uses the in-browser mock adapter. To call the backend i
 VITE_API_MODE=http VITE_API_BASE_URL=http://localhost:8000/api/v1 npm run dev
 ```
 
-If auth is enabled and you are using the HTTP adapter directly, place the bearer token in local storage under `comicflow.accessToken`, or override the key with `VITE_AUTH_TOKEN_KEY`.
+The current backend workflow routes use a shared public workspace user, so no login or local storage token is required for local HTTP mode.
 
 ## First API Smoke Test
 
-Register a user:
-
-```bash
-curl -X POST http://localhost:8000/api/v1/auth/register \
-  -H "Content-Type: application/json" \
-  -d '{"email":"demo@example.com","password":"password123","display_name":"Demo"}'
-```
-
-Copy the returned `access_token`, then create a project:
+Create a project:
 
 ```bash
 curl -X POST http://localhost:8000/api/v1/projects \
-  -H "Authorization: Bearer <ACCESS_TOKEN>" \
   -H "Content-Type: application/json" \
   -d '{
     "name": "Demo Manga",
@@ -154,7 +145,6 @@ Upload pages:
 
 ```bash
 curl -X POST http://localhost:8000/api/v1/projects/<PROJECT_ID>/pages/upload \
-  -H "Authorization: Bearer <ACCESS_TOKEN>" \
   -F "files=@/path/to/page.png"
 ```
 
@@ -162,7 +152,6 @@ Start processing:
 
 ```bash
 curl -X POST http://localhost:8000/api/v1/projects/<PROJECT_ID>/process \
-  -H "Authorization: Bearer <ACCESS_TOKEN>" \
   -H "Content-Type: application/json" \
   -d '{"force": false}'
 ```
@@ -170,13 +159,12 @@ curl -X POST http://localhost:8000/api/v1/projects/<PROJECT_ID>/process \
 Poll the job:
 
 ```bash
-curl http://localhost:8000/api/v1/jobs/<JOB_ID> \
-  -H "Authorization: Bearer <ACCESS_TOKEN>"
+curl http://localhost:8000/api/v1/jobs/<JOB_ID>
 ```
 
 ## Application Flow
 
-1. A user registers or logs in and receives a JWT.
+1. The app uses a shared public workspace user for local/current workflow routes.
 2. The user creates a project with source language, target language, tone, replacement mode, and reading direction.
 3. The user uploads page images or a ZIP archive.
 4. The backend validates uploads, stores source assets, and creates page records.

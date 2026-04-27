@@ -41,7 +41,7 @@ To point the app at the backend HTTP adapter:
 VITE_API_MODE=http VITE_API_BASE_URL=http://localhost:8000/api/v1 npm run dev
 ```
 
-If auth is enabled, place the bearer token in local storage under `comicflow.accessToken`, or override the key with `VITE_AUTH_TOKEN_KEY`.
+The current backend workflow routes use a shared public workspace user, so no login or local storage token is required for local HTTP mode.
 
 ## Scripts
 

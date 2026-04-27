@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends
 from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_user
+from app.api.deps import get_public_user
 from app.core.config import settings
 from app.core.errors import AppError
 from app.db.session import get_session
@@ -19,7 +19,7 @@ router = APIRouter(prefix="/assets", tags=["assets"])
 @router.get("/{asset_id}", response_model=AssetRead)
 async def get_asset(
     asset_id: str,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_public_user),
     session: AsyncSession = Depends(get_session),
 ) -> AssetRead:
     return await AssetService(session).get_asset_for_user(asset_id, current_user.id)
@@ -28,7 +28,7 @@ async def get_asset(
 @router.get("/{asset_id}/download", response_model=AssetDownload)
 async def download_asset(
     asset_id: str,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_public_user),
     session: AsyncSession = Depends(get_session),
 ) -> AssetDownload:
     asset = await AssetService(session).get_asset_for_user(asset_id, current_user.id)

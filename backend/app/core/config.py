@@ -26,6 +26,8 @@ class Settings(BaseSettings):
     secret_key: str = "change-me-in-production"
     access_token_expire_minutes: int = 60 * 24 * 7
     jwt_algorithm: str = "HS256"
+    public_user_email: str = "public@imagetranslator.local"
+    public_user_display_name: str = "Public Workspace"
 
     storage_backend: str = "local"
     local_storage_path: Path = Path("./data/storage")

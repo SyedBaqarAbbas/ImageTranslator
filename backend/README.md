@@ -75,19 +75,10 @@ docker compose logs -f api
 
 ## First API Smoke Test
 
-Register a user:
-
-```bash
-curl -X POST http://localhost:8000/api/v1/auth/register \
-  -H "Content-Type: application/json" \
-  -d '{"email":"demo@example.com","password":"password123","display_name":"Demo"}'
-```
-
-Copy the returned `access_token`, then create a project:
+Create a project:
 
 ```bash
 curl -X POST http://localhost:8000/api/v1/projects \
-  -H "Authorization: Bearer <ACCESS_TOKEN>" \
   -H "Content-Type: application/json" \
   -d '{
     "name": "Demo Manga",
@@ -103,7 +94,6 @@ Upload pages:
 
 ```bash
 curl -X POST http://localhost:8000/api/v1/projects/<PROJECT_ID>/pages/upload \
-  -H "Authorization: Bearer <ACCESS_TOKEN>" \
   -F "files=@/path/to/page.png"
 ```
 
@@ -111,7 +101,6 @@ Start processing:
 
 ```bash
 curl -X POST http://localhost:8000/api/v1/projects/<PROJECT_ID>/process \
-  -H "Authorization: Bearer <ACCESS_TOKEN>" \
   -H "Content-Type: application/json" \
   -d '{"force": false}'
 ```
@@ -119,8 +108,7 @@ curl -X POST http://localhost:8000/api/v1/projects/<PROJECT_ID>/process \
 Poll the job:
 
 ```bash
-curl http://localhost:8000/api/v1/jobs/<JOB_ID> \
-  -H "Authorization: Bearer <ACCESS_TOKEN>"
+curl http://localhost:8000/api/v1/jobs/<JOB_ID>
 ```
 
 The default `.env.example` uses mock OCR and mock translation, so processing works locally without external AI provider keys.
@@ -152,7 +140,7 @@ uvicorn app.main:app --reload
 
 The backend separates fast request/response operations from slow AI and image work:
 
-- `FastAPI API layer`: authentication, projects, uploads, review edits, job creation, exports, asset access, SSE progress.
+- `FastAPI API layer`: public workspace access, optional authentication endpoints, projects, uploads, review edits, job creation, exports, asset access, SSE progress.
 - `Service layer`: project ownership checks, upload validation, job orchestration, per-region edits, export creation.
 - `Task layer`: Celery tasks for OCR, translation, rendering, retranslation, rerendering, and exports. They run eagerly in the API process by default.
 - `Database layer`: PostgreSQL via SQLAlchemy 2 async models and Alembic migrations.
@@ -173,7 +161,7 @@ The backend separates fast request/response operations from slow AI and image wo
 
 ## End-to-End Backend Flow
 
-1. User registers/logs in and receives a JWT.
+1. The API creates or reuses the shared public workspace user for workflow requests.
 2. User creates a project with source language, target language, tone, replacement mode, and reading direction.
 3. User uploads images or a ZIP via `POST /projects/{project_id}/pages/upload`.
 4. Upload service validates content type, size, image readability, page limits, stores originals, and creates `Page` rows.
@@ -207,18 +195,18 @@ Important indexes are defined for user/project lists, page ordering, region orde
 
 ## API Design
 
-All endpoints except health and local dev file serving require `Authorization: Bearer <token>`.
+Workflow endpoints use the shared public workspace user and do not require an Authorization header. Auth endpoints still exist for future account-based flows.
 
 ### Auth / Users
 
 - `POST /api/v1/auth/register`: create user. Body: `email`, `password`, `display_name`. Returns JWT and user. Codes: `201`, `409`, `422`.
 - `POST /api/v1/auth/login`: login with email/password. Returns JWT and user. Codes: `200`, `401`, `422`.
-- `GET /api/v1/me`: current user. Codes: `200`, `401`.
+- `GET /api/v1/me`: shared public workspace user. Codes: `200`.
 
 ### Projects
 
-- `POST /api/v1/projects`: create project. Returns project with settings. Codes: `201`, `401`, `422`.
-- `GET /api/v1/projects`: list user projects with `limit`, `offset`. Codes: `200`, `401`.
+- `POST /api/v1/projects`: create project. Returns project with settings. Codes: `201`, `422`.
+- `GET /api/v1/projects`: list public workspace projects with `limit`, `offset`. Codes: `200`.
 - `GET /api/v1/projects/{project_id}`: project detail. Codes: `200`, `404`.
 - `PATCH /api/v1/projects/{project_id}`: update metadata/settings mirrored on project. Codes: `200`, `404`, `422`.
 - `DELETE /api/v1/projects/{project_id}`: soft delete. Codes: `204`, `404`.
@@ -296,8 +284,8 @@ Development uses `STORAGE_BACKEND=local`. Later deployments can use `STORAGE_BAC
 
 ## Security and Deployment Notes
 
-- JWT auth protects user data.
-- Every project/page/region/job/export lookup joins through project ownership.
+- Current workflow endpoints share one public workspace user; add real auth before exposing multi-user data publicly.
+- Every project/page/region/job/export lookup still joins through the workspace user ownership boundary.
 - Upload validation checks size, content type, ZIP contents, and image readability.
 - Use signed URLs if S3 storage is enabled; local by-key route is a development convenience.
 - Keep secrets in environment variables or a secret manager.
@@ -321,7 +309,7 @@ Example structured events:
 MVP first:
 
 - Unit test upload validation, ZIP extraction, rendering layout, provider interfaces.
-- API test auth, project CRUD, upload validation, ownership checks.
+- API test public workspace access, project CRUD, upload validation, ownership checks.
 - Service test job creation and region edit behavior.
 - Task/service test processing with mock OCR/translation/storage and Celery eager mode.
 - Export test ZIP/PDF generation from fake rendered page assets.
