@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { ArrowLeft, Loader2, Play, UploadCloud } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "react-router-dom";
@@ -21,11 +21,7 @@ export function ProjectSetup() {
   const [readingDirection, setReadingDirection] = useState<ReadingDirection>("rtl");
   const [preserveSfx, setPreserveSfx] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
-  const previewUrl = useMemo(() => {
-    const firstImage = pendingFiles.find((file) => file.type.startsWith("image/"));
-    return firstImage ? URL.createObjectURL(firstImage) : undefined;
-  }, [pendingFiles]);
+  const [previewUrl, setPreviewUrl] = useState<string>();
 
   useEffect(() => {
     if (!name && pendingFiles[0]) {
@@ -35,10 +31,18 @@ export function ProjectSetup() {
   }, [name, pendingFiles]);
 
   useEffect(() => {
+    const firstImage = pendingFiles.find((file) => file.type.startsWith("image/"));
+    if (!firstImage) {
+      setPreviewUrl(undefined);
+      return;
+    }
+
+    const objectUrl = URL.createObjectURL(firstImage);
+    setPreviewUrl(objectUrl);
     return () => {
-      if (previewUrl) URL.revokeObjectURL(previewUrl);
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1_000);
     };
-  }, [previewUrl]);
+  }, [pendingFiles]);
 
   const startMutation = useMutation({
     mutationFn: async () => {

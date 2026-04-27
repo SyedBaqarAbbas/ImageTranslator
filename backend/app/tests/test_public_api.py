@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 from PIL import Image
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+import app.services.export_service as export_service_module
 from app.core.config import settings
 from app.db.base import Base
 from app.db.session import get_session
@@ -41,6 +42,7 @@ def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Generator[TestCli
 
     monkeypatch.setattr(settings, "local_storage_path", tmp_path / "storage")
     monkeypatch.setattr(settings, "public_base_url", "http://testserver")
+    monkeypatch.setattr(export_service_module, "AsyncSessionLocal", session_factory)
     get_storage_backend.cache_clear()
     asyncio.run(init_db())
 
@@ -106,3 +108,36 @@ def test_upload_and_asset_download_work_without_authorization(client: TestClient
     asset_response = client.get(f"/api/v1/assets/{page['original_asset_id']}/download")
     assert asset_response.status_code == 200
     assert asset_response.json()["url"].startswith("http://testserver/api/v1/assets/by-key/")
+
+
+def test_export_returns_loaded_asset_without_authorization(client: TestClient) -> None:
+    project_response = client.post(
+        "/api/v1/projects",
+        json={
+            "name": "Export Project",
+            "source_language": "auto",
+            "target_language": "en",
+            "translation_tone": "natural",
+            "replacement_mode": "replace",
+            "reading_direction": "rtl",
+        },
+    )
+    project_id = project_response.json()["id"]
+
+    upload_response = client.post(
+        f"/api/v1/projects/{project_id}/pages/upload",
+        files={"files": ("page.png", _png_bytes(), "image/png")},
+    )
+    assert upload_response.status_code == 201
+
+    export_response = client.post(
+        f"/api/v1/projects/{project_id}/export",
+        json={"format": "zip", "include_originals": False, "filename": "export-project"},
+    )
+
+    assert export_response.status_code == 202
+    export = export_response.json()
+    assert export["status"] == "succeeded"
+    assert export["asset_id"]
+    assert export["asset"]["id"] == export["asset_id"]
+    assert export["asset"]["content_type"] == "application/zip"

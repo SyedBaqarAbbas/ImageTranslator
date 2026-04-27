@@ -42,7 +42,7 @@ class ExportService:
         await self.session.refresh(job)
         await _dispatch_export_job(job.id)
         await self.session.refresh(job)
-        return job
+        return await self.get_export(user_id, job.id)
 
     async def get_export(self, user_id: str, export_id: str) -> ExportJob:
         export = await self.session.scalar(
