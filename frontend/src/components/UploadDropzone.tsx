@@ -38,7 +38,7 @@ export function UploadDropzone({ onFiles }: { onFiles: (files: File[]) => void }
   }
 
   return (
-    <div className="w-full max-w-4xl">
+    <div className="mx-auto w-full max-w-4xl">
       <button
         type="button"
         onClick={() => inputRef.current?.click()}
