@@ -2,6 +2,8 @@
 
 FastAPI backend for AI-powered comic, manga, and manhwa page translation.
 
+The backend is built around provider interfaces for OCR, translation, and rendering. Local development defaults to mock OCR and mock translation so the upload, processing, review, rendering, and export workflow can run without external AI provider keys.
+
 ## Quick Start
 
 Use Docker Compose for normal local development. It starts the API and PostgreSQL only. Jobs run inline by default and uploaded/generated assets are stored on the local filesystem.
@@ -111,7 +113,7 @@ Poll the job:
 curl http://localhost:8000/api/v1/jobs/<JOB_ID>
 ```
 
-The default `.env.example` uses mock OCR and mock translation, so processing works locally without external AI provider keys.
+The default `.env.example` uses mock OCR and mock translation, so processing works locally without external AI provider keys. Mock OCR creates a synthetic text region, and mock translation prefixes detected text with the selected target language.
 
 ## Running Without Docker
 
@@ -157,7 +159,7 @@ The backend separates fast request/response operations from slow AI and image wo
 - `Celery eager mode`: simple inline job execution for the starter app.
 - `Local filesystem storage`: original, intermediate, preview, final, and export files.
 - `Pillow + OpenCV-ready structure`: MVP rendering now, richer preprocessing/inpainting later.
-- Provider abstractions: mock providers for local dev, EasyOCR starter, placeholders for OpenAI/DeepL/Google Vision.
+- Provider abstractions: mock providers for local dev, an EasyOCR starter provider, and placeholders for OpenAI/DeepL translation providers.
 
 ## End-to-End Backend Flow
 
@@ -244,6 +246,8 @@ Workflow endpoints use the shared public workspace user and do not require an Au
 
 ## OCR / Translation / Rendering Pipeline
 
+Processing is triggered by `POST /api/v1/projects/{project_id}/process`. `ProcessingService.create_project_job()` creates a `ProcessingJob`, then `_dispatch_processing_job()` either executes it inline when `CELERY_TASK_ALWAYS_EAGER=true` or sends it to Celery when eager mode is disabled.
+
 Pipeline stages:
 
 1. Ingest: validate image/ZIP upload, store original.
@@ -257,6 +261,34 @@ Pipeline stages:
 9. Export: assemble final assets into ZIP or PDF.
 
 Low OCR confidence regions become `ocr_low_confidence` and should be highlighted by the frontend for manual review.
+
+### Current Provider Behavior
+
+Provider selection is controlled by environment variables in `app/core/config.py`:
+
+- `OCR_PROVIDER=mock` is the default. `MockOCRProvider` opens the image with Pillow, calculates one bounding box near the top of the page, and returns one `OCRRegion` with text `Sample detected text`, confidence `0.95`, and type `speech`.
+- `OCR_PROVIDER=easyocr` uses `EasyOCRProvider`. It imports `easyocr`, builds a CPU reader for the requested source language plus English, runs `reader.readtext()` in a background thread, and maps EasyOCR polygons into `OCRRegion` rows.
+- `TRANSLATION_PROVIDER=mock` is the default. `MockTranslationProvider.translate_many()` returns one result per source string using the format `[target_language] source text` with confidence `0.99`.
+- `TRANSLATION_PROVIDER=openai` selects `OpenAITranslationProvider`, but that provider currently raises `NotImplementedError`.
+- `TRANSLATION_PROVIDER=deepl` selects `DeepLTranslationProvider`, but that provider currently raises `NotImplementedError`.
+- `RENDER_ENGINE=pillow` is the only implemented renderer. It uses Pillow to white-fill detected boxes, wrap translated text, fit font size to each box, and render replacement, overlay, bilingual, side-panel, or subtitle output.
+
+### Region Data Model
+
+Each OCR result becomes a `TextRegion` row with:
+
+- `bounding_box` and optional `polygon`
+- `detected_text` and `detected_language`
+- `translated_text` and optional `user_text`
+- `ocr_confidence` and `translation_confidence`
+- `render_style`
+- `status`
+
+`_process_page()` deletes existing regions for a page before inserting the latest OCR/translation output. Region edits through `PATCH /api/v1/regions/{region_id}` mark the region as `user_edited`. Region retranslation through `POST /api/v1/regions/{region_id}/retranslate` calls the translation provider for a single region, updates the region, and rerenders the page.
+
+### Real Provider Work Still Needed
+
+The EasyOCR path can be enabled once optional OCR dependencies are installed and `OCR_PROVIDER=easyocr` is set. Real machine translation is not yet wired: the OpenAI and DeepL provider classes are stubs. A production provider implementation should add API clients, batching limits, retries, timeout handling, structured provider errors, and tests that assert result ordering matches the input text list.
 
 ## Background Jobs
 

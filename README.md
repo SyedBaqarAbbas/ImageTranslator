@@ -2,6 +2,8 @@
 
 ImageTranslator is a full-stack manga, manhwa, and comic page translation workflow. It lets you upload raw pages, run OCR and translation jobs, review translated text regions, render translated pages, and export the final result.
 
+The current local build is provider-based and uses mock OCR and mock translation by default. That means the full workflow works without external AI keys, but the default processing output is intentionally synthetic until a real provider is enabled or implemented.
+
 ## Stack
 
 - Backend: FastAPI, SQLAlchemy 2, Alembic, PostgreSQL, local filesystem storage, Celery eager tasks, Pillow, and provider abstractions for OCR, translation, and rendering.
@@ -34,6 +36,31 @@ Open:
 - API docs: `http://localhost:8000/docs`
 
 The frontend is configured to call `http://localhost:8000/api/v1` in Docker. The backend uses the local defaults in `backend/.env.example`, including local file storage, inline job execution, mock OCR, and mock translation providers, so no Redis, MinIO, or AI provider keys are required for local smoke testing.
+
+## OCR and Translation Behavior
+
+Processing is started with `POST /api/v1/projects/{project_id}/process` from the Processing screen or API. The backend creates a `ProcessingJob`, executes it inline by default through Celery eager mode, and updates project/page/job progress while it works.
+
+For each page, the backend:
+
+1. Reads the uploaded original asset.
+2. Normalizes the image into PNG.
+3. Calls the configured `OCRProvider`.
+4. Deletes prior regions for that page.
+5. Sends detected OCR text to the configured `TranslationProvider`.
+6. Saves one `TextRegion` per OCR region with source text, translated text, bounding box, confidence, and status.
+7. Uses the Pillow renderer to clean detected text boxes and render translated text into the page.
+8. Stores processed, cleaned, preview, and final assets.
+
+Current provider defaults:
+
+- `OCR_PROVIDER=mock`: creates one synthetic speech region near the top of the page with text `Sample detected text`.
+- `OCR_PROVIDER=easyocr`: uses EasyOCR if the backend is installed with the optional OCR dependencies.
+- `TRANSLATION_PROVIDER=mock`: returns text in the format `[target_language] original text`.
+- `TRANSLATION_PROVIDER=openai` and `TRANSLATION_PROVIDER=deepl`: provider classes exist, but currently raise `NotImplementedError`; they still need API wiring.
+- `RENDER_ENGINE=pillow`: fills detected boxes and renders translated text using Pillow.
+
+Low OCR confidence regions are marked `ocr_low_confidence`; otherwise translated regions are marked `translated`. The Review and Editor screens use these saved `TextRegion` records for manual edits, retranslation, and rerendering.
 
 ## Common Docker Commands
 
@@ -186,7 +213,7 @@ frontend/
   src/components/  Shared UI components
   src/data/        Mock seed data
   src/lib/         UI helpers and workflow context
-  src/pages/       Routed screens
+  src/pages/       Routed screens, including dashboard, editor, review, export, assets, team, settings, and workspace tools
   src/types/       Backend-aligned TypeScript contracts
   e2e/             Playwright smoke tests
 ```
@@ -194,6 +221,7 @@ frontend/
 ## Notes
 
 - `backend/.env.example` is suitable for local Docker development and uses mock OCR/translation providers by default.
+- Real translation is not currently wired to OpenAI or DeepL; those provider stubs must be implemented before enabling them in environment variables.
 - Production deployments should provide real secrets through environment variables or a secret manager.
 - A separate worker/queue can be reintroduced later when processing throughput matters.
 - Local asset serving through `/api/v1/assets/by-key/{key}` is a development convenience when `STORAGE_BACKEND=local`.
