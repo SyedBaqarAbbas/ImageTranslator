@@ -16,7 +16,10 @@ ImageTranslator is a full-stack manga/comic translation workflow.
 - Mock OCR creates one synthetic text region near the top of each image with `Sample detected text`.
 - Mock translation returns `[target_language] source text`.
 - `OCR_PROVIDER=easyocr` exists but requires optional OCR dependencies.
-- The named conda env `imagetranslator` has been set up with `.[dev,ocr]`, including EasyOCR, Torch, torchvision, PaddleOCR, and related OCR dependencies.
+- `OCR_PROVIDER=tesseract` is an opt-in local prototype provider. It requires the native Tesseract binary plus Japanese/Korean language data and uses lightweight Pillow preprocessing.
+- `TRANSLATION_PROVIDER=opus_mt` is an opt-in local prototype provider. It uses local pre-converted CTranslate2 OPUS-MT int8 models and does not download models during request processing.
+- The named conda env `imagetranslator` has been set up with `.[dev,ocr]` and `.[dev,local-ml]`, including EasyOCR, Torch, torchvision, PaddleOCR, pytesseract, CTranslate2, SentencePiece, and related OCR dependencies.
+- The Tesseract/OPUS-MT local prototype path must not add PyTorch.
 - EasyOCR creates/downloads model files under `~/.EasyOCR` on first actual OCR use. A real smoke test has successfully read `HELLO 123` from a generated image with `OCR_PROVIDER=easyocr`.
 - `TRANSLATION_PROVIDER=openai` and `TRANSLATION_PROVIDER=deepl` currently select provider stubs that raise `NotImplementedError`; do not claim real OpenAI/DeepL translation works until those providers are implemented.
 - `RENDER_ENGINE=pillow` is the implemented renderer.
@@ -57,6 +60,8 @@ conda create -n imagetranslator python=3.11 -y
 conda activate imagetranslator
 cd backend
 python -m pip install -e ".[dev,ocr]"
+# Optional lightweight local prototype dependencies:
+python -m pip install -e ".[dev,local-ml]"
 ```
 
 Use this named conda environment for backend work unless the user asks otherwise. The backend targets Python 3.11; do not use the base Python 3.13 environment for verification.
@@ -167,6 +172,8 @@ For documentation-only changes:
 - Region retranslation calls the configured translation provider for one region and rerenders the page.
 - Celery runs eagerly by default through `CELERY_TASK_ALWAYS_EAGER=true`.
 - With `OCR_PROVIDER=easyocr`, processing uses real EasyOCR text detection/recognition. Translation remains mock unless a real translation provider is implemented and configured.
+- With `OCR_PROVIDER=tesseract`, processing uses native Tesseract through `pytesseract`; prefer explicit `jpn` or `kor` source languages for speed.
+- With `TRANSLATION_PROVIDER=opus_mt`, processing uses local CTranslate2 OPUS-MT model directories under `backend/models/opus-mt/` by default; model files are ignored by git and must be prepared outside backend startup.
 
 ## Git and Workspace Hygiene
 

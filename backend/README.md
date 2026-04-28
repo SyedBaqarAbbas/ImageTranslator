@@ -159,7 +159,7 @@ The backend separates fast request/response operations from slow AI and image wo
 - `Celery eager mode`: simple inline job execution for the starter app.
 - `Local filesystem storage`: original, intermediate, preview, final, and export files.
 - `Pillow + OpenCV-ready structure`: MVP rendering now, richer preprocessing/inpainting later.
-- Provider abstractions: mock providers for local dev, an EasyOCR starter provider, and placeholders for OpenAI/DeepL translation providers.
+- Provider abstractions: mock providers for local dev, an EasyOCR starter provider, an opt-in Tesseract/OPUS-MT local prototype path, and placeholders for OpenAI/DeepL translation providers.
 
 ## End-to-End Backend Flow
 
@@ -268,10 +268,115 @@ Provider selection is controlled by environment variables in `app/core/config.py
 
 - `OCR_PROVIDER=mock` is the default. `MockOCRProvider` opens the image with Pillow, calculates one bounding box near the top of the page, and returns one `OCRRegion` with text `Sample detected text`, confidence `0.95`, and type `speech`.
 - `OCR_PROVIDER=easyocr` uses `EasyOCRProvider`. It imports `easyocr`, builds a CPU reader for the requested source language plus English, runs `reader.readtext()` in a background thread, and maps EasyOCR polygons into `OCRRegion` rows.
+- `OCR_PROVIDER=tesseract` uses `TesseractOCRProvider`. It requires the native `tesseract` binary and language data installed separately, applies optional lightweight Pillow preprocessing, calls Tesseract with `image_to_data`, groups word rows into line-level `OCRRegion` rows, and keeps `polygon=None`.
 - `TRANSLATION_PROVIDER=mock` is the default. `MockTranslationProvider.translate_many()` returns one result per source string using the format `[target_language] source text` with confidence `0.99`.
+- `TRANSLATION_PROVIDER=opus_mt` uses `OpusMTTranslationProvider`. It requires pre-converted local CTranslate2 OPUS-MT model directories and supports Japanese/Korean to English with int8 CPU inference.
 - `TRANSLATION_PROVIDER=openai` selects `OpenAITranslationProvider`, but that provider currently raises `NotImplementedError`.
 - `TRANSLATION_PROVIDER=deepl` selects `DeepLTranslationProvider`, but that provider currently raises `NotImplementedError`.
 - `RENDER_ENGINE=pillow` is the only implemented renderer. It uses Pillow to white-fill detected boxes, wrap translated text, fit font size to each box, and render replacement, overlay, bilingual, side-panel, or subtitle output.
+
+### Local Tesseract OCR Prototype
+
+This path is for fast, low-memory local experimentation. It is not enabled by default.
+
+Install Python dependencies with the `local-ml` extra:
+
+```bash
+pip install -e ".[dev,local-ml]"
+```
+
+Install the native binary and language data separately. On macOS:
+
+```bash
+brew install tesseract tesseract-lang
+```
+
+Use `tessdata_fast` language data rather than `tessdata_best` for this prototype. Docker installs Debian Tesseract packages in the backend image; rebuild the image after Dockerfile changes:
+
+```bash
+docker compose build api
+```
+
+Supported language aliases:
+
+- Japanese: `ja`, `jp`, `japanese`, `jpn`
+- Korean: `ko`, `kr`, `korean`, `kor`
+
+Explicit project source languages are fastest because Tesseract loads one language. `source_language=auto` uses `TESSERACT_AUTO_LANGUAGE`, which defaults to `jpn+kor` for mixed Japanese/Korean experimentation and is slower.
+
+Speed-oriented defaults:
+
+- `TESSERACT_OEM=1`
+- `TESSERACT_PSM=6`
+- `TESSERACT_PREPROCESS=true`
+- `TESSERACT_UPSCALE_MIN_DIMENSION=0`, so upscaling is disabled unless opted in
+
+Example:
+
+```bash
+OCR_PROVIDER=tesseract
+TESSERACT_CMD=/opt/homebrew/bin/tesseract
+TESSERACT_DATA_PATH=/opt/homebrew/share/tessdata
+TESSERACT_DEFAULT_LANGUAGE=jpn
+TESSERACT_AUTO_LANGUAGE=jpn+kor
+TESSERACT_PSM=6
+TESSERACT_OEM=1
+```
+
+### Local OPUS-MT CTranslate2 Prototype
+
+This path is also opt-in and CPU-only. It does not download models during request processing. The backend expects already-converted int8 CTranslate2 model directories on local disk:
+
+```text
+backend/models/opus-mt/
+  ja-en/
+    model.bin
+    config.json
+    source.spm
+    target.spm
+  ko-en/
+    model.bin
+    config.json
+    source.spm
+    target.spm
+```
+
+The runtime loads `source.spm`, `target.spm`, and the CTranslate2 model lazily on first use, then caches each language-pair bundle. Model files under `backend/models/opus-mt/` are ignored by git except for `.gitkeep`.
+
+Example conversion commands, run manually outside backend startup:
+
+```bash
+ct2-transformers-converter --model Helsinki-NLP/opus-mt-ja-en \
+  --output_dir backend/models/opus-mt/ja-en \
+  --quantization int8 \
+  --copy_files source.spm target.spm
+ct2-transformers-converter --model Helsinki-NLP/opus-mt-ko-en \
+  --output_dir backend/models/opus-mt/ko-en \
+  --quantization int8 \
+  --copy_files source.spm target.spm
+```
+
+If models live outside the repository, mount them into `/app/models/opus-mt` in Docker or set the explicit model path variables.
+
+Example:
+
+```bash
+TRANSLATION_PROVIDER=opus_mt
+OPUS_MT_MODEL_ROOT=/app/models/opus-mt
+OPUS_MT_COMPUTE_TYPE=int8
+OPUS_MT_BEAM_SIZE=1
+OPUS_MT_INTRA_THREADS=2
+OPUS_MT_INTER_THREADS=1
+OPUS_MT_MAX_BATCH_SIZE=4
+```
+
+Supported translation aliases:
+
+- Japanese source: `ja`, `jpn`, `jp`, `japanese`
+- Korean source: `ko`, `kor`, `kr`, `korean`
+- English target: `en`, `eng`, `english`
+
+With `source_language=auto`, the provider uses cheap Unicode script detection. Hangul maps to Korean, Hiragana/Katakana maps to Japanese, and ambiguous CJK-only text falls back to `OPUS_MT_DEFAULT_SOURCE_LANGUAGE`.
 
 ### Region Data Model
 
@@ -288,7 +393,7 @@ Each OCR result becomes a `TextRegion` row with:
 
 ### Real Provider Work Still Needed
 
-The EasyOCR path can be enabled once optional OCR dependencies are installed and `OCR_PROVIDER=easyocr` is set. Real machine translation is not yet wired: the OpenAI and DeepL provider classes are stubs. A production provider implementation should add API clients, batching limits, retries, timeout handling, structured provider errors, and tests that assert result ordering matches the input text list.
+The EasyOCR path can be enabled once optional OCR dependencies are installed and `OCR_PROVIDER=easyocr` is set. The Tesseract/OPUS-MT path is a lightweight local prototype for Japanese/Korean to English. Real hosted machine translation is not yet wired: the OpenAI and DeepL provider classes are stubs. A production provider implementation should add API clients, batching limits, retries, timeout handling, structured provider errors, and tests that assert result ordering matches the input text list.
 
 ## Background Jobs
 

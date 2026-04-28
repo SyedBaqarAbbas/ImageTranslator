@@ -56,11 +56,73 @@ Current provider defaults:
 
 - `OCR_PROVIDER=mock`: creates one synthetic speech region near the top of the page with text `Sample detected text`.
 - `OCR_PROVIDER=easyocr`: uses EasyOCR if the backend is installed with the optional OCR dependencies.
+- `OCR_PROVIDER=tesseract`: opt-in local prototype OCR path for Japanese/Korean. It uses the native Tesseract binary, `tessdata_fast` language data, light Pillow preprocessing, and line-level boxes from `image_to_data`.
 - `TRANSLATION_PROVIDER=mock`: returns text in the format `[target_language] original text`.
+- `TRANSLATION_PROVIDER=opus_mt`: opt-in local prototype translation path for pre-converted CTranslate2 OPUS-MT int8 models on disk. It supports Japanese/Korean to English and does not download models during requests.
 - `TRANSLATION_PROVIDER=openai` and `TRANSLATION_PROVIDER=deepl`: provider classes exist, but currently raise `NotImplementedError`; they still need API wiring.
 - `RENDER_ENGINE=pillow`: fills detected boxes and renders translated text using Pillow.
 
 Low OCR confidence regions are marked `ocr_low_confidence`; otherwise translated regions are marked `translated`. The Review and Editor screens use these saved `TextRegion` records for manual edits, retranslation, and rerendering.
+
+## Local Tesseract + OPUS-MT Prototype
+
+The lightweight local prototype is opt-in and keeps the default mock workflow unchanged. It is designed for CPU-only testing on a 16 GB MacBook where Docker, the backend, frontend, and database may all be running.
+
+Mac setup:
+
+```bash
+brew install tesseract tesseract-lang
+cd backend
+conda run -n imagetranslator python -m pip install -e ".[dev,local-ml]"
+```
+
+Use explicit project source languages (`ja`/`jpn` or `ko`/`kor`) when possible. `source_language=auto` lets Tesseract use `jpn+kor`, which is slower than a single language.
+
+Example backend env:
+
+```bash
+OCR_PROVIDER=tesseract
+TRANSLATION_PROVIDER=opus_mt
+TESSERACT_DEFAULT_LANGUAGE=jpn
+TESSERACT_PSM=6
+TESSERACT_OEM=1
+OPUS_MT_MODEL_ROOT=/app/models/opus-mt
+OPUS_MT_COMPUTE_TYPE=int8
+OPUS_MT_BEAM_SIZE=1
+OPUS_MT_INTRA_THREADS=2
+OPUS_MT_INTER_THREADS=1
+```
+
+Prepare CTranslate2 OPUS-MT models before starting requests. The runtime expects this layout and will not download model files:
+
+```text
+backend/models/opus-mt/
+  ja-en/
+    model.bin
+    config.json
+    source.spm
+    target.spm
+  ko-en/
+    model.bin
+    config.json
+    source.spm
+    target.spm
+```
+
+Convert with int8 quantization outside the API process, for example:
+
+```bash
+ct2-transformers-converter --model Helsinki-NLP/opus-mt-ja-en \
+  --output_dir backend/models/opus-mt/ja-en \
+  --quantization int8 \
+  --copy_files source.spm target.spm
+ct2-transformers-converter --model Helsinki-NLP/opus-mt-ko-en \
+  --output_dir backend/models/opus-mt/ko-en \
+  --quantization int8 \
+  --copy_files source.spm target.spm
+```
+
+For Docker, rebuild the backend image after the Dockerfile dependency change and mount `backend/models/opus-mt` into `/app/models/opus-mt` if you keep models outside the bind-mounted backend directory.
 
 ## Common Docker Commands
 
@@ -221,6 +283,7 @@ frontend/
 ## Notes
 
 - `backend/.env.example` is suitable for local Docker development and uses mock OCR/translation providers by default.
+- Tesseract and OPUS-MT are local prototype providers only; enable them explicitly with `OCR_PROVIDER=tesseract` and `TRANSLATION_PROVIDER=opus_mt`.
 - Real translation is not currently wired to OpenAI or DeepL; those provider stubs must be implemented before enabling them in environment variables.
 - Production deployments should provide real secrets through environment variables or a secret manager.
 - A separate worker/queue can be reintroduced later when processing throughput matters.

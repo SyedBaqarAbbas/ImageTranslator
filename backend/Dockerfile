@@ -9,9 +9,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     libglib2.0-0 \
     libgl1 \
+    tesseract-ocr \
+    tesseract-ocr-jpn \
+    tesseract-ocr-kor \
     && rm -rf /var/lib/apt/lists/*
 
 COPY . /app
-RUN pip install --upgrade pip && pip install -e ".[dev]"
+RUN pip install --upgrade pip && pip install -e ".[dev,local-ml]"
 
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

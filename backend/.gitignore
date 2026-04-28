@@ -18,6 +18,8 @@ __pycache__/
 # Local runtime data
 data/storage/*
 !data/storage/.gitkeep
+models/opus-mt/*
+!models/opus-mt/.gitkeep
 *.db
 *.sqlite
 *.sqlite3
