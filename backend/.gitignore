@@ -1,13 +1,23 @@
+# Local environment and secrets
 .env
+.env.*
+!.env.example
+
+# Python environments and artifacts
 .venv/
+.conda/
+env/
+venv/
 __pycache__/
 *.py[cod]
+*.egg-info/
 .pytest_cache/
-.mypy_cache/
 .ruff_cache/
+.mypy_cache/
+
+# Local runtime data
 data/storage/*
 !data/storage/.gitkeep
 *.db
 *.sqlite
 *.sqlite3
-

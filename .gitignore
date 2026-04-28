@@ -1,27 +1,11 @@
+# OS files
 .DS_Store
-frontend/stitch_mangatranslate_ai
-node_modules/
-frontend/node_modules/
-frontend/dist/
-frontend/test-results/
-frontend/playwright-report/
-testing/
 
-# Local environments
-.venv/
-.conda/
-env/
-venv/
+# Root-local environments
+/.venv/
+/.conda/
+/env/
+/venv/
 
-# Python artifacts
-__pycache__/
-*.py[cod]
-*.egg-info/
-.pytest_cache/
-.ruff_cache/
-.mypy_cache/
-
-# Local backend runtime files
-backend/.env
-backend/image_translator.db
-backend/data/storage/
+# Repository-level generated evidence
+/testing/

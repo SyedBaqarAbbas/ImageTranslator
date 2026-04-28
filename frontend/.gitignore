@@ -14,9 +14,6 @@ playwright-report/
 .env
 .env.*
 !.env.example
-
-# Local editor and OS files
-.DS_Store
 *.local
 
 # Reference design exports
