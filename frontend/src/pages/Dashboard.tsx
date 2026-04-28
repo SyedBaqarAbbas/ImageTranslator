@@ -1,7 +1,7 @@
 import { Filter, Plus, Search } from "lucide-react";
 import { useQueries, useQuery } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 
 import { api, queryKeys } from "../api";
 import { ProjectCard } from "../components/ProjectCard";
@@ -11,10 +11,26 @@ import { assetUrlForPage } from "../lib/assets";
 
 export function Dashboard() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [filter, setFilter] = useState<"all" | "active" | "completed">("all");
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState(searchParams.get("search") ?? "");
   const projectsQuery = useQuery({ queryKey: queryKeys.projects, queryFn: api.listProjects });
   const projects = useMemo(() => projectsQuery.data ?? [], [projectsQuery.data]);
+
+  useEffect(() => {
+    setSearch(searchParams.get("search") ?? "");
+  }, [searchParams]);
+
+  function handleSearchChange(value: string) {
+    setSearch(value);
+    const nextParams = new URLSearchParams(searchParams);
+    if (value.trim()) {
+      nextParams.set("search", value);
+    } else {
+      nextParams.delete("search");
+    }
+    setSearchParams(nextParams, { replace: true });
+  }
 
   const pageQueries = useQueries({
     queries: projects.map((project) => ({
@@ -54,7 +70,7 @@ export function Dashboard() {
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
               <input
                 value={search}
-                onChange={(event) => setSearch(event.target.value)}
+                onChange={(event) => handleSearchChange(event.target.value)}
                 className="h-11 w-full rounded-lg border border-ink-border bg-surface px-10 text-sm text-text-main outline-none focus:border-secondary sm:w-80"
                 placeholder="Search projects..."
               />
