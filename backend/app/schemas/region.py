@@ -39,6 +39,7 @@ class TextRegionUpdate(BaseModel):
     bounding_box: BoundingBox | None = None
     render_style: dict | None = None
     editable: bool | None = None
+    auto_rerender: bool = False
 
 
 class RetranslateRequest(BaseModel):

@@ -18,7 +18,10 @@ class RegionService:
         await self._assert_page_access(user_id, page_id)
         result = await self.session.scalars(
             select(TextRegion)
-            .where(TextRegion.page_id == page_id)
+            .where(
+                TextRegion.page_id == page_id,
+                TextRegion.status != TextRegionStatus.REJECTED.value,
+            )
             .order_by(TextRegion.region_index)
         )
         return list(result)
@@ -30,7 +33,7 @@ class RegionService:
         payload: TextRegionUpdate,
     ) -> TextRegion:
         region = await self.get_region(user_id, region_id)
-        data = payload.model_dump(exclude_unset=True)
+        data = payload.model_dump(exclude={"auto_rerender"}, exclude_unset=True)
         if "bounding_box" in data and data["bounding_box"] is not None:
             value = data["bounding_box"]
             data["bounding_box"] = value.model_dump() if hasattr(value, "model_dump") else value
@@ -38,11 +41,23 @@ class RegionService:
             if hasattr(value, "value"):
                 value = value.value
             setattr(region, key, value)
-        if payload.user_text is not None or payload.translated_text is not None:
+        if (
+            payload.user_text is not None
+            or payload.translated_text is not None
+            or payload.bounding_box is not None
+            or payload.render_style is not None
+        ):
             region.status = TextRegionStatus.USER_EDITED.value
         await self.session.commit()
         await self.session.refresh(region)
         return region
+
+    async def delete_region(self, user_id: str, region_id: str) -> str:
+        region = await self.get_region(user_id, region_id)
+        page_id = region.page_id
+        await self.session.delete(region)
+        await self.session.commit()
+        return page_id
 
     async def get_region(self, user_id: str, region_id: str) -> TextRegion:
         region = await self.session.scalar(

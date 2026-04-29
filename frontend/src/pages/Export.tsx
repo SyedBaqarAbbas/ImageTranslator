@@ -1,6 +1,6 @@
 import { Archive, Download, FileImage, FileText, Loader2, PackageCheck } from "lucide-react";
 import { FormEvent, useState } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
 
 import { api, queryKeys } from "../api";
@@ -12,10 +12,12 @@ import type { ExportFormat } from "../types/api";
 
 export function Export() {
   const { projectId = "" } = useParams();
+  const queryClient = useQueryClient();
   const [format, setFormat] = useState<ExportFormat>("zip");
   const [includeOriginals, setIncludeOriginals] = useState(false);
   const [filename, setFilename] = useState("");
   const [exportJobId, setExportJobId] = useState<string | null>(null);
+  const [exportError, setExportError] = useState<string | null>(null);
   const projectQuery = useQuery({ queryKey: queryKeys.project(projectId), queryFn: () => api.getProject(projectId), enabled: Boolean(projectId) });
   const pagesQuery = useQuery({ queryKey: queryKeys.pages(projectId), queryFn: () => api.listPages(projectId), enabled: Boolean(projectId) });
   const exportQuery = useQuery({
@@ -32,7 +34,17 @@ export function Export() {
         include_originals: includeOriginals,
         filename: filename.trim() || null,
       }),
-    onSuccess: (job) => setExportJobId(job.id),
+    onMutate: () => {
+      setExportError(null);
+    },
+    onSuccess: async (job) => {
+      setExportJobId(job.id);
+      await queryClient.invalidateQueries({ queryKey: queryKeys.project(projectId) });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.pages(projectId) });
+    },
+    onError: (error) => {
+      setExportError(error instanceof Error ? error.message : "Unable to create export.");
+    },
   });
 
   const project = projectQuery.data;
@@ -43,6 +55,7 @@ export function Export() {
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    setExportError(null);
     exportMutation.mutate();
   }
 
@@ -138,9 +151,15 @@ export function Export() {
               </div>
             ) : null}
 
-            <button disabled={exportMutation.isPending || exportQuery.isFetching} className="mt-6 inline-flex w-full items-center justify-center gap-3 rounded-lg bg-primary px-6 py-4 text-sm font-bold uppercase text-white shadow-glow transition hover:bg-violet-500 disabled:opacity-60">
+            {exportError || exportQuery.isError ? (
+              <p className="mt-4 rounded-instrument border border-danger/40 bg-danger/10 p-3 text-sm font-semibold text-danger">
+                {exportError ?? (exportQuery.error instanceof Error ? exportQuery.error.message : "Unable to load export status.")}
+              </p>
+            ) : null}
+
+            <button type="submit" disabled={exportMutation.isPending} className="mt-6 inline-flex w-full items-center justify-center gap-3 rounded-lg bg-primary px-6 py-4 text-sm font-bold uppercase text-white shadow-glow transition hover:bg-violet-500 disabled:opacity-60">
               {exportMutation.isPending ? <Loader2 className="h-5 w-5 animate-spin" /> : <PackageCheck className="h-5 w-5" />}
-              Export Project
+              {exportMutation.isPending ? "Creating Export" : currentExport?.status === "succeeded" ? "Generate New Export" : "Export Project"}
             </button>
           </form>
         </div>

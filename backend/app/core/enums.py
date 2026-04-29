@@ -39,6 +39,7 @@ class TextRegionStatus(StrEnum):
     USER_EDITED = "user_edited"
     RENDERED = "rendered"
     NEEDS_REVIEW = "needs_review"
+    REJECTED = "rejected"
     FAILED = "failed"
 
 
@@ -95,4 +96,3 @@ class ExportFormat(StrEnum):
     ZIP = "zip"
     PDF = "pdf"
     IMAGES = "images"
-

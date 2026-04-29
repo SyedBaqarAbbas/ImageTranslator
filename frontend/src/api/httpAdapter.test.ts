@@ -123,4 +123,42 @@ describe("httpApi", () => {
       expect.objectContaining({ method: "POST" }),
     );
   });
+
+  it("uses backend region delete path", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "http://api.test/api/v1/regions/region-1") {
+        return jsonResponse({
+          id: "job-1",
+          project_id: "project-1",
+          page_id: "page-1",
+          region_id: null,
+          job_type: "rerender_page",
+          status: "succeeded",
+          progress: 100,
+          stage: "rerendering_page",
+          error_code: null,
+          error_message: null,
+          attempts: 1,
+          max_attempts: 3,
+          celery_task_id: null,
+          result: null,
+          started_at: "2026-04-27T00:00:00Z",
+          completed_at: "2026-04-27T00:00:00Z",
+          created_at: "2026-04-27T00:00:00Z",
+          updated_at: "2026-04-27T00:00:00Z",
+        }, { status: 202 });
+      }
+      return jsonResponse({ error: { message: `Unexpected ${url}` } }, { status: 404 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const httpApi = await loadHttpApi();
+    await httpApi.deleteRegion("region-1");
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://api.test/api/v1/regions/region-1",
+      expect.objectContaining({ method: "DELETE" }),
+    );
+  });
 });

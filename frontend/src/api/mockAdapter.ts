@@ -339,10 +339,36 @@ export const mockApi: ApiAdapter = {
   async updateRegion(regionId: string, payload: TextRegionUpdate): Promise<TextRegionRead> {
     const region = findRegion(regionId);
     Object.assign(region, payload, {
-      status: payload.user_text !== undefined || payload.translated_text !== undefined ? "user_edited" : region.status,
+      status:
+        payload.user_text !== undefined ||
+        payload.translated_text !== undefined ||
+        payload.bounding_box !== undefined ||
+        payload.render_style !== undefined
+          ? "user_edited"
+          : region.status,
       updated_at: iso(),
     });
     return delay(region);
+  },
+
+  async deleteRegion(regionId: string): Promise<ProcessingJobRead> {
+    const region = findRegion(regionId);
+    const page = store.pages.find((item) => item.id === region.page_id);
+    if (!page) {
+      throw new Error("Page not found.");
+    }
+    store.regions = store.regions.filter((item) => item.id !== regionId);
+    const job = buildJob(page.project_id, "rerender_page", { deleted_region_id: regionId });
+    job.page_id = page.id;
+    jobs.unshift(job);
+    window.setTimeout(() => {
+      job.status = "succeeded";
+      job.progress = 100;
+      job.stage = "rerendered";
+      job.completed_at = iso();
+      page.updated_at = iso();
+    }, 400);
+    return delay(job);
   },
 
   async retranslateRegion(regionId: string, payload: RetranslateRequest): Promise<ProcessingJobRead> {

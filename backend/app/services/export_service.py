@@ -109,11 +109,11 @@ async def execute_export_job(export_id: str) -> None:
             export_format = export.format
             if export_format == ExportFormat.PDF.value:
                 data = _build_pdf(image_payloads)
-                filename = f"{project.name}-translated.pdf"
+                filename = _export_filename(payload.get("filename"), project.name, "pdf")
                 content_type = "application/pdf"
             else:
                 data = _build_zip(image_payloads)
-                filename = f"{project.name}-translated.zip"
+                filename = _export_filename(payload.get("filename"), project.name, "zip")
                 content_type = "application/zip"
 
             asset = await assets.create_asset(
@@ -145,6 +145,12 @@ def _build_zip(image_payloads: list[tuple[str, bytes]]) -> bytes:
         for filename, data in image_payloads:
             archive.writestr(filename, data)
     return output.getvalue()
+
+
+def _export_filename(requested: str | None, project_name: str, extension: str) -> str:
+    base = (requested or f"{project_name}-translated").strip() or f"{project_name}-translated"
+    suffix = f".{extension}"
+    return base if base.lower().endswith(suffix) else f"{base}{suffix}"
 
 
 def _build_pdf(image_payloads: list[tuple[str, bytes]]) -> bytes:

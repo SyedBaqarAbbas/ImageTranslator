@@ -245,6 +245,7 @@ export interface ApiAdapter {
   getPage(projectId: string, pageId: string): Promise<PageRead>;
   listRegions(pageId: string): Promise<TextRegionRead[]>;
   updateRegion(regionId: string, payload: TextRegionUpdate): Promise<TextRegionRead>;
+  deleteRegion(regionId: string): Promise<ProcessingJobRead>;
   retranslateRegion(regionId: string, payload: RetranslateRequest): Promise<ProcessingJobRead>;
   processProject(projectId: string, payload: ProcessProjectRequest): Promise<ProcessingJobRead>;
   getProcessingJobs(projectId: string): Promise<ProcessingJobRead[]>;

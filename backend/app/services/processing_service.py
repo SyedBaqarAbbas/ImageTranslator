@@ -513,7 +513,10 @@ async def _rerender_page(session: AsyncSession, project: Project, page: Page) ->
     regions = list(
         await session.scalars(
             select(TextRegion)
-            .where(TextRegion.page_id == page.id)
+            .where(
+                TextRegion.page_id == page.id,
+                TextRegion.status != TextRegionStatus.REJECTED.value,
+            )
             .order_by(TextRegion.region_index)
         )
     )

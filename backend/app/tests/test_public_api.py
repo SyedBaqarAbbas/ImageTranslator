@@ -11,6 +11,7 @@ from PIL import Image
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 import app.services.export_service as export_service_module
+import app.services.processing_service as processing_service_module
 from app.core.config import settings
 from app.db.base import Base
 from app.db.session import get_session
@@ -43,6 +44,7 @@ def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Generator[TestCli
     monkeypatch.setattr(settings, "local_storage_path", tmp_path / "storage")
     monkeypatch.setattr(settings, "public_base_url", "http://testserver")
     monkeypatch.setattr(export_service_module, "AsyncSessionLocal", session_factory)
+    monkeypatch.setattr(processing_service_module, "AsyncSessionLocal", session_factory)
     get_storage_backend.cache_clear()
     asyncio.run(init_db())
 
@@ -141,3 +143,42 @@ def test_export_returns_loaded_asset_without_authorization(client: TestClient) -
     assert export["asset_id"]
     assert export["asset"]["id"] == export["asset_id"]
     assert export["asset"]["content_type"] == "application/zip"
+
+
+def test_delete_region_removes_region_and_rerenders_page(client: TestClient) -> None:
+    project_response = client.post(
+        "/api/v1/projects",
+        json={
+            "name": "Delete Region Project",
+            "source_language": "auto",
+            "target_language": "en",
+            "translation_tone": "natural",
+            "replacement_mode": "replace",
+            "reading_direction": "rtl",
+        },
+    )
+    project_id = project_response.json()["id"]
+    upload_response = client.post(
+        f"/api/v1/projects/{project_id}/pages/upload",
+        files={"files": ("page.png", _png_bytes(), "image/png")},
+    )
+    page_id = upload_response.json()[0]["id"]
+
+    process_response = client.post(
+        f"/api/v1/projects/{project_id}/process",
+        json={"force": True},
+    )
+    assert process_response.status_code == 202
+
+    regions_response = client.get(f"/api/v1/pages/{page_id}/regions")
+    assert regions_response.status_code == 200
+    regions = regions_response.json()
+    assert len(regions) == 1
+
+    delete_response = client.delete(f"/api/v1/regions/{regions[0]['id']}")
+    assert delete_response.status_code == 202
+    assert delete_response.json()["status"] == "succeeded"
+
+    assert client.get(f"/api/v1/pages/{page_id}/regions").json() == []
+    page = client.get(f"/api/v1/pages/{page_id}").json()
+    assert page["preview_asset_id"]

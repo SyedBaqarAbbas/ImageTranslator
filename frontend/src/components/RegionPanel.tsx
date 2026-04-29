@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { BrainCircuit, Save, Sparkles } from "lucide-react";
+import { BrainCircuit, Save, Sparkles, Trash2 } from "lucide-react";
 
 import { statusLabel } from "../lib/routing";
 import type { TextRegionRead, TextRegionUpdate } from "../types/api";
@@ -11,14 +11,18 @@ export function RegionPanel({
   onSelect,
   onSave,
   onRetranslate,
+  onDelete,
   isSaving = false,
+  isDeleting = false,
 }: {
   regions: TextRegionRead[];
   selectedRegionId?: string;
   onSelect: (regionId: string) => void;
   onSave: (regionId: string, payload: TextRegionUpdate) => void;
   onRetranslate: (regionId: string, sourceText: string) => void;
+  onDelete: (regionId: string) => void;
   isSaving?: boolean;
+  isDeleting?: boolean;
 }) {
   const selectedRegion = useMemo(
     () => regions.find((region) => region.id === selectedRegionId) ?? regions[0],
@@ -40,25 +44,34 @@ export function RegionPanel({
       <div className="scrollbar-thin min-h-0 flex-1 overflow-y-auto p-4">
         <div className="space-y-3">
           {regions.map((region) => (
-            <button
+            <article
               key={region.id}
-              type="button"
-              onClick={() => onSelect(region.id)}
               className={`w-full rounded-lg border p-2 text-left transition lg:p-3 ${
                 region.id === selectedRegion?.id ? "border-secondary bg-secondary/10" : "border-ink-border bg-surface hover:border-primary/50"
               }`}
             >
-              <div className="mb-2 flex items-center justify-between gap-3">
-                <span className="text-[11px] font-bold uppercase text-text-muted lg:text-xs">
-                  #{region.region_index} {statusLabel(region.region_type)}
-                </span>
-                <StatusPill status={region.status} />
-              </div>
-              <p className="line-clamp-1 text-sm text-text-main lg:line-clamp-2">{region.user_text || region.translated_text || "Untranslated"}</p>
-              <p className="mt-2 hidden text-xs text-text-muted lg:block">
-                OCR {Math.round((region.ocr_confidence ?? 0) * 100)}% · Translation {Math.round((region.translation_confidence ?? 0) * 100)}%
-              </p>
-            </button>
+              <button type="button" onClick={() => onSelect(region.id)} className="w-full text-left">
+                <div className="mb-2 flex items-center justify-between gap-3">
+                  <span className="text-[11px] font-bold uppercase text-text-muted lg:text-xs">
+                    #{region.region_index} {statusLabel(region.region_type)}
+                  </span>
+                  <StatusPill status={region.status} />
+                </div>
+                <p className="line-clamp-1 text-sm text-text-main lg:line-clamp-2">{region.user_text || region.translated_text || "Untranslated"}</p>
+                <p className="mt-2 hidden text-xs text-text-muted lg:block">
+                  OCR {Math.round((region.ocr_confidence ?? 0) * 100)}% · Translation {Math.round((region.translation_confidence ?? 0) * 100)}%
+                </p>
+              </button>
+              <button
+                type="button"
+                onClick={() => onDelete(region.id)}
+                disabled={isDeleting}
+                className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-instrument border border-danger/40 px-3 py-2 text-xs font-bold text-danger transition hover:bg-danger/10 disabled:opacity-60"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                Reject
+              </button>
+            </article>
           ))}
         </div>
       </div>
@@ -86,7 +99,7 @@ export function RegionPanel({
               className="mt-2 min-h-20 w-full resize-none rounded-instrument border border-ink-border bg-background p-3 text-sm text-text-main outline-none transition focus:border-secondary focus:ring-1 focus:ring-secondary lg:min-h-28"
             />
           </label>
-          <div className="mt-3 grid grid-cols-2 gap-3">
+          <div className="mt-3 grid grid-cols-3 gap-3">
             <button
               onClick={() => onSave(selectedRegion.id, { user_text: draft, auto_rerender: true })}
               disabled={isSaving}
@@ -102,6 +115,14 @@ export function RegionPanel({
             >
               <Sparkles className="h-4 w-4" />
               Approve
+            </button>
+            <button
+              onClick={() => onDelete(selectedRegion.id)}
+              disabled={isDeleting}
+              className="inline-flex items-center justify-center gap-2 rounded-instrument border border-danger/40 px-3 py-2 text-sm font-bold text-danger transition hover:bg-danger/10 disabled:opacity-60"
+            >
+              <Trash2 className="h-4 w-4" />
+              Reject
             </button>
           </div>
         </div>

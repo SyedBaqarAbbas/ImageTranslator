@@ -35,11 +35,15 @@ echo "Model root: ${MODEL_ROOT}"
 echo "Language pairs: ${PAIRS[*]}"
 
 if [ "${SKIP_DEP_INSTALL}" != "1" ]; then
-  echo "Installing conversion-only dependencies into ${CONDA_ENV_NAME}..."
-  conda run -n "${CONDA_ENV_NAME}" python -m pip install \
-    "transformers>=4.44,<5" \
-    "sacremoses>=0.1.1" \
-    "accelerate>=0.26"
+  if conda run -n "${CONDA_ENV_NAME}" python -c "import transformers, sacremoses, accelerate" >/dev/null 2>&1; then
+    echo "Conversion-only dependencies are already installed."
+  else
+    echo "Installing conversion-only dependencies into ${CONDA_ENV_NAME}..."
+    conda run -n "${CONDA_ENV_NAME}" python -m pip install \
+      "transformers>=4.44,<5" \
+      "sacremoses>=0.1.1" \
+      "accelerate>=0.26"
+  fi
 fi
 
 PREPARE_CMD=(

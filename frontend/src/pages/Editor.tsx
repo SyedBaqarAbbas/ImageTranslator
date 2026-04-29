@@ -9,7 +9,7 @@ import { RegionPanel } from "../components/RegionPanel";
 import { ErrorState, LoadingState } from "../components/States";
 import { WorkspaceShell } from "../components/WorkspaceShell";
 import { assetUrlForPage } from "../lib/assets";
-import type { TextRegionUpdate } from "../types/api";
+import type { BoundingBox, TextRegionRead, TextRegionUpdate } from "../types/api";
 
 export function Editor() {
   const { projectId = "" } = useParams();
@@ -42,6 +42,43 @@ export function Editor() {
     mutationFn: ({ regionId, payload }: { regionId: string; payload: TextRegionUpdate }) => api.updateRegion(regionId, payload),
     onSuccess: async () => {
       if (selectedPage) await queryClient.invalidateQueries({ queryKey: queryKeys.regions(selectedPage.id) });
+      if (projectId) await queryClient.invalidateQueries({ queryKey: queryKeys.pages(projectId) });
+    },
+  });
+
+  const moveMutation = useMutation({
+    mutationFn: ({ regionId, boundingBox }: { regionId: string; boundingBox: BoundingBox }) =>
+      api.updateRegion(regionId, { bounding_box: boundingBox, auto_rerender: true }),
+    onMutate: async ({ regionId, boundingBox }) => {
+      if (!selectedPage) {
+        return undefined;
+      }
+      const key = queryKeys.regions(selectedPage.id);
+      await queryClient.cancelQueries({ queryKey: key });
+      const previous = queryClient.getQueryData<TextRegionRead[]>(key);
+      queryClient.setQueryData<TextRegionRead[]>(
+        key,
+        (current) => current?.map((region) => (region.id === regionId ? { ...region, bounding_box: boundingBox } : region)) ?? current,
+      );
+      return { key, previous };
+    },
+    onError: (_error, _variables, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(context.key, context.previous);
+      }
+    },
+    onSettled: async () => {
+      if (selectedPage) await queryClient.invalidateQueries({ queryKey: queryKeys.regions(selectedPage.id) });
+      if (projectId) await queryClient.invalidateQueries({ queryKey: queryKeys.pages(projectId) });
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (regionId: string) => api.deleteRegion(regionId),
+    onSuccess: async () => {
+      setSelectedRegionId(undefined);
+      if (selectedPage) await queryClient.invalidateQueries({ queryKey: queryKeys.regions(selectedPage.id) });
+      if (projectId) await queryClient.invalidateQueries({ queryKey: queryKeys.pages(projectId) });
     },
   });
 
@@ -126,6 +163,7 @@ export function Editor() {
               regions={regions}
               selectedRegionId={selectedRegionId}
               onSelectRegion={setSelectedRegionId}
+              onMoveRegion={(regionId, boundingBox) => moveMutation.mutate({ regionId, boundingBox })}
               mode={mode}
             />
 
@@ -135,7 +173,9 @@ export function Editor() {
               onSelect={setSelectedRegionId}
               onSave={(regionId, payload) => saveMutation.mutate({ regionId, payload })}
               onRetranslate={(regionId, sourceText) => retranslateMutation.mutate({ regionId, sourceText })}
-              isSaving={saveMutation.isPending}
+              onDelete={(regionId) => deleteMutation.mutate(regionId)}
+              isSaving={saveMutation.isPending || moveMutation.isPending}
+              isDeleting={deleteMutation.isPending}
             />
           </div>
 

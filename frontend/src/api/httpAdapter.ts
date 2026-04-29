@@ -169,6 +169,12 @@ export const httpApi: ApiAdapter = {
     });
   },
 
+  deleteRegion(regionId: string): Promise<ProcessingJobRead> {
+    return request<ProcessingJobRead>(`/regions/${regionId}`, {
+      method: "DELETE",
+    });
+  },
+
   retranslateRegion(regionId: string, payload: RetranslateRequest): Promise<ProcessingJobRead> {
     return request<ProcessingJobRead>(`/regions/${regionId}/retranslate`, {
       method: "POST",
