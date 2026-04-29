@@ -55,8 +55,8 @@ class Settings(BaseSettings):
     tesseract_psm: int = 6
     tesseract_oem: int = 1
     tesseract_preprocess: bool = True
-    tesseract_default_language: str = "jpn"
-    tesseract_auto_language: str = "jpn+kor"
+    tesseract_default_language: str = "kor"
+    tesseract_auto_language: str = "kor+jpn"
     tesseract_upscale_min_dimension: int = 0
     tesseract_upscale_max_factor: float = 2.0
     tesseract_threshold: int = 180
@@ -64,7 +64,7 @@ class Settings(BaseSettings):
     opus_mt_model_root: Path = Path("./models/opus-mt")
     opus_mt_ja_en_model_path: Path | None = None
     opus_mt_ko_en_model_path: Path | None = None
-    opus_mt_default_source_language: str = "jpn"
+    opus_mt_default_source_language: str = "kor"
     opus_mt_compute_type: str = "int8"
     opus_mt_beam_size: int = 1
     opus_mt_inter_threads: int = 1

@@ -73,9 +73,55 @@ async def test_tesseract_output_converts_to_line_regions(
     assert regions[1].confidence == pytest.approx(0.6)
 
 
+@pytest.mark.asyncio
+async def test_tesseract_retries_raw_image_when_preprocessing_drops_korean_text(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bad_data = {
+        "block_num": [1],
+        "par_num": [1],
+        "line_num": [1],
+        "left": [10],
+        "top": [20],
+        "width": [24],
+        "height": [12],
+        "conf": ["56.0"],
+        "text": ["02 OCR NOISE"],
+    }
+    good_data = {
+        "block_num": [1],
+        "par_num": [1],
+        "line_num": [1],
+        "left": [40],
+        "top": [80],
+        "width": [200],
+        "height": [40],
+        "conf": ["94.0"],
+        "text": ["저 사람이"],
+    }
+    calls: list[str] = []
+
+    provider = TesseractOCRProvider()
+
+    def fake_image_to_data(*_args: object) -> dict[str, list[object]]:
+        calls.append("ocr")
+        return bad_data if len(calls) == 1 else good_data
+
+    monkeypatch.setattr(settings, "tesseract_preprocess", True)
+    monkeypatch.setattr(provider, "_image_to_data", fake_image_to_data)
+
+    regions = await provider.detect_and_read(_png_bytes(), "ko")
+
+    assert len(calls) == 2
+    assert len(regions) == 1
+    assert regions[0].text == "저 사람이"
+    assert regions[0].language == "kor"
+    assert regions[0].confidence == pytest.approx(0.94)
+
+
 def test_tesseract_language_aliases(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(settings, "tesseract_default_language", "jpn")
-    monkeypatch.setattr(settings, "tesseract_auto_language", "jpn+kor")
+    monkeypatch.setattr(settings, "tesseract_default_language", "kor")
+    monkeypatch.setattr(settings, "tesseract_auto_language", "kor+jpn")
 
     assert _normalize_tesseract_language("ja") == "jpn"
     assert _normalize_tesseract_language("jp") == "jpn"
@@ -83,7 +129,7 @@ def test_tesseract_language_aliases(monkeypatch: pytest.MonkeyPatch) -> None:
     assert _normalize_tesseract_language("ko") == "kor"
     assert _normalize_tesseract_language("kr") == "kor"
     assert _normalize_tesseract_language("korean") == "kor"
-    assert _normalize_tesseract_language("auto") == "jpn+kor"
+    assert _normalize_tesseract_language("auto") == "kor+jpn"
 
 
 def test_opus_mt_provider_selection(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -159,7 +205,7 @@ async def test_opus_mt_preserves_order_handles_empty_and_auto_language(
         )
 
     monkeypatch.setattr(provider, "_get_model", fake_get_model)
-    monkeypatch.setattr(settings, "opus_mt_default_source_language", "jpn")
+    monkeypatch.setattr(settings, "opus_mt_default_source_language", "kor")
     monkeypatch.setattr(settings, "opus_mt_max_batch_size", 1)
     monkeypatch.setattr(settings, "opus_mt_beam_size", 1)
 
@@ -174,9 +220,9 @@ async def test_opus_mt_preserves_order_handles_empty_and_auto_language(
         "ja en こんにちは",
         "",
         "ko en 안녕하세요",
-        "ja en 漢字",
+        "ko en 漢字",
     ]
-    assert [result.detected_language for result in results] == ["ja", "ja", "ko", "ja"]
+    assert [result.detected_language for result in results] == ["ja", "ko", "ko", "ko"]
     assert [result.confidence for result in results] == [None, None, None, None]
 
 

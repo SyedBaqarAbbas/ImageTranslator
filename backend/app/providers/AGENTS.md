@@ -14,7 +14,7 @@ Provider-specific guidance. Also follow `backend/AGENTS.md` and the root `AGENTS
 - EasyOCR creates/downloads model files under `~/.EasyOCR` on first actual OCR use.
 - A real smoke test has successfully read `HELLO 123` from a generated image with `OCR_PROVIDER=easyocr`.
 - `OCR_PROVIDER=tesseract` is an opt-in local prototype provider using native Tesseract through `pytesseract`.
-- Tesseract requires the native binary plus Japanese/Korean language data; prefer explicit `jpn` or `kor` source languages for speed.
+- Tesseract requires the native binary plus Korean/Japanese language data; prefer explicit `kor` or `jpn` source languages for speed.
 
 ## Translation
 

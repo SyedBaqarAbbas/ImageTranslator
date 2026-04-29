@@ -104,7 +104,25 @@ class TesseractOCRProvider:
             tesseract_language,
             _tesseract_config(),
         )
-        return _regions_from_tesseract_data(data, region_language, scale)
+        regions = _regions_from_tesseract_data(data, region_language, scale)
+        if settings.tesseract_preprocess and _should_retry_without_preprocessing(
+            regions,
+            tesseract_language,
+        ):
+            raw_image, raw_scale = _prepare_tesseract_image(image_bytes, preprocess=False)
+            raw_data = await asyncio.to_thread(
+                self._image_to_data,
+                raw_image,
+                tesseract_language,
+                _tesseract_config(),
+            )
+            raw_regions = _regions_from_tesseract_data(raw_data, region_language, raw_scale)
+            if _ocr_text_score(raw_regions, tesseract_language) > _ocr_text_score(
+                regions,
+                tesseract_language,
+            ):
+                return raw_regions
+        return regions
 
     def _image_to_data(
         self,
@@ -124,7 +142,10 @@ class TesseractOCRProvider:
         )
 
 
-def _prepare_tesseract_image(image_bytes: bytes) -> tuple[Image.Image, float]:
+def _prepare_tesseract_image(
+    image_bytes: bytes,
+    preprocess: bool | None = None,
+) -> tuple[Image.Image, float]:
     with Image.open(io.BytesIO(image_bytes)) as image:
         prepared = image.convert("RGB")
 
@@ -136,7 +157,8 @@ def _prepare_tesseract_image(image_bytes: bytes) -> tuple[Image.Image, float]:
             Image.Resampling.LANCZOS,
         )
 
-    if not settings.tesseract_preprocess:
+    should_preprocess = settings.tesseract_preprocess if preprocess is None else preprocess
+    if not should_preprocess:
         return prepared, scale
 
     grayscale = ImageOps.grayscale(prepared)
@@ -146,6 +168,49 @@ def _prepare_tesseract_image(image_bytes: bytes) -> tuple[Image.Image, float]:
         return grayscale, scale
     thresholded = grayscale.point(lambda pixel: 255 if pixel > threshold else 0, mode="1")
     return thresholded.convert("L"), scale
+
+
+def _should_retry_without_preprocessing(regions: list[OCRRegion], language: str) -> bool:
+    if not regions:
+        return True
+    normalized_language = language.lower()
+    if any(language_code in normalized_language for language_code in ("kor", "jpn")):
+        text = " ".join(region.text for region in regions).strip()
+        if not _contains_expected_script(text, language):
+            return True
+    return _ocr_text_score(regions, language) < 1.0
+
+
+def _ocr_text_score(regions: list[OCRRegion], language: str) -> float:
+    text = " ".join(region.text for region in regions).strip()
+    if not text:
+        return 0.0
+
+    score = min(len(text) / 8, 1.0)
+    if _contains_expected_script(text, language):
+        score += 1.0
+    if regions:
+        score += sum(region.confidence for region in regions) / len(regions)
+    return score
+
+
+def _contains_expected_script(text: str, language: str) -> bool:
+    normalized = language.lower()
+    for character in text:
+        codepoint = ord(character)
+        if "kor" in normalized and (
+            0xAC00 <= codepoint <= 0xD7AF
+            or 0x1100 <= codepoint <= 0x11FF
+            or 0x3130 <= codepoint <= 0x318F
+        ):
+            return True
+        if "jpn" in normalized and (
+            0x3040 <= codepoint <= 0x30FF
+            or 0x31F0 <= codepoint <= 0x31FF
+            or 0x4E00 <= codepoint <= 0x9FFF
+        ):
+            return True
+    return not any(language_code in normalized for language_code in ("kor", "jpn"))
 
 
 def _tesseract_scale_factor(size: tuple[int, int]) -> float:

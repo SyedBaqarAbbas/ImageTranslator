@@ -12,7 +12,7 @@ FORCE="${OPUS_MT_FORCE:-0}"
 
 PAIRS=("$@")
 if [ "${#PAIRS[@]}" -eq 0 ]; then
-  PAIRS=("ja-en" "ko-en")
+  PAIRS=("ko-en" "ja-en")
 fi
 
 if ! command -v conda >/dev/null 2>&1; then

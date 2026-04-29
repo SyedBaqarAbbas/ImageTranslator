@@ -140,8 +140,8 @@ export function ProjectSetup() {
                 <span className="text-xs font-bold uppercase text-text-muted">Source</span>
                 <select value={sourceLanguage} onChange={(event) => setSourceLanguage(event.target.value)} className="mt-2 w-full rounded-instrument border border-ink-border bg-background px-3 py-3 text-sm text-text-main outline-none focus:border-secondary">
                   <option value="auto">Auto detect</option>
-                  <option value="ja">Japanese</option>
                   <option value="ko">Korean</option>
+                  <option value="ja">Japanese</option>
                   <option value="zh">Chinese</option>
                 </select>
               </label>

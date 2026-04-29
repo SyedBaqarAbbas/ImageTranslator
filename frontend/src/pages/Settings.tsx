@@ -29,9 +29,9 @@ export function Settings() {
             <div className="grid gap-4 md:grid-cols-2">
               <label className="block">
                 <span className="text-xs font-bold uppercase text-text-muted">Source language</span>
-                <select className="mt-2 h-11 w-full rounded-instrument border border-ink-border bg-background px-3 text-sm text-text-main outline-none focus:border-secondary" defaultValue="ja">
-                  <option value="ja">Japanese</option>
+                <select className="mt-2 h-11 w-full rounded-instrument border border-ink-border bg-background px-3 text-sm text-text-main outline-none focus:border-secondary" defaultValue="ko">
                   <option value="ko">Korean</option>
+                  <option value="ja">Japanese</option>
                   <option value="zh">Chinese</option>
                 </select>
               </label>

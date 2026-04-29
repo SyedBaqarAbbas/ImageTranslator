@@ -49,11 +49,11 @@ cd backend
 conda run -n imagetranslator pytest -q
 ```
 
-Latest result: `24 passed, 1 warning`.
+Latest result: `26 passed, 1 warning`.
 
 ```bash
 cd backend
-conda run -n imagetranslator ruff check app/providers/translation.py app/tests/test_local_ml_providers.py app/tests/test_prepare_opus_mt_models.py app/tests/test_processing_failures.py app/services/processing_service.py scripts/prepare_opus_mt_models.py
+conda run -n imagetranslator ruff check app/core/config.py app/providers/ocr.py app/tests/test_local_ml_providers.py scripts/prepare_opus_mt_models.py
 ```
 
 Latest result: passed.
@@ -79,7 +79,7 @@ cd frontend
 npm run test
 ```
 
-Latest result: `5 passed`.
+Latest result: `6 passed`.
 
 ```bash
 cd frontend
@@ -104,26 +104,32 @@ Latest result: `3 passed`.
 
 ## Real UI E2E: Tesseract + OPUS-MT
 
-Generate a simple Japanese PNG for the browser upload flow:
+The browser E2E now defaults to the real Korean screenshot:
+
+```bash
+/Users/ekai/Desktop/Screenshot\ 2026-04-29\ at\ 11.42.59 PM.png
+```
+
+Optional: generate a simple Japanese PNG if you want a synthetic fallback fixture:
 
 ```bash
 cd backend
 conda run -n imagetranslator python -c "from PIL import Image, ImageDraw, ImageFont; img=Image.new('RGB',(900,620),'white'); draw=ImageDraw.Draw(img); font=ImageFont.truetype('/System/Library/Fonts/Hiragino Sans GB.ttc',96); draw.rounded_rectangle((120,150,780,430), radius=50, outline='black', width=8, fill='white'); draw.text((230,245),'こんにちは', font=font, fill='black'); img.save('/private/tmp/image-translator-ui-e2e-ja.png')"
 ```
 
-Optional OCR sanity check:
+Optional Korean OCR sanity check on the real screenshot:
 
 ```bash
-tesseract /private/tmp/image-translator-ui-e2e-ja.png stdout -l jpn --psm 6
+tesseract "/Users/ekai/Desktop/Screenshot 2026-04-29 at 11.42.59 PM.png" stdout -l kor --psm 6
 ```
 
-Expected result: `こんにちは`.
+Expected result includes `저 사람이`, `소냐를 마지막으로`, and `봤대!`.
 
 Start the backend in one terminal:
 
 ```bash
 cd backend
-AUTO_CREATE_TABLES=true DATABASE_URL=sqlite+aiosqlite:////tmp/image-translator-ui-e2e.db LOCAL_STORAGE_PATH=/tmp/image-translator-ui-e2e-storage PUBLIC_BASE_URL=http://127.0.0.1:8000 OCR_PROVIDER=tesseract TRANSLATION_PROVIDER=opus_mt TESSERACT_DEFAULT_LANGUAGE=jpn TESSERACT_PSM=6 OPUS_MT_MODEL_ROOT=/Users/ekai/Documents/personal/personal_projects/ImageTranslator/backend/models/opus-mt conda run -n imagetranslator python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
+AUTO_CREATE_TABLES=true DATABASE_URL=sqlite+aiosqlite:////tmp/image-translator-ui-e2e.db LOCAL_STORAGE_PATH=/tmp/image-translator-ui-e2e-storage PUBLIC_BASE_URL=http://127.0.0.1:8000 OCR_PROVIDER=tesseract TRANSLATION_PROVIDER=opus_mt TESSERACT_DEFAULT_LANGUAGE=kor TESSERACT_PSM=6 OPUS_MT_MODEL_ROOT=/Users/ekai/Documents/personal/personal_projects/ImageTranslator/backend/models/opus-mt conda run -n imagetranslator python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
 Start the frontend in a second terminal:
@@ -146,8 +152,9 @@ curl -sS -I http://127.0.0.1:5173/
 Run the browser E2E script:
 
 ```bash
+cp scripts/ui-e2e-opus-mt.js /tmp/playwright-test-image-translator-opus-mt.js
 cd /Users/ekai/.codex/skills/playwright-skill
-node run.js /Users/ekai/Documents/personal/personal_projects/ImageTranslator/testing/ui-e2e-opus-mt/ui-e2e-opus-mt.js
+node run.js /tmp/playwright-test-image-translator-opus-mt.js
 ```
 
 Latest result: pass. Report and screenshots are written under `testing/ui-e2e-opus-mt/`.

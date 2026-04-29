@@ -10,8 +10,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 DEFAULT_MODELS = {
-    "ja-en": "Helsinki-NLP/opus-mt-ja-en",
     "ko-en": "Helsinki-NLP/opus-mt-ko-en",
+    "ja-en": "Helsinki-NLP/opus-mt-ja-en",
 }
 REQUIRED_MODEL_FILES = ("model.bin", "config.json", "source.spm", "target.spm")
 BACKEND_ROOT = Path(__file__).resolve().parents[1]

@@ -270,7 +270,7 @@ Provider selection is controlled by environment variables in `app/core/config.py
 - `OCR_PROVIDER=easyocr` uses `EasyOCRProvider`. It imports `easyocr`, builds a CPU reader for the requested source language plus English, runs `reader.readtext()` in a background thread, and maps EasyOCR polygons into `OCRRegion` rows.
 - `OCR_PROVIDER=tesseract` uses `TesseractOCRProvider`. It requires the native `tesseract` binary and language data installed separately, applies optional lightweight Pillow preprocessing, calls Tesseract with `image_to_data`, groups word rows into line-level `OCRRegion` rows, and keeps `polygon=None`.
 - `TRANSLATION_PROVIDER=mock` is the default. `MockTranslationProvider.translate_many()` returns one result per source string using the format `[target_language] source text` with confidence `0.99`.
-- `TRANSLATION_PROVIDER=opus_mt` uses `OpusMTTranslationProvider`. It requires pre-converted local CTranslate2 OPUS-MT model directories and supports Japanese/Korean to English with int8 CPU inference.
+- `TRANSLATION_PROVIDER=opus_mt` uses `OpusMTTranslationProvider`. It requires pre-converted local CTranslate2 OPUS-MT model directories and supports Korean/Japanese to English with int8 CPU inference.
 - `TRANSLATION_PROVIDER=openai` selects `OpenAITranslationProvider`, but that provider currently raises `NotImplementedError`.
 - `TRANSLATION_PROVIDER=deepl` selects `DeepLTranslationProvider`, but that provider currently raises `NotImplementedError`.
 - `RENDER_ENGINE=pillow` is the only implemented renderer. It uses Pillow to white-fill detected boxes, wrap translated text, fit font size to each box, and render replacement, overlay, bilingual, side-panel, or subtitle output.
@@ -299,10 +299,10 @@ docker compose build api
 
 Supported language aliases:
 
-- Japanese: `ja`, `jp`, `japanese`, `jpn`
 - Korean: `ko`, `kr`, `korean`, `kor`
+- Japanese: `ja`, `jp`, `japanese`, `jpn`
 
-Explicit project source languages are fastest because Tesseract loads one language. `source_language=auto` uses `TESSERACT_AUTO_LANGUAGE`, which defaults to `jpn+kor` for mixed Japanese/Korean experimentation and is slower.
+Explicit project source languages are fastest because Tesseract loads one language. `source_language=auto` uses `TESSERACT_AUTO_LANGUAGE`, which defaults to `kor+jpn` for mixed Korean/Japanese experimentation and is slower.
 
 Speed-oriented defaults:
 
@@ -317,8 +317,8 @@ Example:
 OCR_PROVIDER=tesseract
 TESSERACT_CMD=/opt/homebrew/bin/tesseract
 TESSERACT_DATA_PATH=/opt/homebrew/share/tessdata
-TESSERACT_DEFAULT_LANGUAGE=jpn
-TESSERACT_AUTO_LANGUAGE=jpn+kor
+TESSERACT_DEFAULT_LANGUAGE=kor
+TESSERACT_AUTO_LANGUAGE=kor+jpn
 TESSERACT_PSM=6
 TESSERACT_OEM=1
 ```
@@ -329,12 +329,12 @@ This path is also opt-in and CPU-only. It does not download models during reques
 
 ```text
 backend/models/opus-mt/
-  ja-en/
+  ko-en/
     model.bin
     config.json
     source.spm
     target.spm
-  ko-en/
+  ja-en/
     model.bin
     config.json
     source.spm
@@ -362,7 +362,7 @@ conda run -n imagetranslator python scripts/prepare_opus_mt_models.py --check-on
 conda run -n imagetranslator python scripts/prepare_opus_mt_models.py --dry-run
 
 # Convert only one language pair.
-./scripts/setup_opus_mt_models.sh ja-en
+./scripts/setup_opus_mt_models.sh ko-en
 
 # Re-convert existing or partially-written model folders.
 OPUS_MT_FORCE=1 ./scripts/setup_opus_mt_models.sh
@@ -374,13 +374,13 @@ CONDA_ENV_NAME=imagetranslator OPUS_MT_MODEL_ROOT=/path/to/opus-mt ./scripts/set
 Equivalent manual conversion commands, run outside backend startup:
 
 ```bash
-ct2-transformers-converter --model Helsinki-NLP/opus-mt-ja-en \
-  --output_dir models/opus-mt/ja-en \
+ct2-transformers-converter --model Helsinki-NLP/opus-mt-ko-en \
+  --output_dir models/opus-mt/ko-en \
   --quantization int8 \
   --copy_files source.spm target.spm \
   --low_cpu_mem_usage
-ct2-transformers-converter --model Helsinki-NLP/opus-mt-ko-en \
-  --output_dir models/opus-mt/ko-en \
+ct2-transformers-converter --model Helsinki-NLP/opus-mt-ja-en \
+  --output_dir models/opus-mt/ja-en \
   --quantization int8 \
   --copy_files source.spm target.spm \
   --low_cpu_mem_usage
@@ -402,11 +402,11 @@ OPUS_MT_MAX_BATCH_SIZE=4
 
 Supported translation aliases:
 
-- Japanese source: `ja`, `jpn`, `jp`, `japanese`
 - Korean source: `ko`, `kor`, `kr`, `korean`
+- Japanese source: `ja`, `jpn`, `jp`, `japanese`
 - English target: `en`, `eng`, `english`
 
-With `source_language=auto`, the provider uses cheap Unicode script detection. Hangul maps to Korean, Hiragana/Katakana maps to Japanese, and ambiguous CJK-only text falls back to `OPUS_MT_DEFAULT_SOURCE_LANGUAGE`.
+With `source_language=auto`, the provider uses cheap Unicode script detection. Hangul maps to Korean, Hiragana/Katakana maps to Japanese, and ambiguous CJK-only text falls back to `OPUS_MT_DEFAULT_SOURCE_LANGUAGE`, which defaults to Korean.
 
 ### Region Data Model
 
@@ -423,7 +423,7 @@ Each OCR result becomes a `TextRegion` row with:
 
 ### Real Provider Work Still Needed
 
-The EasyOCR path can be enabled once optional OCR dependencies are installed and `OCR_PROVIDER=easyocr` is set. The Tesseract/OPUS-MT path is a lightweight local prototype for Japanese/Korean to English. Real hosted machine translation is not yet wired: the OpenAI and DeepL provider classes are stubs. A production provider implementation should add API clients, batching limits, retries, timeout handling, structured provider errors, and tests that assert result ordering matches the input text list.
+The EasyOCR path can be enabled once optional OCR dependencies are installed and `OCR_PROVIDER=easyocr` is set. The Tesseract/OPUS-MT path is a lightweight local prototype for Korean/Japanese to English. Real hosted machine translation is not yet wired: the OpenAI and DeepL provider classes are stubs. A production provider implementation should add API clients, batching limits, retries, timeout handling, structured provider errors, and tests that assert result ordering matches the input text list.
 
 ## Background Jobs
 
