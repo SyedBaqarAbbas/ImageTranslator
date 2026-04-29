@@ -109,17 +109,26 @@ backend/models/opus-mt/
     target.spm
 ```
 
-Convert with int8 quantization outside the API process, for example:
+Use the setup script to install conversion-only dependencies and prepare those local model folders outside the API process:
+
+```bash
+cd backend
+./scripts/setup_opus_mt_models.sh
+```
+
+The script wraps `ct2-transformers-converter`, writes a local manifest, skips complete model directories unless `OPUS_MT_FORCE=1` is set, and keeps int8 quantization as the default. If you prefer to run the converter manually, use equivalent commands:
 
 ```bash
 ct2-transformers-converter --model Helsinki-NLP/opus-mt-ja-en \
-  --output_dir backend/models/opus-mt/ja-en \
+  --output_dir models/opus-mt/ja-en \
   --quantization int8 \
-  --copy_files source.spm target.spm
+  --copy_files source.spm target.spm \
+  --low_cpu_mem_usage
 ct2-transformers-converter --model Helsinki-NLP/opus-mt-ko-en \
-  --output_dir backend/models/opus-mt/ko-en \
+  --output_dir models/opus-mt/ko-en \
   --quantization int8 \
-  --copy_files source.spm target.spm
+  --copy_files source.spm target.spm \
+  --low_cpu_mem_usage
 ```
 
 For Docker, rebuild the backend image after the Dockerfile dependency change and mount `backend/models/opus-mt` into `/app/models/opus-mt` if you keep models outside the bind-mounted backend directory.

@@ -294,8 +294,12 @@ class OpusMTTranslationProvider:
 
 def _encode_sentencepiece(processor: Any, text: str) -> list[str]:
     if hasattr(processor, "encode"):
-        return [str(piece) for piece in processor.encode(text, out_type=str)]
-    return [str(piece) for piece in processor.EncodeAsPieces(text)]
+        pieces = [str(piece) for piece in processor.encode(text, out_type=str)]
+    else:
+        pieces = [str(piece) for piece in processor.EncodeAsPieces(text)]
+    if not pieces or pieces[-1] != "</s>":
+        pieces.append("</s>")
+    return pieces
 
 
 def _decode_sentencepiece(processor: Any, tokens: list[str]) -> str:

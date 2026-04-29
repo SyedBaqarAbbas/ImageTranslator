@@ -18,12 +18,15 @@ ImageTranslator is a full-stack manga/comic translation workflow.
 - `OCR_PROVIDER=easyocr` exists but requires optional OCR dependencies.
 - `OCR_PROVIDER=tesseract` is an opt-in local prototype provider. It requires the native Tesseract binary plus Japanese/Korean language data and uses lightweight Pillow preprocessing.
 - `TRANSLATION_PROVIDER=opus_mt` is an opt-in local prototype provider. It uses local pre-converted CTranslate2 OPUS-MT int8 models and does not download models during request processing.
+- Use `backend/scripts/setup_opus_mt_models.sh` to install conversion-only dependencies and prepare local OPUS-MT model folders outside backend startup/request handling.
 - The named conda env `imagetranslator` has been set up with `.[dev,ocr]` and `.[dev,local-ml]`, including EasyOCR, Torch, torchvision, PaddleOCR, pytesseract, CTranslate2, SentencePiece, and related OCR dependencies.
 - The Tesseract/OPUS-MT local prototype path must not add PyTorch.
 - EasyOCR creates/downloads model files under `~/.EasyOCR` on first actual OCR use. A real smoke test has successfully read `HELLO 123` from a generated image with `OCR_PROVIDER=easyocr`.
 - `TRANSLATION_PROVIDER=openai` and `TRANSLATION_PROVIDER=deepl` currently select provider stubs that raise `NotImplementedError`; do not claim real OpenAI/DeepL translation works until those providers are implemented.
 - `RENDER_ENGINE=pillow` is the implemented renderer.
 - Workflow API routes use a shared public workspace user; no frontend auth token is required in local HTTP mode.
+- Current scope is prototype-first: do not add auth/users, multi-workspace permissions, a separate queue, or a worker architecture unless the user explicitly changes scope.
+- The next-step prototype roadmap lives in `PROTOTYPE_IMPLEMENTATION_PLAN.md`.
 
 ## Repo Layout
 

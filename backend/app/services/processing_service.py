@@ -19,7 +19,12 @@ from app.core.errors import AppError
 from app.db.base import utcnow
 from app.db.session import AsyncSessionLocal
 from app.models import FileAsset, Page, ProcessingJob, Project, TextRegion, TranslationSettings
-from app.providers import RenderRegion, get_ocr_provider, get_render_engine, get_translation_provider
+from app.providers import (
+    RenderRegion,
+    get_ocr_provider,
+    get_render_engine,
+    get_translation_provider,
+)
 from app.schemas.job import ProcessProjectRequest, ReprocessPageRequest
 from app.schemas.region import RetranslateRequest
 from app.services.asset_service import AssetService
@@ -242,6 +247,16 @@ async def _mark_job_failed(session: AsyncSession, job: ProcessingJob, exc: Excep
     await session.commit()
 
 
+async def _mark_page_failed(session: AsyncSession, page_id: str, exc: Exception) -> None:
+    await session.rollback()
+    page = await session.get(Page, page_id)
+    if page is None:
+        return
+    page.status = PageStatus.FAILED.value
+    page.failure_reason = str(exc)
+    await session.commit()
+
+
 async def _process_project(session: AsyncSession, job: ProcessingJob) -> None:
     project = await session.scalar(
         select(Project).options(selectinload(Project.settings)).where(Project.id == job.project_id)
@@ -284,6 +299,15 @@ async def _process_single_page(session: AsyncSession, job: ProcessingJob) -> Non
 
 
 async def _process_page(session: AsyncSession, project: Project, page: Page) -> None:
+    page_id = page.id
+    try:
+        await _process_page_inner(session, project, page)
+    except Exception as exc:
+        await _mark_page_failed(session, page_id, exc)
+        raise
+
+
+async def _process_page_inner(session: AsyncSession, project: Project, page: Page) -> None:
     if not page.original_asset_id:
         raise AppError("page_missing_original", f"Page {page.id} has no original asset.")
 
@@ -367,9 +391,10 @@ async def _process_page(session: AsyncSession, project: Project, page: Page) -> 
 
     renderer = get_render_engine()
     cleaned = await renderer.clean_page(normalized, render_regions)
+    replace_modes = {ReplacementMode.REPLACE.value, ReplacementMode.BILINGUAL.value}
     render_source = (
         cleaned
-        if settings.replacement_mode in {ReplacementMode.REPLACE.value, ReplacementMode.BILINGUAL.value}
+        if settings.replacement_mode in replace_modes
         else normalized
     )
     final = await renderer.render_page(render_source, render_regions, settings.replacement_mode)
@@ -427,7 +452,12 @@ async def _retranslate_region(session: AsyncSession, job: ProcessingJob) -> None
         raise AppError("project_not_found", "Project not found.")
 
     settings = await _settings_for_project(session, project)
-    source_text = (job.result or {}).get("source_text") or region.user_text or region.detected_text or ""
+    source_text = (
+        (job.result or {}).get("source_text")
+        or region.user_text
+        or region.detected_text
+        or ""
+    )
     if not source_text:
         raise AppError("region_has_no_text", "Region has no source text to translate.")
     target_language = (job.result or {}).get("target_language") or settings.target_language
@@ -499,9 +529,10 @@ async def _rerender_page(session: AsyncSession, project: Project, page: Page) ->
     settings = await _settings_for_project(session, project)
     renderer = get_render_engine()
     cleaned = await renderer.clean_page(source_bytes, render_regions)
+    replace_modes = {ReplacementMode.REPLACE.value, ReplacementMode.BILINGUAL.value}
     render_source = (
         cleaned
-        if settings.replacement_mode in {ReplacementMode.REPLACE.value, ReplacementMode.BILINGUAL.value}
+        if settings.replacement_mode in replace_modes
         else source_bytes
     )
     final = await renderer.render_page(render_source, render_regions, settings.replacement_mode)

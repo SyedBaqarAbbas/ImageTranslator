@@ -17,6 +17,7 @@ from app.providers.ocr import (
 from app.providers.translation import (
     MockTranslationProvider,
     OpusMTTranslationProvider,
+    _encode_sentencepiece,
     _infer_opus_source_language,
     _normalize_opus_source_language,
     _normalize_opus_target_language,
@@ -184,6 +185,14 @@ def test_opus_mt_script_detection() -> None:
     assert _infer_opus_source_language("こんにちは") == "ja"
     assert _infer_opus_source_language("カタカナ") == "ja"
     assert _infer_opus_source_language("漢字") is None
+
+
+def test_opus_mt_encoding_appends_end_of_sentence_token() -> None:
+    class FakeSentencePiece:
+        def encode(self, text: str, out_type: type[str] = str) -> list[str]:
+            return [text]
+
+    assert _encode_sentencepiece(FakeSentencePiece(), "こんにちは") == ["こんにちは", "</s>"]
 
 
 @pytest.mark.asyncio

@@ -343,17 +343,47 @@ backend/models/opus-mt/
 
 The runtime loads `source.spm`, `target.spm`, and the CTranslate2 model lazily on first use, then caches each language-pair bundle. Model files under `backend/models/opus-mt/` are ignored by git except for `.gitkeep`.
 
-Example conversion commands, run manually outside backend startup:
+Use the setup script to install conversion-only dependencies and prepare local model folders. It wraps `ct2-transformers-converter`, defaults to int8 quantization, skips complete model directories unless force is requested, and writes `backend/models/opus-mt/manifest.json`.
+
+```bash
+cd backend
+./scripts/setup_opus_mt_models.sh
+```
+
+The setup script installs `transformers`, `sacremoses`, and `accelerate` into the existing `imagetranslator` conda env because those are needed to convert Hugging Face OPUS-MT checkpoints. They are not used by backend request handling after the CTranslate2 model directories exist. The generated model files stay under `backend/models/opus-mt/`, which is ignored by git except for `.gitkeep`.
+
+Useful setup variants:
+
+```bash
+# Check model files without converting.
+conda run -n imagetranslator python scripts/prepare_opus_mt_models.py --check-only
+
+# Print conversion commands without downloading/converting.
+conda run -n imagetranslator python scripts/prepare_opus_mt_models.py --dry-run
+
+# Convert only one language pair.
+./scripts/setup_opus_mt_models.sh ja-en
+
+# Re-convert existing or partially-written model folders.
+OPUS_MT_FORCE=1 ./scripts/setup_opus_mt_models.sh
+
+# Use a different conda env or model directory.
+CONDA_ENV_NAME=imagetranslator OPUS_MT_MODEL_ROOT=/path/to/opus-mt ./scripts/setup_opus_mt_models.sh
+```
+
+Equivalent manual conversion commands, run outside backend startup:
 
 ```bash
 ct2-transformers-converter --model Helsinki-NLP/opus-mt-ja-en \
-  --output_dir backend/models/opus-mt/ja-en \
+  --output_dir models/opus-mt/ja-en \
   --quantization int8 \
-  --copy_files source.spm target.spm
+  --copy_files source.spm target.spm \
+  --low_cpu_mem_usage
 ct2-transformers-converter --model Helsinki-NLP/opus-mt-ko-en \
-  --output_dir backend/models/opus-mt/ko-en \
+  --output_dir models/opus-mt/ko-en \
   --quantization int8 \
-  --copy_files source.spm target.spm
+  --copy_files source.spm target.spm \
+  --low_cpu_mem_usage
 ```
 
 If models live outside the repository, mount them into `/app/models/opus-mt` in Docker or set the explicit model path variables.
