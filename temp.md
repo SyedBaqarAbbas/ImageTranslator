@@ -152,7 +152,7 @@ curl -sS -I http://127.0.0.1:5173/
 Run the browser E2E script:
 
 ```bash
-cp scripts/ui-e2e-opus-mt.js /tmp/playwright-test-image-translator-opus-mt.js
+cp e2e/ui-e2e-opus-mt.js /tmp/playwright-test-image-translator-opus-mt.js
 cd /Users/ekai/.codex/skills/playwright-skill
 node run.js /tmp/playwright-test-image-translator-opus-mt.js
 ```

@@ -11,7 +11,9 @@
     "typecheck": "tsc -b --pretty false",
     "test": "vitest run",
     "test:ui": "vitest --ui",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "audit:buttons": "node tests/button-audit/run-all.cjs",
+    "audit:buttons:editor": "node tests/button-audit/pages/editor.cjs"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.74.7",

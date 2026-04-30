@@ -4,9 +4,7 @@ const path = require("path");
 
 const TARGET_URL = process.env.TARGET_URL || "http://127.0.0.1:5173";
 const API_BASE = process.env.API_BASE || "http://127.0.0.1:8000/api/v1";
-const REPO_ROOT =
-  process.env.REPO_ROOT ||
-  "/Users/ekai/Documents/personal/personal_projects/ImageTranslator";
+const REPO_ROOT = process.env.REPO_ROOT || path.resolve(__dirname, "..");
 const TEST_IMAGE =
   process.env.TEST_IMAGE ||
   "/Users/ekai/Desktop/Screenshot 2026-04-29 at 11.42.59 PM.png";
