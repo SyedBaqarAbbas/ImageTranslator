@@ -1,6 +1,10 @@
-const { auditPage } = require("../core.cjs");
+const { auditPage, prepares } = require("../core.cjs");
 
-auditPage({ pageName: "review", path: "/projects/project-cyber/review" }).catch((error) => {
+auditPage({
+  pageName: "review",
+  path: "/projects/:projectId/review",
+  prepare: prepares.projectRoute("review"),
+}).catch((error) => {
   console.error(error);
   process.exitCode = 1;
 });

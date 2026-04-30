@@ -1,4 +1,5 @@
 import { MoreHorizontal, PenLine, Sparkles } from "lucide-react";
+import { useState } from "react";
 import { Link } from "react-router-dom";
 
 import { formatRelative } from "../lib/dates";
@@ -7,6 +8,9 @@ import type { ProjectRead } from "../types/api";
 import { StatusPill } from "./StatusPill";
 
 export function ProjectCard({ project, coverUrl }: { project: ProjectRead; coverUrl?: string }) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const route = routeForProject(project);
+
   return (
     <article className="group relative overflow-hidden rounded-lg border border-ink-border bg-surface transition hover:-translate-y-0.5 hover:border-primary/60 hover:shadow-glow">
       <div className="relative aspect-[4/3] overflow-hidden border-b border-ink-border bg-surface-low">
@@ -17,9 +21,32 @@ export function ProjectCard({ project, coverUrl }: { project: ProjectRead; cover
             <Sparkles className="h-10 w-10" />
           </div>
         )}
-        <button className="absolute right-3 top-3 flex h-9 w-9 items-center justify-center rounded-instrument border border-ink-border bg-background/80 text-text-muted opacity-0 backdrop-blur transition hover:text-white group-hover:opacity-100" aria-label={`Open ${project.name} options`}>
+        <button
+          type="button"
+          onClick={() => setMenuOpen((open) => !open)}
+          aria-expanded={menuOpen}
+          className="absolute right-3 top-3 flex h-9 w-9 items-center justify-center rounded-instrument border border-ink-border bg-background/80 text-text-muted opacity-0 backdrop-blur transition hover:text-white group-hover:opacity-100"
+          aria-label={`Open ${project.name} options`}
+        >
           <MoreHorizontal className="h-4 w-4" />
         </button>
+        {menuOpen ? (
+          <div className="absolute right-3 top-14 z-10 w-44 rounded-lg border border-ink-border bg-surface p-2 shadow-2xl">
+            <Link className="block rounded-instrument px-3 py-2 text-sm font-semibold text-text-main transition hover:bg-surface-high" to={route}>
+              Open workspace
+            </Link>
+            <Link className="block rounded-instrument px-3 py-2 text-sm font-semibold text-text-main transition hover:bg-surface-high" to={`/projects/${project.id}/export`}>
+              Export
+            </Link>
+            <button
+              type="button"
+              onClick={() => setMenuOpen(false)}
+              className="block w-full rounded-instrument px-3 py-2 text-left text-sm font-semibold text-text-muted transition hover:bg-surface-high hover:text-white"
+            >
+              Close menu
+            </button>
+          </div>
+        ) : null}
       </div>
       <div className="p-4">
         <div className="mb-3 flex items-center justify-between gap-3">
@@ -32,7 +59,7 @@ export function ProjectCard({ project, coverUrl }: { project: ProjectRead; cover
           <span className="text-xs font-bold uppercase text-text-muted">
             {project.source_language.toUpperCase()} to {project.target_language.toUpperCase()}
           </span>
-          <Link to={routeForProject(project)} className="inline-flex min-h-9 items-center gap-1.5 rounded-instrument px-2 text-sm font-bold text-primary-soft transition hover:bg-primary/10 hover:text-secondary">
+          <Link to={route} className="inline-flex min-h-9 items-center gap-1.5 rounded-instrument px-2 text-sm font-bold text-primary-soft transition hover:bg-primary/10 hover:text-secondary">
             <PenLine className="h-4 w-4" />
             Open
           </Link>

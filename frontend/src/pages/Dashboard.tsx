@@ -13,6 +13,8 @@ export function Dashboard() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [filter, setFilter] = useState<"all" | "active" | "completed">("all");
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [sortMode, setSortMode] = useState<"recent" | "name">("recent");
   const [search, setSearch] = useState(searchParams.get("search") ?? "");
   const projectsQuery = useQuery({ queryKey: queryKeys.projects, queryFn: api.listProjects });
   const projects = useMemo(() => projectsQuery.data ?? [], [projectsQuery.data]);
@@ -48,14 +50,21 @@ export function Dashboard() {
     return map;
   }, [pageQueries, projects]);
 
-  const filteredProjects = projects.filter((project) => {
-    const matchesSearch = project.name.toLowerCase().includes(search.toLowerCase());
-    const matchesFilter =
-      filter === "all" ||
-      (filter === "active" && !["completed", "export_ready"].includes(project.status)) ||
-      (filter === "completed" && ["completed", "export_ready"].includes(project.status));
-    return matchesSearch && matchesFilter;
-  });
+  const filteredProjects = projects
+    .filter((project) => {
+      const matchesSearch = project.name.toLowerCase().includes(search.toLowerCase());
+      const matchesFilter =
+        filter === "all" ||
+        (filter === "active" && !["completed", "export_ready"].includes(project.status)) ||
+        (filter === "completed" && ["completed", "export_ready"].includes(project.status));
+      return matchesSearch && matchesFilter;
+    })
+    .sort((left, right) => {
+      if (sortMode === "name") {
+        return left.name.localeCompare(right.name);
+      }
+      return new Date(right.updated_at).getTime() - new Date(left.updated_at).getTime();
+    });
 
   return (
     <WorkspaceShell>
@@ -91,6 +100,7 @@ export function Dashboard() {
             <button
               key={value}
               onClick={() => setFilter(value as "all" | "active" | "completed")}
+              aria-pressed={filter === value}
               className={`rounded-instrument px-4 py-2 text-sm font-bold transition ${
                 filter === value ? "border border-primary/40 bg-primary/15 text-primary-soft" : "text-text-muted hover:bg-surface-high hover:text-white"
               }`}
@@ -98,11 +108,45 @@ export function Dashboard() {
               {label}
             </button>
           ))}
-          <button className="inline-flex items-center gap-2 rounded-instrument px-4 py-2 text-sm font-bold text-text-muted transition hover:bg-surface-high hover:text-white">
+          <button
+            type="button"
+            aria-expanded={filtersOpen}
+            onClick={() => setFiltersOpen((open) => !open)}
+            className="inline-flex items-center gap-2 rounded-instrument px-4 py-2 text-sm font-bold text-text-muted transition hover:bg-surface-high hover:text-white"
+          >
             <Filter className="h-4 w-4" />
             Filters
           </button>
         </div>
+
+        {filtersOpen ? (
+          <section className="mb-6 rounded-lg border border-ink-border bg-surface-low p-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h2 className="font-display text-lg font-bold text-white">Project filters</h2>
+                <p className="mt-1 text-sm text-text-muted">Sort and narrow the current project grid.</p>
+              </div>
+              <div className="flex gap-2">
+                {[
+                  ["recent", "Recent"],
+                  ["name", "Name"],
+                ].map(([value, label]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    aria-pressed={sortMode === value}
+                    onClick={() => setSortMode(value as "recent" | "name")}
+                    className={`rounded-instrument border px-3 py-2 text-sm font-bold transition ${
+                      sortMode === value ? "border-secondary bg-secondary/10 text-white" : "border-ink-border bg-background text-text-muted hover:text-white"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </section>
+        ) : null}
 
         {projectsQuery.isLoading ? <LoadingState /> : null}
         {projectsQuery.isError ? <ErrorState message={projectsQuery.error.message} /> : null}

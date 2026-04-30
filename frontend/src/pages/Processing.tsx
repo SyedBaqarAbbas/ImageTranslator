@@ -1,5 +1,6 @@
 import { ArrowRight, Loader2, Play, X } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
 import { api, queryKeys } from "../api";
@@ -11,6 +12,7 @@ import { WorkspaceShell } from "../components/WorkspaceShell";
 export function Processing() {
   const { projectId = "" } = useParams();
   const queryClient = useQueryClient();
+  const [cancelStatus, setCancelStatus] = useState<string | null>(null);
   const projectQuery = useQuery({ queryKey: queryKeys.project(projectId), queryFn: () => api.getProject(projectId), enabled: Boolean(projectId), refetchInterval: 1500 });
   const pagesQuery = useQuery({ queryKey: queryKeys.pages(projectId), queryFn: () => api.listPages(projectId), enabled: Boolean(projectId), refetchInterval: 1500 });
   const jobsQuery = useQuery({ queryKey: queryKeys.jobs(projectId), queryFn: () => api.getProcessingJobs(projectId), enabled: Boolean(projectId), refetchInterval: 1500 });
@@ -73,11 +75,20 @@ export function Processing() {
                     Rerun processing
                   </button>
                 )}
-                <button className="inline-flex items-center gap-2 rounded-lg border border-ink-border px-5 py-3 text-sm font-bold text-text-main transition hover:bg-surface-high">
+                <button
+                  type="button"
+                  onClick={() => setCancelStatus("Cancellation requested. This prototype cannot interrupt an already completed eager job.")}
+                  className="inline-flex items-center gap-2 rounded-lg border border-ink-border px-5 py-3 text-sm font-bold text-text-main transition hover:bg-surface-high"
+                >
                   <X className="h-4 w-4" />
                   Cancel Processing
                 </button>
               </div>
+              {cancelStatus ? (
+                <p className="mt-4 rounded-instrument border border-tertiary/40 bg-tertiary/10 p-3 text-sm font-semibold text-tertiary">
+                  {cancelStatus}
+                </p>
+              ) : null}
             </div>
           </section>
 

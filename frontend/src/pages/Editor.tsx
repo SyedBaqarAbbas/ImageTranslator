@@ -17,6 +17,9 @@ export function Editor() {
   const [selectedPageId, setSelectedPageId] = useState<string | undefined>();
   const [selectedRegionId, setSelectedRegionId] = useState<string | undefined>();
   const [mode, setMode] = useState<"original" | "translated">("translated");
+  const [comparison, setComparison] = useState(false);
+  const [zoom, setZoom] = useState(1);
+  const [workspaceStatus, setWorkspaceStatus] = useState("Unsaved");
 
   const projectQuery = useQuery({ queryKey: queryKeys.project(projectId), queryFn: () => api.getProject(projectId), enabled: Boolean(projectId) });
   const pagesQuery = useQuery({ queryKey: queryKeys.pages(projectId), queryFn: () => api.listPages(projectId), enabled: Boolean(projectId) });
@@ -104,10 +107,21 @@ export function Editor() {
         <div className="flex h-full min-h-0 flex-col">
           <div className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-ink-border bg-surface-low px-3 md:px-5">
             <div className="flex min-w-0 items-center gap-2">
-              <button className="rounded-instrument p-2 text-text-muted transition hover:bg-surface-high hover:text-white" aria-label="Undo">
+              <button disabled className="rounded-instrument p-2 text-text-muted opacity-45 transition hover:bg-surface-high hover:text-white disabled:cursor-not-allowed" aria-label="Undo" title="Undo history is not available in this prototype yet">
                 <Undo2 className="h-4 w-4" />
               </button>
-              <button className="rounded-instrument p-2 text-text-muted transition hover:bg-surface-high hover:text-white" aria-label="Redo">
+              <button
+                type="button"
+                onClick={() => {
+                  setMode("translated");
+                  setComparison(false);
+                  setZoom(1);
+                  setWorkspaceStatus("View reset");
+                }}
+                className="rounded-instrument p-2 text-text-muted transition hover:bg-surface-high hover:text-white"
+                aria-label="Reset view"
+                title="Reset view"
+              >
                 <RotateCcw className="h-4 w-4" />
               </button>
               <span className="hidden h-5 w-px bg-ink-border sm:block" />
@@ -116,18 +130,36 @@ export function Editor() {
             <div className="flex items-center gap-2">
               <div className="hidden rounded-instrument border border-ink-border bg-background p-1 sm:flex">
                 {(["original", "translated"] as const).map((value) => (
-                  <button key={value} onClick={() => setMode(value)} className={`rounded-instrument px-3 py-1.5 text-xs font-bold capitalize ${mode === value ? "bg-surface-high text-white" : "text-text-muted hover:text-white"}`}>
+                  <button key={value} aria-pressed={mode === value} onClick={() => setMode(value)} className={`rounded-instrument px-3 py-1.5 text-xs font-bold capitalize ${mode === value ? "bg-surface-high text-white" : "text-text-muted hover:text-white"}`}>
                     {value}
                   </button>
                 ))}
               </div>
-              <button className="rounded-instrument p-2 text-text-muted transition hover:bg-surface-high hover:text-white" aria-label="Compare split">
+              <button
+                type="button"
+                aria-pressed={comparison}
+                onClick={() => setComparison((enabled) => !enabled)}
+                className={`rounded-instrument p-2 transition hover:bg-surface-high hover:text-white ${comparison ? "bg-secondary/10 text-secondary" : "text-text-muted"}`}
+                aria-label="Compare split"
+              >
                 <Columns2 className="h-4 w-4" />
               </button>
-              <button className="hidden rounded-instrument p-2 text-text-muted transition hover:bg-surface-high hover:text-white sm:block" aria-label="Zoom out">
+              <button
+                type="button"
+                disabled={zoom <= 0.75}
+                onClick={() => setZoom((value) => Math.max(0.75, Number((value - 0.15).toFixed(2))))}
+                className="hidden rounded-instrument p-2 text-text-muted transition hover:bg-surface-high hover:text-white disabled:cursor-not-allowed disabled:opacity-45 sm:block"
+                aria-label="Zoom out"
+              >
                 <Minus className="h-4 w-4" />
               </button>
-              <button className="hidden rounded-instrument p-2 text-text-muted transition hover:bg-surface-high hover:text-white sm:block" aria-label="Zoom in">
+              <button
+                type="button"
+                disabled={zoom >= 1.45}
+                onClick={() => setZoom((value) => Math.min(1.45, Number((value + 0.15).toFixed(2))))}
+                className="hidden rounded-instrument p-2 text-text-muted transition hover:bg-surface-high hover:text-white disabled:cursor-not-allowed disabled:opacity-45 sm:block"
+                aria-label="Zoom in"
+              >
                 <Plus className="h-4 w-4" />
               </button>
               <Link to={`/projects/${projectId}/export`} className="inline-flex items-center gap-2 rounded-instrument bg-primary px-3 py-2 text-sm font-bold text-white shadow-glow transition hover:bg-violet-500">
@@ -147,7 +179,9 @@ export function Editor() {
                       setSelectedPageId(page.id);
                       setSelectedRegionId(undefined);
                     }}
-                    className={`w-full rounded-instrument border p-1 transition ${selectedPage.id === page.id ? "border-secondary bg-secondary/10" : "border-ink-border bg-background hover:border-primary/50"}`}
+                    disabled={selectedPage.id === page.id}
+                    aria-current={selectedPage.id === page.id ? "true" : undefined}
+                    className={`w-full rounded-instrument border p-1 transition disabled:cursor-default ${selectedPage.id === page.id ? "border-secondary bg-secondary/10" : "border-ink-border bg-background hover:border-primary/50"}`}
                   >
                     {assetUrlForPage(page) ? <img src={assetUrlForPage(page)} alt={`Page ${page.page_number}`} className="aspect-[3/4] w-full rounded-[2px] object-cover grayscale" /> : null}
                     <span className="mt-1 block text-xs font-bold text-text-muted">P{page.page_number}</span>
@@ -165,6 +199,8 @@ export function Editor() {
               onSelectRegion={setSelectedRegionId}
               onMoveRegion={(regionId, boundingBox) => moveMutation.mutate({ regionId, boundingBox })}
               mode={mode}
+              zoom={zoom}
+              comparison={comparison}
             />
 
             <RegionPanel
@@ -181,8 +217,12 @@ export function Editor() {
 
           <div className="flex h-12 shrink-0 items-center justify-between border-t border-ink-border bg-background px-4 text-xs font-semibold text-text-muted">
             <span>{regions.length} regions · Page {selectedPage.page_number}</span>
+            <span className="hidden text-secondary sm:inline">{comparison ? "Compare split on" : `Zoom ${Math.round(zoom * 100)}%`} · {workspaceStatus}</span>
             <button
-              onClick={() => selectedRegionId && saveMutation.mutate({ regionId: selectedRegionId, payload: { auto_rerender: true } })}
+              onClick={() => {
+                setWorkspaceStatus("Saved");
+                if (selectedRegionId) saveMutation.mutate({ regionId: selectedRegionId, payload: { auto_rerender: true } });
+              }}
               className="inline-flex items-center gap-2 rounded-instrument border border-ink-border px-3 py-1.5 text-text-main transition hover:bg-surface-high"
             >
               <Save className="h-3.5 w-3.5" />

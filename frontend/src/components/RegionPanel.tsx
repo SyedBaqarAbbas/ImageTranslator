@@ -29,9 +29,11 @@ export function RegionPanel({
     [regions, selectedRegionId],
   );
   const [draft, setDraft] = useState("");
+  const [aiStatus, setAiStatus] = useState("AI");
 
   useEffect(() => {
     setDraft(selectedRegion?.user_text || selectedRegion?.translated_text || "");
+    setAiStatus("AI");
   }, [selectedRegion?.id, selectedRegion?.translated_text, selectedRegion?.user_text]);
 
   return (
@@ -50,7 +52,13 @@ export function RegionPanel({
                 region.id === selectedRegion?.id ? "border-secondary bg-secondary/10" : "border-ink-border bg-surface hover:border-primary/50"
               }`}
             >
-              <button type="button" onClick={() => onSelect(region.id)} className="w-full text-left">
+              <button
+                type="button"
+                onClick={() => onSelect(region.id)}
+                disabled={region.id === selectedRegion?.id}
+                aria-current={region.id === selectedRegion?.id ? "true" : undefined}
+                className="w-full text-left disabled:cursor-default"
+              >
                 <div className="mb-2 flex items-center justify-between gap-3">
                   <span className="text-[11px] font-bold uppercase text-text-muted lg:text-xs">
                     #{region.region_index} {statusLabel(region.region_type)}
@@ -84,11 +92,14 @@ export function RegionPanel({
               <p className="mt-1 text-sm text-text-main">{selectedRegion.detected_text || "No OCR text"}</p>
             </div>
             <button
-              onClick={() => onRetranslate(selectedRegion.id, selectedRegion.detected_text || draft)}
+              onClick={() => {
+                setAiStatus("Queued");
+                onRetranslate(selectedRegion.id, selectedRegion.detected_text || draft);
+              }}
               className="inline-flex items-center gap-2 rounded-instrument border border-primary/40 px-3 py-2 text-xs font-bold text-primary-soft transition hover:bg-primary/10"
             >
               <BrainCircuit className="h-4 w-4" />
-              AI
+              {aiStatus}
             </button>
           </div>
           <label className="block">

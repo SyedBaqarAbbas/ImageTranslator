@@ -64,6 +64,7 @@ export function Settings() {
                   key={mode}
                   type="button"
                   onClick={() => setQualityMode(mode)}
+                  aria-pressed={qualityMode === mode}
                   className={`flex items-center justify-between rounded-instrument border px-4 py-3 text-left text-sm font-bold capitalize transition ${
                     qualityMode === mode ? "border-secondary bg-secondary/10 text-white" : "border-ink-border bg-background text-text-muted hover:border-primary/50 hover:text-white"
                   }`}

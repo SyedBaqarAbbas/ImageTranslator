@@ -102,6 +102,7 @@ export function Export() {
                   key={value}
                   type="button"
                   onClick={() => setFormat(value as ExportFormat)}
+                  aria-pressed={format === value}
                   className={`rounded-lg border p-4 text-left transition ${
                     format === value ? "border-secondary bg-secondary/10 text-white shadow-cyan" : "border-ink-border bg-background text-text-muted hover:border-primary/50 hover:text-white"
                   }`}

@@ -98,6 +98,7 @@ export function TopNav() {
           <button
             onClick={() => navigate("/")}
             aria-label="New project"
+            aria-current={location.pathname === "/" ? "page" : undefined}
             className="inline-flex items-center gap-2 rounded-instrument bg-primary px-3 py-2 text-sm font-semibold text-white shadow-glow transition hover:bg-violet-500"
           >
             <UploadCloud className="h-4 w-4" />

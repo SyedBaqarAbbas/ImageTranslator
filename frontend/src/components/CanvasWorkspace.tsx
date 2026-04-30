@@ -21,6 +21,8 @@ export function CanvasWorkspace({
   onSelectRegion,
   onMoveRegion,
   mode,
+  zoom = 1,
+  comparison = false,
 }: {
   imageUrl?: string;
   width?: number | null;
@@ -30,6 +32,8 @@ export function CanvasWorkspace({
   onSelectRegion: (regionId: string) => void;
   onMoveRegion?: (regionId: string, boundingBox: BoundingBox) => void;
   mode: "original" | "translated";
+  zoom?: number;
+  comparison?: boolean;
 }) {
   const canvasWidth = width ?? 920;
   const canvasHeight = height ?? 1320;
@@ -38,7 +42,7 @@ export function CanvasWorkspace({
   const [drag, setDrag] = useState<DragState | null>(null);
   const displaySize = useMemo(() => {
     const aspect = canvasWidth / canvasHeight;
-    const maxWidth = 760;
+    const maxWidth = Math.round(760 * zoom);
     const availableWidth = Math.max(containerSize.width, 0);
     const availableHeight = Math.max(containerSize.height, 0);
     if (!availableWidth || !availableHeight) {
@@ -57,7 +61,7 @@ export function CanvasWorkspace({
       width: Math.max(displayWidth, 1),
       height: Math.max(displayHeight, 1),
     };
-  }, [canvasHeight, canvasWidth, containerSize.height, containerSize.width]);
+  }, [canvasHeight, canvasWidth, containerSize.height, containerSize.width, zoom]);
 
   useEffect(() => {
     const element = containerRef.current;
@@ -163,6 +167,18 @@ export function CanvasWorkspace({
           </div>
         )}
 
+        {comparison ? (
+          <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-instrument">
+            <div className="absolute inset-y-0 left-1/2 w-px bg-secondary shadow-cyan" />
+            <div className="absolute left-3 top-3 rounded-instrument border border-ink-border bg-background/85 px-2 py-1 text-[11px] font-bold uppercase text-text-muted">
+              Original
+            </div>
+            <div className="absolute right-3 top-3 rounded-instrument border border-secondary/60 bg-secondary/15 px-2 py-1 text-[11px] font-bold uppercase text-secondary">
+              Translated
+            </div>
+          </div>
+        ) : null}
+
         {regions.map((region) => {
           const active = region.id === selectedRegionId;
           const boundingBox = drag?.regionId === region.id ? drag.box : region.bounding_box;
@@ -174,6 +190,7 @@ export function CanvasWorkspace({
             <div
               key={region.id}
               role="button"
+              aria-current={active ? "true" : undefined}
               tabIndex={0}
               title={`Region ${region.region_index}`}
               onPointerDown={(event) => startDrag(event, region)}

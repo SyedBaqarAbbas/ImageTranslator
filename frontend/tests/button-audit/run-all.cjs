@@ -62,6 +62,7 @@ const aggregate = {
       noObservableChange: current.noObservableChange + page.noObservableChange,
       skippedDisabled: current.skippedDisabled + page.skippedDisabled,
       skippedHidden: current.skippedHidden + page.skippedHidden,
+      skippedCurrent: current.skippedCurrent + page.skippedCurrent,
       errors: current.errors + page.errors,
     }),
     {
@@ -70,6 +71,7 @@ const aggregate = {
       noObservableChange: 0,
       skippedDisabled: 0,
       skippedHidden: 0,
+      skippedCurrent: 0,
       errors: 0,
     },
   ),
@@ -90,13 +92,14 @@ fs.writeFileSync(
     `- No observable change: ${aggregate.totals.noObservableChange}`,
     `- Skipped disabled: ${aggregate.totals.skippedDisabled}`,
     `- Skipped hidden: ${aggregate.totals.skippedHidden}`,
+    `- Skipped current/selected: ${aggregate.totals.skippedCurrent}`,
     `- Errors or browser issues: ${aggregate.totals.errors}`,
     "",
     "## Pages",
     "",
     ...aggregate.pages.map(
       (page) =>
-        `- ${page.pageName}: total ${page.total}, changed ${page.changed}, no observable change ${page.noObservableChange}, errors ${page.errors}. Report: \`${page.report}\``,
+        `- ${page.pageName}: total ${page.total}, changed ${page.changed}, no observable change ${page.noObservableChange}, current/selected ${page.skippedCurrent}, errors ${page.errors}. Report: \`${page.report}\``,
     ),
     "",
   ].join("\n"),
