@@ -20,6 +20,7 @@ export function Editor() {
   const [comparison, setComparison] = useState(false);
   const [zoom, setZoom] = useState(1);
   const [workspaceStatus, setWorkspaceStatus] = useState("Unsaved");
+  const [styleDrafts, setStyleDrafts] = useState<Record<string, Record<string, unknown>>>({});
 
   const projectQuery = useQuery({ queryKey: queryKeys.project(projectId), queryFn: () => api.getProject(projectId), enabled: Boolean(projectId) });
   const pagesQuery = useQuery({ queryKey: queryKeys.pages(projectId), queryFn: () => api.listPages(projectId), enabled: Boolean(projectId) });
@@ -36,6 +37,14 @@ export function Editor() {
     enabled: Boolean(selectedPage),
   });
   const regions = useMemo(() => regionsQuery.data ?? [], [regionsQuery.data]);
+  const displayRegions = useMemo(
+    () =>
+      regions.map((region) => {
+        const draft = styleDrafts[region.id];
+        return draft ? { ...region, render_style: { ...(region.render_style ?? {}), ...draft } } : region;
+      }),
+    [regions, styleDrafts],
+  );
 
   useEffect(() => {
     if (!selectedRegionId && regions[0]) setSelectedRegionId(regions[0].id);
@@ -194,7 +203,7 @@ export function Editor() {
               imageUrl={assetUrlForPage(selectedPage, mode === "original" ? "original" : "preview")}
               width={selectedPage.width}
               height={selectedPage.height}
-              regions={regions}
+              regions={displayRegions}
               selectedRegionId={selectedRegionId}
               onSelectRegion={setSelectedRegionId}
               onMoveRegion={(regionId, boundingBox) => moveMutation.mutate({ regionId, boundingBox })}
@@ -204,12 +213,16 @@ export function Editor() {
             />
 
             <RegionPanel
-              regions={regions}
+              regions={displayRegions}
               selectedRegionId={selectedRegionId}
               onSelect={setSelectedRegionId}
               onSave={(regionId, payload) => saveMutation.mutate({ regionId, payload })}
               onRetranslate={(regionId, sourceText) => retranslateMutation.mutate({ regionId, sourceText })}
               onDelete={(regionId) => deleteMutation.mutate(regionId)}
+              onStyleDraftChange={(regionId, renderStyle) => {
+                setWorkspaceStatus("Unsaved");
+                setStyleDrafts((current) => ({ ...current, [regionId]: renderStyle }));
+              }}
               isSaving={saveMutation.isPending || moveMutation.isPending}
               isDeleting={deleteMutation.isPending}
             />

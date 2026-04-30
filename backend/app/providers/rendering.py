@@ -6,7 +6,7 @@ import textwrap
 from dataclasses import dataclass
 from typing import Protocol
 
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageColor, ImageDraw, ImageFont
 
 from app.core.enums import ReplacementMode
 
@@ -101,8 +101,17 @@ def _wrap_text(text: str, max_chars: int) -> str:
     return "\n".join(lines)
 
 
-def _fit_text(draw: ImageDraw.ImageDraw, text: str, width: int, height: int) -> tuple[str, ImageFont.ImageFont]:
-    for size in range(min(42, max(12, height // 3)), 8, -1):
+def _fit_text(
+    draw: ImageDraw.ImageDraw,
+    text: str,
+    width: int,
+    height: int,
+    preferred_size: int | None = None,
+) -> tuple[str, ImageFont.ImageFont]:
+    start_size = min(42, max(12, height // 3))
+    if preferred_size is not None:
+        start_size = min(72, max(9, preferred_size))
+    for size in range(start_size, 8, -1):
         font = _font(size)
         avg_char_width = max(1, int(size * 0.58))
         wrapped = _wrap_text(text, max(4, width // avg_char_width))
@@ -112,31 +121,76 @@ def _fit_text(draw: ImageDraw.ImageDraw, text: str, width: int, height: int) -> 
     return _wrap_text(text, max(8, width // 8)), _font(9)
 
 
+def _style_color(style: dict, keys: tuple[str, ...], fallback: str) -> tuple[int, int, int]:
+    for key in keys:
+        value = style.get(key)
+        if isinstance(value, str) and value.strip():
+            try:
+                return ImageColor.getrgb(value.strip())[:3]
+            except ValueError:
+                continue
+        if isinstance(value, (list, tuple)) and len(value) >= 3:
+            try:
+                red, green, blue = (max(0, min(255, int(channel))) for channel in value[:3])
+                return red, green, blue
+            except (TypeError, ValueError):
+                continue
+    return ImageColor.getrgb(fallback)
+
+
+def _style_int(style: dict, key: str, fallback: int | None = None) -> int | None:
+    value = style.get(key)
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        return int(value)
+    if isinstance(value, str):
+        try:
+            return int(float(value))
+        except ValueError:
+            return fallback
+    return fallback
+
+
 def _render_region(
     draw: ImageDraw.ImageDraw,
     region: RenderRegion,
     replacement_mode: str,
 ) -> None:
     x1, y1, x2, y2 = _bbox_tuple(region.bounding_box)
-    padding = int((region.render_style or {}).get("padding", 6))
+    style = region.render_style or {}
+    padding = _style_int(style, "padding", 6) or 6
+    background_color = _style_color(
+        style,
+        ("backgroundColor", "background_color", "fillColor", "fill"),
+        "white",
+    )
+    outline_color = _style_color(style, ("outlineColor", "outline_color"), "black")
+    text_color = _style_color(style, ("textColor", "text_color", "color"), "black")
+    preferred_font_size = _style_int(style, "fontSize")
     text = _text_for(region, replacement_mode)
     if not text:
         return
 
     if replacement_mode in {ReplacementMode.REPLACE.value, ReplacementMode.BILINGUAL.value}:
-        draw.rounded_rectangle((x1, y1, x2, y2), radius=8, fill="white")
+        draw.rounded_rectangle((x1, y1, x2, y2), radius=8, fill=background_color)
     elif replacement_mode == ReplacementMode.OVERLAY.value:
-        draw.rounded_rectangle((x1, y1, x2, y2), radius=8, fill=(255, 255, 255), outline="black")
+        draw.rounded_rectangle(
+            (x1, y1, x2, y2),
+            radius=8,
+            fill=background_color,
+            outline=outline_color,
+        )
 
     max_width = max(8, (x2 - x1) - padding * 2)
     max_height = max(8, (y2 - y1) - padding * 2)
-    wrapped, font = _fit_text(draw, text, max_width, max_height)
+    wrapped, font = _fit_text(draw, text, max_width, max_height, preferred_font_size)
     text_bbox = draw.multiline_textbbox((0, 0), wrapped, font=font, spacing=3, align="center")
     text_width = text_bbox[2] - text_bbox[0]
     text_height = text_bbox[3] - text_bbox[1]
     tx = x1 + ((x2 - x1) - text_width) / 2
     ty = y1 + ((y2 - y1) - text_height) / 2
-    draw.multiline_text((tx, ty), wrapped, fill="black", font=font, align="center", spacing=3)
+    draw.multiline_text((tx, ty), wrapped, fill=text_color, font=font, align="center", spacing=3)
 
 
 def _add_side_panel(canvas: Image.Image, regions: list[RenderRegion]) -> Image.Image:
@@ -163,13 +217,23 @@ def _add_side_panel(canvas: Image.Image, regions: list[RenderRegion]) -> Image.I
 def _render_subtitles(canvas: Image.Image, regions: list[RenderRegion]) -> Image.Image:
     output = canvas.copy()
     draw = ImageDraw.Draw(output)
-    subtitles = "  /  ".join(region.translated_text or "" for region in regions if region.translated_text)
+    subtitles = "  /  ".join(
+        region.translated_text or "" for region in regions if region.translated_text
+    )
     if not subtitles:
         return output
     box_height = max(70, canvas.height // 9)
-    draw.rectangle((0, canvas.height - box_height, canvas.width, canvas.height), fill=(255, 255, 255))
+    draw.rectangle(
+        (0, canvas.height - box_height, canvas.width, canvas.height),
+        fill=(255, 255, 255),
+    )
     font = _font(max(14, box_height // 4))
     wrapped, _ = _fit_text(draw, subtitles, canvas.width - 30, box_height - 20)
-    draw.multiline_text((15, canvas.height - box_height + 12), wrapped, fill="black", font=font, spacing=4)
+    draw.multiline_text(
+        (15, canvas.height - box_height + 12),
+        wrapped,
+        fill="black",
+        font=font,
+        spacing=4,
+    )
     return output
-
