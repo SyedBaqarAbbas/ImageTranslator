@@ -40,6 +40,7 @@ const DEFAULT_TEXT_COLOR = "#0f172a";
 const DEFAULT_FILL_COLOR = "#ffffff";
 const REGION_PANEL_WIDTH_STORAGE_KEY = "imageTranslator.editor.regionPanelWidth";
 const REGION_PANEL_HEIGHT_STORAGE_KEY = "imageTranslator.editor.regionPanelHeight";
+const SELECTED_REGION_HEIGHT_STORAGE_KEY = "imageTranslator.editor.selectedRegionHeight";
 const REGION_PANEL_MIN_WIDTH = 300;
 const REGION_PANEL_MAX_WIDTH = 560;
 const REGION_PANEL_MAX_VIEWPORT_RATIO = 0.45;
@@ -50,8 +51,9 @@ const REGION_PANEL_MAX_HEIGHT_VIEWPORT_RATIO = 0.75;
 const REGION_PANEL_MIN_CANVAS_HEIGHT = 220;
 const REGION_PANEL_DEFAULT_HEIGHT_VIEWPORT_RATIO = 0.52;
 const SELECTED_REGION_MIN_HEIGHT = 260;
-const SELECTED_REGION_MAX_VIEWPORT_RATIO = 0.7;
+const SELECTED_REGION_MAX_VIEWPORT_RATIO = 0.9;
 const SELECTED_REGION_DEFAULT_HEIGHT = 420;
+const SELECTED_REGION_KEYBOARD_STEP = 24;
 
 interface SelectedRegionResizeDrag {
   pointerId: number;
@@ -202,6 +204,34 @@ function storedRegionPanelHeight(maxHeight: number): number {
   }
 }
 
+function maxSelectedRegionHeight(viewportHeight = typeof window === "undefined" ? 900 : window.innerHeight): number {
+  return Math.max(SELECTED_REGION_MIN_HEIGHT, Math.floor(viewportHeight * SELECTED_REGION_MAX_VIEWPORT_RATIO));
+}
+
+function clampSelectedRegionHeightValue(height: number, maxHeight: number): number {
+  return Math.min(maxHeight, Math.max(SELECTED_REGION_MIN_HEIGHT, Math.round(height)));
+}
+
+function storedSelectedRegionHeight(maxHeight: number): number {
+  if (typeof window === "undefined") {
+    return clampSelectedRegionHeightValue(SELECTED_REGION_DEFAULT_HEIGHT, maxHeight);
+  }
+
+  try {
+    const storedValue = window.localStorage.getItem(SELECTED_REGION_HEIGHT_STORAGE_KEY);
+    if (!storedValue?.trim()) {
+      return clampSelectedRegionHeightValue(SELECTED_REGION_DEFAULT_HEIGHT, maxHeight);
+    }
+
+    const storedHeight = Number(storedValue);
+    return Number.isFinite(storedHeight)
+      ? clampSelectedRegionHeightValue(storedHeight, maxHeight)
+      : clampSelectedRegionHeightValue(SELECTED_REGION_DEFAULT_HEIGHT, maxHeight);
+  } catch {
+    return clampSelectedRegionHeightValue(SELECTED_REGION_DEFAULT_HEIGHT, maxHeight);
+  }
+}
+
 export function RegionPanel({
   regions,
   selectedRegionId,
@@ -242,16 +272,13 @@ export function RegionPanel({
   const [panelMaxWidth, setPanelMaxWidth] = useState(maxRegionPanelWidth);
   const [panelMaxHeight, setPanelMaxHeight] = useState(() => maxRegionPanelHeight());
   const [preferredPanelHeight, setPreferredPanelHeight] = useState(() => storedRegionPanelHeight(maxRegionPanelHeight()));
+  const [selectedRegionMaxHeight, setSelectedRegionMaxHeight] = useState(() => maxSelectedRegionHeight());
+  const [selectedRegionHeight, setSelectedRegionHeight] = useState(() => storedSelectedRegionHeight(maxSelectedRegionHeight()));
   const [isResizingPanel, setIsResizingPanel] = useState(false);
   const [isResizingPanelHeight, setIsResizingPanelHeight] = useState(false);
   const [isResizingSelectedRegion, setIsResizingSelectedRegion] = useState(false);
-  const [selectedRegionHeight, setSelectedRegionHeight] = useState(SELECTED_REGION_DEFAULT_HEIGHT);
   const panelWidth = clampRegionPanelWidth(preferredPanelWidth, panelMaxWidth);
   const panelHeight = clampRegionPanelHeight(preferredPanelHeight, panelMaxHeight);
-  const selectedRegionMaxHeight = Math.max(
-    SELECTED_REGION_MIN_HEIGHT,
-    Math.floor((typeof window === "undefined" ? 900 : window.innerHeight) * SELECTED_REGION_MAX_VIEWPORT_RATIO),
-  );
 
   useEffect(() => {
     dispatchPanel({ type: "reset", region: selectedRegion });
@@ -270,6 +297,10 @@ export function RegionPanel({
       const nextMaxHeight = maxRegionPanelHeight(editorBodyHeight);
       setPanelMaxHeight(nextMaxHeight);
       setPreferredPanelHeight((current) => clampRegionPanelHeight(current, nextMaxHeight));
+
+      const nextSelectedRegionMaxHeight = maxSelectedRegionHeight();
+      setSelectedRegionMaxHeight(nextSelectedRegionMaxHeight);
+      setSelectedRegionHeight((current) => clampSelectedRegionHeightValue(current, nextSelectedRegionMaxHeight));
     };
 
     updatePanelBounds();
@@ -300,6 +331,18 @@ export function RegionPanel({
       // Persisting the layout is optional; keep resizing usable if storage is unavailable.
     }
   }, [panelHeight]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    try {
+      window.localStorage.setItem(SELECTED_REGION_HEIGHT_STORAGE_KEY, String(selectedRegionHeight));
+    } catch {
+      // Persisting the layout is optional; keep resizing usable if storage is unavailable.
+    }
+  }, [selectedRegionHeight]);
 
   const selectedSaveFeedback = selectedRegion && saveFeedback?.regionId === selectedRegion.id ? saveFeedback : null;
   const isSavePending = selectedSaveFeedback?.status === "pending" && selectedSaveFeedback.action === "save";
@@ -470,7 +513,7 @@ export function RegionPanel({
   }
 
   function clampSelectedRegionHeight(nextHeight: number): number {
-    return Math.min(selectedRegionMaxHeight, Math.max(SELECTED_REGION_MIN_HEIGHT, Math.round(nextHeight)));
+    return clampSelectedRegionHeightValue(nextHeight, selectedRegionMaxHeight);
   }
 
   function startSelectedRegionResize(event: PointerEvent<HTMLDivElement>) {
@@ -503,6 +546,35 @@ export function RegionPanel({
     }
     selectedRegionResizeDragRef.current = null;
     setIsResizingSelectedRegion(false);
+  }
+
+  function clearSelectedRegionResize(event: PointerEvent<HTMLDivElement>) {
+    if (selectedRegionResizeDragRef.current?.pointerId === event.pointerId) {
+      selectedRegionResizeDragRef.current = null;
+      setIsResizingSelectedRegion(false);
+    }
+  }
+
+  function resizeSelectedRegionWithKeyboard(event: KeyboardEvent<HTMLDivElement>) {
+    const step = event.shiftKey ? SELECTED_REGION_KEYBOARD_STEP * 2 : SELECTED_REGION_KEYBOARD_STEP;
+    let nextHeight: number | null = null;
+
+    if (event.key === "ArrowUp") {
+      nextHeight = selectedRegionHeight + step;
+    } else if (event.key === "ArrowDown") {
+      nextHeight = selectedRegionHeight - step;
+    } else if (event.key === "Home") {
+      nextHeight = SELECTED_REGION_MIN_HEIGHT;
+    } else if (event.key === "End") {
+      nextHeight = selectedRegionMaxHeight;
+    }
+
+    if (nextHeight === null) {
+      return;
+    }
+
+    event.preventDefault();
+    setSelectedRegionHeight(clampSelectedRegionHeight(nextHeight));
   }
 
   const panelStyle = {
@@ -626,12 +698,18 @@ export function RegionPanel({
             role="separator"
             aria-label="Resize selected region editor"
             aria-orientation="horizontal"
+            aria-valuemin={SELECTED_REGION_MIN_HEIGHT}
+            aria-valuemax={selectedRegionMaxHeight}
+            aria-valuenow={selectedRegionHeight}
+            aria-valuetext={`${selectedRegionHeight} pixels`}
             tabIndex={0}
             onPointerDown={startSelectedRegionResize}
             onPointerMove={resizeSelectedRegion}
             onPointerUp={finishSelectedRegionResize}
             onPointerCancel={finishSelectedRegionResize}
-            className="group absolute inset-x-0 top-0 z-20 flex h-5 -translate-y-1/2 cursor-row-resize touch-none items-center justify-center outline-none lg:hidden"
+            onLostPointerCapture={clearSelectedRegionResize}
+            onKeyDown={resizeSelectedRegionWithKeyboard}
+            className="group absolute inset-x-0 top-0 z-20 flex h-5 -translate-y-1/2 cursor-row-resize touch-none items-center justify-center outline-none"
           >
             <span
               className={`h-1.5 w-20 rounded-full transition ${
