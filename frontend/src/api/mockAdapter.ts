@@ -42,6 +42,12 @@ function id(prefix: string): string {
   return `${prefix}-${Math.random().toString(36).slice(2)}`;
 }
 
+function exportFilename(projectName: string, format: ExportRequest["format"], requested?: string | null): string {
+  const extension = format === "pdf" ? "pdf" : "zip";
+  const base = (requested?.trim() || `${projectName.toLowerCase().replaceAll(" ", "-")}-translated`).replace(/\.+$/, "");
+  return base.toLowerCase().endsWith(`.${extension}`) ? base : `${base}.${extension}`;
+}
+
 function findProject(projectId: string): ProjectDetail {
   const project = store.projects.find((item) => item.id === projectId && item.status !== "deleted");
   if (!project) {
@@ -294,7 +300,7 @@ export const mockApi: ApiAdapter = {
         original_asset_id: asset.id,
         processed_asset_id: null,
         cleaned_asset_id: null,
-        preview_asset_id: asset.id,
+        preview_asset_id: null,
         final_asset_id: null,
         width: asset.width,
         height: asset.height,
@@ -302,7 +308,7 @@ export const mockApi: ApiAdapter = {
         progress: 0,
         failure_reason: null,
         original_asset: asset,
-        preview_asset: asset,
+        preview_asset: null,
         final_asset: null,
         created_at: now,
         updated_at: now,
@@ -409,6 +415,8 @@ export const mockApi: ApiAdapter = {
 
   async createExport(projectId: string, payload: ExportRequest): Promise<ExportJobRead> {
     const project = findProject(projectId);
+    const projectPages = store.pages.filter((page) => page.project_id === projectId);
+    const renderedPages = projectPages.filter((page) => page.final_asset_id || page.preview_asset_id);
     const now = iso();
     const exportJob: ExportJobRead = {
       id: id("export"),
@@ -434,11 +442,28 @@ export const mockApi: ApiAdapter = {
       exportJob.updated_at = iso();
     }, 500);
     window.setTimeout(() => {
+      if (projectPages.length === 0) {
+        exportJob.status = "failed";
+        exportJob.progress = 100;
+        exportJob.error_message = "No pages are available to export. Upload at least one page, process it, then return to Export.";
+        exportJob.completed_at = iso();
+        exportJob.updated_at = iso();
+        return;
+      }
+      if (renderedPages.length === 0) {
+        exportJob.status = "failed";
+        exportJob.progress = 100;
+        exportJob.error_message = "No rendered pages were available to export. Process the project first, then return to Export.";
+        exportJob.completed_at = iso();
+        exportJob.updated_at = iso();
+        return;
+      }
+
       const asset = createAsset({
         id: id("asset"),
         projectId,
         kind: "export",
-        filename: payload.filename || `${project.name.toLowerCase().replaceAll(" ", "-")}.${payload.format === "pdf" ? "pdf" : "zip"}`,
+        filename: exportFilename(project.name, payload.format, payload.filename),
         url: `data:text/plain;charset=utf-8,${encodeURIComponent(`Mock ${payload.format.toUpperCase()} export for ${project.name}`)}`,
       });
       project.status = "export_ready";

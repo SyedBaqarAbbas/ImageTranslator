@@ -8,6 +8,7 @@ import { ErrorState, LoadingState } from "../components/States";
 import { StatusPill } from "../components/StatusPill";
 import { WorkspaceShell } from "../components/WorkspaceShell";
 import { assetUrlForPage, downloadUrlForAsset } from "../lib/assets";
+import { exportFailureMessage, isExportJobActive } from "../lib/exportStatus";
 import type { ExportFormat } from "../types/api";
 
 interface ExportState {
@@ -30,6 +31,29 @@ function exportStateReducer(state: ExportState, patch: Partial<ExportState>): Ex
   return { ...state, ...patch };
 }
 
+const terminalExportStatuses = new Set(["succeeded", "partial_success", "failed", "cancelled"]);
+
+const formatOptions = [
+  {
+    value: "zip",
+    label: "Full ZIP",
+    description: "Translated pages in a ZIP package.",
+    icon: Archive,
+  },
+  {
+    value: "pdf",
+    label: "PDF",
+    description: "One PDF built from rendered pages.",
+    icon: FileText,
+  },
+  {
+    value: "images",
+    label: "Image ZIP",
+    description: "Translated image files in one ZIP.",
+    icon: FileImage,
+  },
+] satisfies Array<{ value: ExportFormat; label: string; description: string; icon: typeof Archive }>;
+
 export function Export() {
   const { projectId = "" } = useParams();
   const queryClient = useQueryClient();
@@ -43,14 +67,14 @@ export function Export() {
     queryKey: exportJobId ? queryKeys.exportJob(exportJobId) : ["export-job", "empty"],
     queryFn: () => api.getExportJob(exportJobId!),
     enabled: Boolean(exportJobId),
-    refetchInterval: (query) => (query.state.data?.status === "succeeded" || query.state.data?.status === "failed" ? false : 1000),
+    refetchInterval: (query) => (terminalExportStatuses.has(query.state.data?.status ?? "") ? false : 1000),
   });
 
   const exportMutation = useMutation({
     mutationFn: () =>
       api.createExport(projectId, {
         format,
-        include_originals: includeOriginals,
+        include_originals: format === "pdf" ? false : includeOriginals,
         filename: filename.trim() || null,
       }),
     onMutate: () => {
@@ -72,10 +96,31 @@ export function Export() {
   const pages = pagesQuery.data ?? [];
   const coverUrl = assetUrlForPage(pages[0], "final");
   const currentExport = exportQuery.data ?? exportMutation.data;
-  const downloadUrl = downloadUrlForAsset(currentExport?.asset);
+  const isExportActive = exportMutation.isPending || isExportJobActive(currentExport?.status);
+  const downloadUrl = currentExport?.status === "succeeded" ? downloadUrlForAsset(currentExport.asset) : undefined;
+  const statusError = currentExport?.status === "failed" ? currentExport.error_message : null;
+  const queryError = exportQuery.isError
+    ? exportQuery.error instanceof Error
+      ? exportQuery.error.message
+      : "Unable to load export status."
+    : null;
+  const visibleError = exportError ?? statusError ?? queryError;
+  const visibleErrorMessage = visibleError ? exportFailureMessage(visibleError, pages.length) : null;
+  const submitLabel = exportMutation.isPending
+    ? "Creating Export"
+    : isExportJobActive(currentExport?.status)
+      ? "Export Running"
+      : currentExport?.status === "failed"
+        ? "Retry Export"
+        : currentExport?.status === "succeeded"
+          ? "Generate New Export"
+          : "Export Project";
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (isExportActive) {
+      return;
+    }
     setExportState({ exportError: null });
     exportMutation.mutate();
   }
@@ -114,11 +159,7 @@ export function Export() {
             <p className="mt-1 text-sm text-text-muted">Choose the delivery package for translated pages.</p>
 
             <div className="mt-6 grid gap-3 md:grid-cols-3">
-              {[
-                { value: "zip", label: "Full ZIP", icon: Archive },
-                { value: "pdf", label: "PDF", icon: FileText },
-                { value: "images", label: "Images", icon: FileImage },
-              ].map(({ value, label, icon: Icon }) => (
+              {formatOptions.map(({ value, label, description, icon: Icon }) => (
                 <button
                   key={value}
                   type="button"
@@ -130,6 +171,7 @@ export function Export() {
                 >
                   <Icon className="mb-4 h-6 w-6" />
                   <span className="font-display text-lg font-bold">{label}</span>
+                  <span className="mt-2 block text-xs leading-5 text-text-muted">{description}</span>
                 </button>
               ))}
             </div>
@@ -139,33 +181,22 @@ export function Export() {
                 <span className="text-xs font-bold uppercase text-text-muted">Filename</span>
                 <input value={filename} onChange={(event) => setExportState({ filename: event.target.value })} placeholder={`${project.name}-translated`} className="mt-2 w-full rounded-instrument border border-ink-border bg-background px-3 py-3 text-sm text-text-main outline-none focus:border-secondary" />
               </label>
-              <div className="flex items-center justify-between rounded-lg border border-ink-border bg-background p-3">
-                <span>
-                  <span id="include-originals-label" className="block text-sm font-bold text-white">Include originals</span>
-                  <span id="include-originals-description" className="block text-xs text-text-muted">Package source scans alongside translated output.</span>
-                </span>
-                <input
-                  type="checkbox"
-                  checked={includeOriginals}
-                  onChange={(event) => setExportState({ includeOriginals: event.target.checked })}
-                  className="h-5 w-5 rounded border-ink-border bg-surface text-primary focus:ring-primary"
-                  aria-labelledby="include-originals-label"
-                  aria-describedby="include-originals-description"
-                />
-              </div>
-              <div className="flex items-center justify-between rounded-lg border border-ink-border bg-background p-3">
-                <span>
-                  <span id="high-quality-label" className="block text-sm font-bold text-white">High quality resampling</span>
-                  <span id="high-quality-description" className="block text-xs text-text-muted">Preserve output quality for final release builds.</span>
-                </span>
-                <input
-                  type="checkbox"
-                  defaultChecked
-                  className="h-5 w-5 rounded border-ink-border bg-surface text-primary focus:ring-primary"
-                  aria-labelledby="high-quality-label"
-                  aria-describedby="high-quality-description"
-                />
-              </div>
+              {format !== "pdf" ? (
+                <div className="flex items-center justify-between rounded-lg border border-ink-border bg-background p-3">
+                  <span>
+                    <span id="include-originals-label" className="block text-sm font-bold text-white">Include originals</span>
+                    <span id="include-originals-description" className="block text-xs text-text-muted">Package source scans alongside translated output.</span>
+                  </span>
+                  <input
+                    type="checkbox"
+                    checked={includeOriginals}
+                    onChange={(event) => setExportState({ includeOriginals: event.target.checked })}
+                    className="h-5 w-5 rounded border-ink-border bg-surface text-primary focus:ring-primary"
+                    aria-labelledby="include-originals-label"
+                    aria-describedby="include-originals-description"
+                  />
+                </div>
+              ) : null}
             </div>
 
             {currentExport ? (
@@ -186,15 +217,15 @@ export function Export() {
               </div>
             ) : null}
 
-            {exportError || exportQuery.isError ? (
-              <p className="mt-4 rounded-instrument border border-danger/40 bg-danger/10 p-3 text-sm font-semibold text-danger">
-                {exportError ?? (exportQuery.error instanceof Error ? exportQuery.error.message : "Unable to load export status.")}
+            {visibleErrorMessage ? (
+              <p role="alert" className="mt-4 rounded-instrument border border-danger/40 bg-danger/10 p-3 text-sm font-semibold leading-6 text-danger">
+                {visibleErrorMessage}
               </p>
             ) : null}
 
-            <button type="submit" disabled={exportMutation.isPending} className="mt-6 inline-flex w-full items-center justify-center gap-3 rounded-lg bg-primary px-6 py-4 text-sm font-bold uppercase text-white shadow-glow transition hover:bg-violet-500 disabled:opacity-60">
-              {exportMutation.isPending ? <Loader2 className="h-5 w-5 animate-spin" /> : <PackageCheck className="h-5 w-5" />}
-              {exportMutation.isPending ? "Creating Export" : currentExport?.status === "succeeded" ? "Generate New Export" : "Export Project"}
+            <button type="submit" disabled={isExportActive} className="mt-6 inline-flex w-full items-center justify-center gap-3 rounded-lg bg-primary px-6 py-4 text-sm font-bold uppercase text-white shadow-glow transition hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-60">
+              {isExportActive ? <Loader2 className="h-5 w-5 animate-spin" /> : <PackageCheck className="h-5 w-5" />}
+              {submitLabel}
             </button>
           </form>
         </div>

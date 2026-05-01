@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import io
+import zipfile
 from collections.abc import AsyncGenerator, Generator
 from pathlib import Path
 
@@ -55,6 +56,50 @@ def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Generator[TestCli
     app.dependency_overrides.clear()
     get_storage_backend.cache_clear()
     asyncio.run(engine.dispose())
+
+
+def _create_project(client: TestClient, name: str = "Export Project") -> str:
+    response = client.post(
+        "/api/v1/projects",
+        json={
+            "name": name,
+            "source_language": "auto",
+            "target_language": "en",
+            "translation_tone": "natural",
+            "replacement_mode": "replace",
+            "reading_direction": "rtl",
+        },
+    )
+    assert response.status_code == 201
+    return str(response.json()["id"])
+
+
+def _upload_page(client: TestClient, project_id: str) -> str:
+    response = client.post(
+        f"/api/v1/projects/{project_id}/pages/upload",
+        files={"files": ("page.png", _png_bytes(), "image/png")},
+    )
+    assert response.status_code == 201
+    return str(response.json()[0]["id"])
+
+
+def _process_project(client: TestClient, project_id: str) -> None:
+    response = client.post(
+        f"/api/v1/projects/{project_id}/process",
+        json={"force": True},
+    )
+    assert response.status_code == 202
+    assert response.json()["status"] == "succeeded"
+
+
+def _download_asset_bytes(client: TestClient, asset_id: str) -> bytes:
+    download_response = client.get(f"/api/v1/assets/{asset_id}/download")
+    assert download_response.status_code == 200
+    url = download_response.json()["url"]
+    assert url.startswith("http://testserver/api/v1/assets/by-key/")
+    file_response = client.get(url.removeprefix("http://testserver"))
+    assert file_response.status_code == 200
+    return file_response.content
 
 
 def test_project_routes_use_public_user_without_authorization(client: TestClient) -> None:
@@ -113,28 +158,13 @@ def test_upload_and_asset_download_work_without_authorization(client: TestClient
 
 
 def test_export_returns_loaded_asset_without_authorization(client: TestClient) -> None:
-    project_response = client.post(
-        "/api/v1/projects",
-        json={
-            "name": "Export Project",
-            "source_language": "auto",
-            "target_language": "en",
-            "translation_tone": "natural",
-            "replacement_mode": "replace",
-            "reading_direction": "rtl",
-        },
-    )
-    project_id = project_response.json()["id"]
-
-    upload_response = client.post(
-        f"/api/v1/projects/{project_id}/pages/upload",
-        files={"files": ("page.png", _png_bytes(), "image/png")},
-    )
-    assert upload_response.status_code == 201
+    project_id = _create_project(client)
+    _upload_page(client, project_id)
+    _process_project(client, project_id)
 
     export_response = client.post(
         f"/api/v1/projects/{project_id}/export",
-        json={"format": "zip", "include_originals": False, "filename": "export-project"},
+        json={"format": "zip", "include_originals": True, "filename": "export-project"},
     )
 
     assert export_response.status_code == 202
@@ -143,6 +173,75 @@ def test_export_returns_loaded_asset_without_authorization(client: TestClient) -
     assert export["asset_id"]
     assert export["asset"]["id"] == export["asset_id"]
     assert export["asset"]["content_type"] == "application/zip"
+    archive = zipfile.ZipFile(io.BytesIO(_download_asset_bytes(client, export["asset_id"])))
+    assert "translated/page-0001.png" in archive.namelist()
+    assert "originals/page-0001-page.png" in archive.namelist()
+
+
+def test_export_pdf_returns_loaded_asset_without_authorization(client: TestClient) -> None:
+    project_id = _create_project(client, "PDF Export Project")
+    _upload_page(client, project_id)
+    _process_project(client, project_id)
+
+    export_response = client.post(
+        f"/api/v1/projects/{project_id}/export",
+        json={"format": "pdf", "include_originals": True, "filename": "export-project"},
+    )
+
+    assert export_response.status_code == 202
+    export = export_response.json()
+    assert export["status"] == "succeeded"
+    assert export["asset"]["content_type"] == "application/pdf"
+    assert _download_asset_bytes(client, export["asset_id"]).startswith(b"%PDF")
+
+
+def test_export_images_format_returns_image_zip(client: TestClient) -> None:
+    project_id = _create_project(client, "Image ZIP Export Project")
+    _upload_page(client, project_id)
+    _process_project(client, project_id)
+
+    export_response = client.post(
+        f"/api/v1/projects/{project_id}/export",
+        json={"format": "images", "include_originals": False, "filename": "page-images"},
+    )
+
+    assert export_response.status_code == 202
+    export = export_response.json()
+    assert export["status"] == "succeeded"
+    assert export["format"] == "images"
+    assert export["asset"]["filename"] == "page-images.zip"
+    assert export["asset"]["content_type"] == "application/zip"
+    archive = zipfile.ZipFile(io.BytesIO(_download_asset_bytes(client, export["asset_id"])))
+    assert archive.namelist() == ["page-0001.png"]
+
+
+def test_export_without_rendered_pages_returns_failed_job(client: TestClient) -> None:
+    project_id = _create_project(client, "Original Only Project")
+    _upload_page(client, project_id)
+
+    export_response = client.post(
+        f"/api/v1/projects/{project_id}/export",
+        json={"format": "zip", "include_originals": False, "filename": "export-project"},
+    )
+
+    assert export_response.status_code == 202
+    export = export_response.json()
+    assert export["status"] == "failed"
+    assert "Process the project first" in export["error_message"]
+
+
+def test_export_without_pages_returns_failed_job(client: TestClient) -> None:
+    project_id = _create_project(client, "Empty Export Project")
+
+    export_response = client.post(
+        f"/api/v1/projects/{project_id}/export",
+        json={"format": "zip", "include_originals": False, "filename": "export-project"},
+    )
+
+    assert export_response.status_code == 202
+    export = export_response.json()
+    assert export["status"] == "failed"
+    assert "Upload at least one page" in export["error_message"]
 
 
 def test_delete_region_removes_region_and_rerenders_page(client: TestClient) -> None:

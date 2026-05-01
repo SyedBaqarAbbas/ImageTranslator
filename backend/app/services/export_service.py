@@ -18,6 +18,7 @@ from app.models import ExportJob, FileAsset, Page, Project
 from app.schemas.job import ExportRequest
 from app.services.asset_service import AssetService
 from app.services.project_service import ProjectService
+from app.utils.files import safe_filename
 
 
 class ExportService:
@@ -58,7 +59,7 @@ class ExportService:
 
 async def _dispatch_export_job(export_id: str) -> None:
     if settings.celery_task_always_eager:
-        await execute_export_job(export_id)
+        await execute_export_job(export_id, raise_on_failure=False)
         return
 
     from app.workers.tasks import export_project_task
@@ -66,7 +67,7 @@ async def _dispatch_export_job(export_id: str) -> None:
     export_project_task.delay(export_id)
 
 
-async def execute_export_job(export_id: str) -> None:
+async def execute_export_job(export_id: str, *, raise_on_failure: bool = True) -> None:
     async with AsyncSessionLocal() as session:
         export = await session.get(ExportJob, export_id)
         if export is None:
@@ -87,32 +88,61 @@ async def execute_export_job(export_id: str) -> None:
                 stmt = stmt.where(Page.id.in_(page_ids))
             pages = list(await session.scalars(stmt))
             if not pages:
-                raise AppError("no_pages", "No pages are available to export.")
+                raise AppError(
+                    "no_pages",
+                    (
+                        "No pages are available to export. Upload at least one page, "
+                        "process it, then return to Export."
+                    ),
+                )
 
             assets = AssetService(session)
-            image_payloads: list[tuple[str, bytes]] = []
+            translated_payloads: list[tuple[str, bytes]] = []
+            original_payloads: list[tuple[str, bytes]] = []
+            include_originals = bool(payload.get("include_originals"))
             for index, page in enumerate(pages, start=1):
-                asset_id = page.final_asset_id or page.preview_asset_id or page.original_asset_id
-                if not asset_id:
-                    continue
-                asset = await session.get(FileAsset, asset_id)
-                if asset is None:
-                    continue
-                data = await assets.read_asset_bytes(asset)
-                image_payloads.append((f"page-{page.page_number:04d}.png", data))
+                rendered_asset_id = page.final_asset_id or page.preview_asset_id
+                if rendered_asset_id:
+                    rendered_asset = await session.get(FileAsset, rendered_asset_id)
+                    if rendered_asset is not None:
+                        data = await assets.read_asset_bytes(rendered_asset)
+                        translated_payloads.append((f"page-{page.page_number:04d}.png", data))
+
+                if include_originals and page.original_asset_id:
+                    original_asset = await session.get(FileAsset, page.original_asset_id)
+                    if original_asset is not None:
+                        data = await assets.read_asset_bytes(original_asset)
+                        original_payloads.append(
+                            (_original_export_path(page, original_asset), data)
+                        )
+
                 export.progress = 5 + int(index / len(pages) * 60)
                 await session.commit()
 
-            if not image_payloads:
-                raise AppError("no_rendered_pages", "No rendered pages were available to export.")
+            if not translated_payloads:
+                raise AppError(
+                    "no_rendered_pages",
+                    (
+                        "No rendered pages were available to export. Process the project "
+                        "first, then return to Export."
+                    ),
+                )
 
             export_format = export.format
             if export_format == ExportFormat.PDF.value:
-                data = _build_pdf(image_payloads)
+                data = _build_pdf(translated_payloads)
                 filename = _export_filename(payload.get("filename"), project.name, "pdf")
                 content_type = "application/pdf"
+            elif export_format == ExportFormat.IMAGES.value:
+                data = _build_zip(translated_payloads + original_payloads)
+                filename = _export_filename(payload.get("filename"), project.name, "zip")
+                content_type = "application/zip"
             else:
-                data = _build_zip(image_payloads)
+                zip_payloads = [
+                    (f"translated/{filename}", image_bytes)
+                    for filename, image_bytes in translated_payloads
+                ]
+                data = _build_zip(zip_payloads + original_payloads)
                 filename = _export_filename(payload.get("filename"), project.name, "zip")
                 content_type = "application/zip"
 
@@ -136,7 +166,8 @@ async def execute_export_job(export_id: str) -> None:
             export.error_message = str(exc)
             export.completed_at = utcnow()
             await session.commit()
-            raise
+            if raise_on_failure:
+                raise
 
 
 def _build_zip(image_payloads: list[tuple[str, bytes]]) -> bytes:
@@ -151,6 +182,11 @@ def _export_filename(requested: str | None, project_name: str, extension: str) -
     base = (requested or f"{project_name}-translated").strip() or f"{project_name}-translated"
     suffix = f".{extension}"
     return base if base.lower().endswith(suffix) else f"{base}{suffix}"
+
+
+def _original_export_path(page: Page, asset: FileAsset) -> str:
+    filename = safe_filename(asset.filename)
+    return f"originals/page-{page.page_number:04d}-{filename}"
 
 
 def _build_pdf(image_payloads: list[tuple[str, bytes]]) -> bytes:
