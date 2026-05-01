@@ -1,4 +1,4 @@
-import { MoreHorizontal, PenLine, Sparkles } from "lucide-react";
+import { Loader2, MoreHorizontal, PenLine, Sparkles, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 
@@ -7,7 +7,19 @@ import { routeForProject } from "../lib/routing";
 import type { ProjectRead } from "../types/api";
 import { StatusPill } from "./StatusPill";
 
-export function ProjectCard({ project, coverUrl }: { project: ProjectRead; coverUrl?: string }) {
+export function ProjectCard({
+  project,
+  coverUrl,
+  onDelete,
+  isDeleteDisabled = false,
+  isDeleting = false,
+}: {
+  project: ProjectRead;
+  coverUrl?: string;
+  onDelete?: () => void;
+  isDeleteDisabled?: boolean;
+  isDeleting?: boolean;
+}) {
   const [menuOpen, setMenuOpen] = useState(false);
   const route = routeForProject(project);
 
@@ -31,13 +43,26 @@ export function ProjectCard({ project, coverUrl }: { project: ProjectRead; cover
           <MoreHorizontal className="h-4 w-4" />
         </button>
         {menuOpen ? (
-          <div className="absolute right-3 top-14 z-10 w-44 rounded-lg border border-ink-border bg-surface p-2 shadow-2xl">
+          <div className="absolute right-3 top-14 z-10 w-52 rounded-lg border border-ink-border bg-surface p-2 shadow-2xl">
             <Link className="block rounded-instrument px-3 py-2 text-sm font-semibold text-text-main transition hover:bg-surface-high" to={route}>
               Open workspace
             </Link>
             <Link className="block rounded-instrument px-3 py-2 text-sm font-semibold text-text-main transition hover:bg-surface-high" to={`/projects/${project.id}/export`}>
               Export
             </Link>
+            {onDelete ? (
+              <button
+                type="button"
+                onClick={onDelete}
+                disabled={isDeleteDisabled || isDeleting}
+                aria-busy={isDeleting}
+                className="flex w-full items-center gap-2 rounded-instrument px-3 py-2 text-left text-sm font-semibold text-danger transition hover:bg-danger/10 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isDeleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                <span>Delete project</span>
+                {isDeleting ? <span className="ml-auto text-xs">Deleting...</span> : null}
+              </button>
+            ) : null}
             <button
               type="button"
               onClick={() => setMenuOpen(false)}

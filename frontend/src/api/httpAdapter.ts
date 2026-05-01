@@ -131,6 +131,12 @@ export const httpApi: ApiAdapter = {
     });
   },
 
+  deleteProject(projectId: string): Promise<void> {
+    return request<void>(`/projects/${projectId}`, {
+      method: "DELETE",
+    });
+  },
+
   updateSettings(projectId: string, payload: TranslationSettingsUpdate): Promise<TranslationSettingsRead> {
     return request<TranslationSettingsRead>(`/projects/${projectId}/settings`, {
       method: "PATCH",

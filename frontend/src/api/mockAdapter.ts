@@ -242,6 +242,13 @@ export const mockApi: ApiAdapter = {
     return delay(project);
   },
 
+  async deleteProject(projectId: string): Promise<void> {
+    const project = findProject(projectId);
+    project.status = "deleted";
+    project.updated_at = iso();
+    await delay(undefined);
+  },
+
   async updateSettings(projectId: string, payload: TranslationSettingsUpdate): Promise<TranslationSettingsRead> {
     const project = findProject(projectId);
     let settings = store.settings.find((item) => item.project_id === projectId);
