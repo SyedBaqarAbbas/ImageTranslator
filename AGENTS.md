@@ -50,12 +50,20 @@ Documentation-only changes usually do not need tests, but inspect Markdown struc
 ## Git and Workspace Hygiene
 
 - The worktree may already contain user changes. Do not revert changes you did not make.
-- Check `git status --short` before staging or committing.
-- Stage only files relevant to the requested task.
-- Use commit messages in the format `[prefix] <message>`, for example `[fix] handle empty OCR results` or `[docs] update setup notes`.
-- The `testing/` folder contains generated evidence and is intentionally ignored by git.
-- `.gitignore` may have local changes; do not include it in commits unless the user asks or the task requires it.
-- When fixing issues from Linear, automations only run if the branch name contains the ticket. Checkout to the branch name containing ticket name.
+- Run `git status --short` before staging or committing.
+- Stage only files relevant to the task. Do not use `git add .` unless required.
+- Commit messages must follow `[prefix] <message>`, e.g. `[fix] handle empty OCR results`.
+- `testing/` contains generated evidence and is ignored by git. Do not force-add it.
+- Do not commit `.gitignore` unless asked or required.
+- Do not commit secrets, `.env` files, local DBs, model files, uploaded assets, rendered outputs, or build artifacts.
+
+## Linear Issue Workflow
+
+- Use a separate git worktree for Linear fixes.
+- Create a branch containing the Linear ticket ID/name.
+- Base it on latest `main` unless told otherwise.
+- Commit with a meaningful `[prefix] <message>`.
+- Push the branch and open a PR against `main`.
 
 ## Known Sharp Edges
 
