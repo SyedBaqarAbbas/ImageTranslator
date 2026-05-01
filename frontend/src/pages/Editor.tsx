@@ -20,6 +20,7 @@ interface EditorState {
   selectedRegionId?: string;
   mode: EditorMode;
   comparison: boolean;
+  comparisonSplit: number;
   zoom: number;
   workspaceStatus: string;
   styleDrafts: Record<string, Record<string, unknown>>;
@@ -41,6 +42,7 @@ const ZOOM_STEP = 0.15;
 const initialEditorState: EditorState = {
   mode: "translated",
   comparison: false,
+  comparisonSplit: 50,
   zoom: 1,
   workspaceStatus: "Unsaved",
   styleDrafts: {},
@@ -107,7 +109,7 @@ interface SaveRegionVariables {
 export function Editor() {
   const { projectId = "" } = useParams();
   const queryClient = useQueryClient();
-  const [{ selectedPageId, selectedRegionId, mode, comparison, zoom, workspaceStatus, styleDrafts, regionSaveFeedback }, dispatchEditor] =
+  const [{ selectedPageId, selectedRegionId, mode, comparison, comparisonSplit, zoom, workspaceStatus, styleDrafts, regionSaveFeedback }, dispatchEditor] =
     useReducer(editorReducer, initialEditorState);
   const zoomLabel = `${Math.round(zoom * 100)}%`;
 
@@ -369,6 +371,10 @@ export function Editor() {
 
             <CanvasWorkspace
               imageUrl={assetUrlForPage(selectedPage, mode === "original" ? "original" : "editable")}
+              comparisonOriginalImageUrl={assetUrlForPage(selectedPage, "original")}
+              comparisonTranslatedImageUrl={assetUrlForPage(selectedPage, "final")}
+              comparisonSplit={comparisonSplit}
+              onComparisonSplitChange={(split) => dispatchEditor({ type: "patch", patch: { comparisonSplit: split } })}
               width={selectedPage.width}
               height={selectedPage.height}
               regions={displayRegions}
