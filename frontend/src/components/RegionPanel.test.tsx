@@ -1,5 +1,5 @@
 import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ComponentProps } from "react";
 
 import { RegionPanel } from "./RegionPanel";
@@ -25,6 +25,12 @@ const region: TextRegionRead = {
   created_at: "2026-05-01T00:00:00Z",
   updated_at: "2026-05-01T00:00:00Z",
 };
+const panelWidthStorageKey = "imageTranslator.editor.regionPanelWidth";
+
+beforeEach(() => {
+  window.localStorage.clear();
+  Object.defineProperty(window, "innerWidth", { configurable: true, writable: true, value: 1440 });
+});
 
 function renderRegionPanel(
   props: Partial<ComponentProps<typeof RegionPanel>> = {},
@@ -74,5 +80,52 @@ describe("RegionPanel", () => {
 
     expect(screen.getByRole("button", { name: /saving/i })).toBeDisabled();
     expect(screen.getByRole("status")).toHaveTextContent("Saving...");
+  });
+
+  it("uses and persists the default desktop width for first-time sessions", () => {
+    renderRegionPanel();
+
+    const separator = screen.getByRole("separator", { name: /resize translation cards panel/i });
+    expect(separator).toHaveAttribute("aria-valuenow", "360");
+    expect(window.localStorage.getItem(panelWidthStorageKey)).toBe("360");
+  });
+
+  it("resizes the desktop panel with the keyboard and persists the width", () => {
+    window.localStorage.setItem(panelWidthStorageKey, "520");
+    renderRegionPanel();
+
+    const separator = screen.getByRole("separator", { name: /resize translation cards panel/i });
+    expect(separator).toHaveAttribute("aria-orientation", "vertical");
+    expect(separator).toHaveAttribute("aria-valuenow", "520");
+    expect(separator).toHaveAttribute("aria-valuemax", "560");
+
+    fireEvent.keyDown(separator, { key: "ArrowLeft" });
+    expect(separator).toHaveAttribute("aria-valuenow", "544");
+    expect(window.localStorage.getItem(panelWidthStorageKey)).toBe("544");
+
+    fireEvent.keyDown(separator, { key: "End" });
+    expect(separator).toHaveAttribute("aria-valuenow", "560");
+
+    fireEvent.keyDown(separator, { key: "ArrowLeft" });
+    expect(separator).toHaveAttribute("aria-valuenow", "560");
+
+    fireEvent.keyDown(separator, { key: "Home" });
+    expect(separator).toHaveAttribute("aria-valuenow", "300");
+  });
+
+  it("preserves saved desktop width when rendered on a narrow viewport", () => {
+    Object.defineProperty(window, "innerWidth", { configurable: true, writable: true, value: 390 });
+    window.localStorage.setItem(panelWidthStorageKey, "520");
+    renderRegionPanel();
+
+    const separator = screen.getByRole("separator", { name: /resize translation cards panel/i });
+    expect(separator).toHaveAttribute("aria-valuenow", "300");
+    expect(window.localStorage.getItem(panelWidthStorageKey)).toBe("520");
+
+    Object.defineProperty(window, "innerWidth", { configurable: true, writable: true, value: 1440 });
+    fireEvent(window, new Event("resize"));
+
+    expect(separator).toHaveAttribute("aria-valuenow", "520");
+    expect(window.localStorage.getItem(panelWidthStorageKey)).toBe("520");
   });
 });
