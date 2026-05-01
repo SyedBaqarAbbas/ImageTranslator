@@ -117,7 +117,7 @@ export function TopNav() {
                   />
                 </div>
               ) : (
-                <div className="absolute left-0 top-[calc(100%+0.5rem)] rounded-lg border border-ink-border bg-surface px-4 py-3 shadow-2xl">
+                <div className="absolute left-1/2 top-[calc(100%+0.5rem)] -translate-x-1/2 rounded-lg border border-ink-border bg-surface px-4 py-3 text-center shadow-2xl">
                   <p className="font-display text-sm font-bold text-white">Coming Soon</p>
                 </div>
               )
@@ -144,13 +144,13 @@ export function TopNav() {
 
           {openMenu === "help" ? (
             <div className="absolute right-12 top-12 w-64 rounded-lg border border-ink-border bg-surface p-2 shadow-2xl sm:right-16">
-              <Link className="block rounded-instrument px-3 py-2 text-sm font-semibold text-text-main transition hover:bg-surface-high" to="/support">
-                Support
+              <Link className="block rounded-instrument px-3 py-2 text-sm font-semibold text-text-muted opacity-50 cursor-not-allowed pointer-events-none" to="/support" aria-disabled="true" onClick={(e) => e.preventDefault()}>
+                  Support
               </Link>
               <Link className="block rounded-instrument px-3 py-2 text-sm font-semibold text-text-main transition hover:bg-surface-high" to="/settings">
                 Workspace settings
               </Link>
-              <a className="block rounded-instrument px-3 py-2 text-sm font-semibold text-text-main transition hover:bg-surface-high" href="mailto:support@comicflow.ai">
+              <a className="block rounded-instrument px-3 py-2 text-sm font-semibold text-text-main transition hover:bg-surface-high" href="mailto:baqar2001@hotmail.com">
                 Contact support
               </a>
             </div>
