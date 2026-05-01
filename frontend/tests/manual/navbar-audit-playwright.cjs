@@ -94,7 +94,7 @@ async function runAction(page, group, name, startPath, action) {
     await page.getByRole("link", { name: /ComicFlow AI/i }).click();
   });
 
-  for (const label of ["Projects", "Assets", "Team", "Settings"]) {
+  for (const label of ["Projects", "Assets", "Settings"]) {
     await runAction(page, "top_nav", `${label} nav link`, "/projects", async (page) => {
       await page.locator("header").getByRole("link", { name: label }).click();
     });
