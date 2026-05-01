@@ -49,6 +49,15 @@ const REGION_PANEL_MIN_HEIGHT = 260;
 const REGION_PANEL_MAX_HEIGHT_VIEWPORT_RATIO = 0.75;
 const REGION_PANEL_MIN_CANVAS_HEIGHT = 220;
 const REGION_PANEL_DEFAULT_HEIGHT_VIEWPORT_RATIO = 0.52;
+const SELECTED_REGION_MIN_HEIGHT = 260;
+const SELECTED_REGION_MAX_VIEWPORT_RATIO = 0.7;
+const SELECTED_REGION_DEFAULT_HEIGHT = 420;
+
+interface SelectedRegionResizeDrag {
+  pointerId: number;
+  startClientY: number;
+  startHeight: number;
+}
 
 interface PanelResizeDrag {
   pointerId: number;
@@ -227,6 +236,7 @@ export function RegionPanel({
   );
   const resizeDragRef = useRef<PanelResizeDrag | null>(null);
   const heightResizeDragRef = useRef<PanelHeightResizeDrag | null>(null);
+  const selectedRegionResizeDragRef = useRef<SelectedRegionResizeDrag | null>(null);
   const panelRef = useRef<HTMLElement | null>(null);
   const [preferredPanelWidth, setPreferredPanelWidth] = useState(storedRegionPanelWidth);
   const [panelMaxWidth, setPanelMaxWidth] = useState(maxRegionPanelWidth);
@@ -234,8 +244,14 @@ export function RegionPanel({
   const [preferredPanelHeight, setPreferredPanelHeight] = useState(() => storedRegionPanelHeight(maxRegionPanelHeight()));
   const [isResizingPanel, setIsResizingPanel] = useState(false);
   const [isResizingPanelHeight, setIsResizingPanelHeight] = useState(false);
+  const [isResizingSelectedRegion, setIsResizingSelectedRegion] = useState(false);
+  const [selectedRegionHeight, setSelectedRegionHeight] = useState(SELECTED_REGION_DEFAULT_HEIGHT);
   const panelWidth = clampRegionPanelWidth(preferredPanelWidth, panelMaxWidth);
   const panelHeight = clampRegionPanelHeight(preferredPanelHeight, panelMaxHeight);
+  const selectedRegionMaxHeight = Math.max(
+    SELECTED_REGION_MIN_HEIGHT,
+    Math.floor((typeof window === "undefined" ? 900 : window.innerHeight) * SELECTED_REGION_MAX_VIEWPORT_RATIO),
+  );
 
   useEffect(() => {
     dispatchPanel({ type: "reset", region: selectedRegion });
@@ -453,6 +469,42 @@ export function RegionPanel({
     updatePanelHeight(nextHeight);
   }
 
+  function clampSelectedRegionHeight(nextHeight: number): number {
+    return Math.min(selectedRegionMaxHeight, Math.max(SELECTED_REGION_MIN_HEIGHT, Math.round(nextHeight)));
+  }
+
+  function startSelectedRegionResize(event: PointerEvent<HTMLDivElement>) {
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    selectedRegionResizeDragRef.current = {
+      pointerId: event.pointerId,
+      startClientY: event.clientY,
+      startHeight: selectedRegionHeight,
+    };
+    setIsResizingSelectedRegion(true);
+  }
+
+  function resizeSelectedRegion(event: PointerEvent<HTMLDivElement>) {
+    const drag = selectedRegionResizeDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) {
+      return;
+    }
+    event.preventDefault();
+    setSelectedRegionHeight(clampSelectedRegionHeight(drag.startHeight + drag.startClientY - event.clientY));
+  }
+
+  function finishSelectedRegionResize(event: PointerEvent<HTMLDivElement>) {
+    const drag = selectedRegionResizeDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) {
+      return;
+    }
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    selectedRegionResizeDragRef.current = null;
+    setIsResizingSelectedRegion(false);
+  }
+
   const panelStyle = {
     "--region-panel-width": `${panelWidth}px`,
     "--region-panel-height": `${panelHeight}px`,
@@ -566,7 +618,27 @@ export function RegionPanel({
       </div>
 
       {selectedRegion ? (
-        <div className="shrink-0 border-t border-ink-border bg-surface p-4">
+        <div
+          className="relative shrink-0 overflow-y-auto border-t border-ink-border bg-surface p-4"
+          style={{ height: `${selectedRegionHeight}px`, minHeight: `${SELECTED_REGION_MIN_HEIGHT}px`, maxHeight: `${selectedRegionMaxHeight}px` }}
+        >
+          <div
+            role="separator"
+            aria-label="Resize selected region editor"
+            aria-orientation="horizontal"
+            tabIndex={0}
+            onPointerDown={startSelectedRegionResize}
+            onPointerMove={resizeSelectedRegion}
+            onPointerUp={finishSelectedRegionResize}
+            onPointerCancel={finishSelectedRegionResize}
+            className="group absolute inset-x-0 top-0 z-20 flex h-5 -translate-y-1/2 cursor-row-resize touch-none items-center justify-center outline-none lg:hidden"
+          >
+            <span
+              className={`h-1.5 w-20 rounded-full transition ${
+                isResizingSelectedRegion ? "bg-secondary shadow-cyan" : "bg-ink-border group-hover:bg-secondary group-focus-visible:bg-secondary"
+              }`}
+            />
+          </div>
           <div className="mb-3 flex items-center justify-between gap-3">
             <div>
               <p className="text-xs font-bold uppercase text-text-muted">Source</p>
