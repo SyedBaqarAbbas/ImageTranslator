@@ -10,3 +10,6 @@
 # Repository-level generated evidence
 testing/
 tickets/
+
+# Local prototype persistent data
+/.local-data/

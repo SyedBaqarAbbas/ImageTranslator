@@ -15,8 +15,9 @@ BACKEND_ORIGIN="http://${BACKEND_HOST}:${BACKEND_PORT}"
 FRONTEND_ORIGIN="http://${FRONTEND_HOST}:${FRONTEND_PORT}"
 
 AUTO_CREATE_TABLES="${AUTO_CREATE_TABLES:-true}"
-DATABASE_URL="${DATABASE_URL:-sqlite+aiosqlite:////tmp/image-translator-local-prototype.db}"
-LOCAL_STORAGE_PATH="${LOCAL_STORAGE_PATH:-/tmp/image-translator-local-prototype-storage}"
+LOCAL_PROTOTYPE_DATA_DIR="${LOCAL_PROTOTYPE_DATA_DIR:-${ROOT_DIR}/.local-data}"
+DATABASE_URL="${DATABASE_URL:-sqlite+aiosqlite:///${LOCAL_PROTOTYPE_DATA_DIR}/image-translator-local-prototype.db}"
+LOCAL_STORAGE_PATH="${LOCAL_STORAGE_PATH:-${LOCAL_PROTOTYPE_DATA_DIR}/storage}"
 PUBLIC_BASE_URL="${PUBLIC_BASE_URL:-${BACKEND_ORIGIN}}"
 OCR_PROVIDER="${OCR_PROVIDER:-tesseract}"
 TRANSLATION_PROVIDER="${TRANSLATION_PROVIDER:-opus_mt}"
@@ -29,6 +30,17 @@ VITE_API_BASE_URL="${VITE_API_BASE_URL:-${BACKEND_ORIGIN}/api/v1}"
 
 BACKEND_PID=""
 FRONTEND_PID=""
+DATABASE_DISPLAY="${DATABASE_URL}"
+
+if [[ "${DATABASE_URL}" == sqlite+aiosqlite:///* ]]; then
+  DATABASE_PATH="${DATABASE_URL#sqlite+aiosqlite:///}"
+  DATABASE_DISPLAY="${DATABASE_PATH}"
+  if [ "${DATABASE_PATH}" != ":memory:" ]; then
+    mkdir -p "$(dirname "${DATABASE_PATH}")"
+  fi
+fi
+
+mkdir -p "${LOCAL_PROTOTYPE_DATA_DIR}" "${LOCAL_STORAGE_PATH}"
 
 cleanup() {
   echo
@@ -88,6 +100,8 @@ fi
 echo "Starting ImageTranslator local prototype"
 echo "Backend:  ${BACKEND_ORIGIN}"
 echo "Frontend: ${FRONTEND_ORIGIN}"
+echo "Database: ${DATABASE_DISPLAY}"
+echo "Storage:  ${LOCAL_STORAGE_PATH}"
 echo "OCR:      ${OCR_PROVIDER}"
 echo "MT:       ${TRANSLATION_PROVIDER}"
 echo
@@ -158,6 +172,8 @@ echo
 echo "Local prototype is up:"
 echo "  Frontend: ${FRONTEND_ORIGIN}"
 echo "  Backend:  ${BACKEND_ORIGIN}/api/v1/health"
+echo "  Database: ${DATABASE_DISPLAY}"
+echo "  Storage:  ${LOCAL_STORAGE_PATH}"
 echo
 echo "Press Ctrl-C to stop both servers."
 
