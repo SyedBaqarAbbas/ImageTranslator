@@ -1,9 +1,10 @@
 import { FormEvent, useEffect, useReducer } from "react";
 import { ArrowLeft, Loader2, Play, UploadCloud } from "lucide-react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "react-router-dom";
 
 import { api, queryKeys } from "../api";
+import { LockedLanguageSelect } from "../components/LockedLanguageSelect";
 import { UploadDropzone } from "../components/UploadDropzone";
 import { useUploadFlow } from "../lib/uploadFlow";
 import type { ReadingDirection, ReplacementMode } from "../types/api";
@@ -11,8 +12,6 @@ import type { ReadingDirection, ReplacementMode } from "../types/api";
 interface ProjectSetupState {
   name: string;
   description: string;
-  sourceLanguage: string;
-  targetLanguage: string;
   tone: string;
   replacementMode: ReplacementMode;
   readingDirection: ReadingDirection;
@@ -24,8 +23,6 @@ interface ProjectSetupState {
 const initialProjectSetupState: ProjectSetupState = {
   name: "",
   description: "",
-  sourceLanguage: "auto",
-  targetLanguage: "en",
   tone: "natural",
   replacementMode: "replace",
   readingDirection: "rtl",
@@ -45,8 +42,6 @@ export function ProjectSetup() {
     {
       name,
       description,
-      sourceLanguage,
-      targetLanguage,
       tone,
       replacementMode,
       readingDirection,
@@ -56,6 +51,18 @@ export function ProjectSetup() {
     },
     setProjectSetupState,
   ] = useReducer(projectSetupReducer, initialProjectSetupState);
+
+  const runtimeLanguageQuery = useQuery({
+    queryKey: queryKeys.runtimeLanguage,
+    queryFn: () => api.getRuntimeLanguage(),
+  });
+  const runtimeLanguage = runtimeLanguageQuery.data;
+  const sourceLanguage = runtimeLanguage?.source_language ?? "auto";
+  const targetLanguage = runtimeLanguage?.target_language ?? "en";
+  const lockMessage = runtimeLanguage?.lock_message ?? "Ask a system administrator to change the language.";
+  const runtimeLanguageError = runtimeLanguageQuery.isError
+    ? "Unable to load the configured translation language."
+    : null;
 
   useEffect(() => {
     if (!name && pendingFiles[0]) {
@@ -83,11 +90,14 @@ export function ProjectSetup() {
       if (pendingFiles.length === 0) {
         throw new Error("Upload at least one page before starting processing.");
       }
+      if (!runtimeLanguage) {
+        throw new Error("Runtime language is still loading.");
+      }
       return api.createProject({
         name: name.trim() || "Untitled Translation",
         description: description.trim() || null,
-        source_language: sourceLanguage,
-        target_language: targetLanguage,
+        source_language: runtimeLanguage.source_language,
+        target_language: runtimeLanguage.target_language,
         translation_tone: tone,
         replacement_mode: replacementMode,
         reading_direction: readingDirection,
@@ -160,7 +170,7 @@ export function ProjectSetup() {
 
         <form onSubmit={handleSubmit} className="glass-panel rounded-lg p-5">
           <h2 className="font-display text-2xl font-bold text-white">Translation settings</h2>
-          <p className="mt-1 text-sm text-text-muted">These defaults can be changed later from the editor.</p>
+          <p className="mt-1 text-sm text-text-muted">Project style and processing defaults.</p>
 
           <div className="mt-6 space-y-4">
             <label className="block">
@@ -173,24 +183,8 @@ export function ProjectSetup() {
             </label>
 
             <div className="grid grid-cols-2 gap-3">
-              <label className="block">
-                <span className="text-xs font-bold uppercase text-text-muted">Source</span>
-                <select value={sourceLanguage} onChange={(event) => setProjectSetupState({ sourceLanguage: event.target.value })} className="mt-2 w-full rounded-instrument border border-ink-border bg-background px-3 py-3 text-sm text-text-main outline-none focus:border-secondary">
-                  <option value="auto">Auto detect</option>
-                  <option value="ko">Korean</option>
-                  <option value="ja">Japanese</option>
-                  <option value="zh">Chinese</option>
-                </select>
-              </label>
-              <label className="block">
-                <span className="text-xs font-bold uppercase text-text-muted">Target</span>
-                <select value={targetLanguage} onChange={(event) => setProjectSetupState({ targetLanguage: event.target.value })} className="mt-2 w-full rounded-instrument border border-ink-border bg-background px-3 py-3 text-sm text-text-main outline-none focus:border-secondary">
-                  <option value="en">English</option>
-                  <option value="es">Spanish</option>
-                  <option value="fr">French</option>
-                  <option value="de">German</option>
-                </select>
-              </label>
+              <LockedLanguageSelect isLoading={runtimeLanguageQuery.isLoading} label="Source" lockMessage={lockMessage} value={sourceLanguage} />
+              <LockedLanguageSelect isLoading={runtimeLanguageQuery.isLoading} label="Target" lockMessage={lockMessage} value={targetLanguage} />
             </div>
 
             <label className="block">
@@ -238,9 +232,11 @@ export function ProjectSetup() {
             </div>
           </div>
 
-          {error ? <p className="mt-4 rounded-instrument border border-danger/40 bg-danger/10 p-3 text-sm text-danger">{error}</p> : null}
+          {error || runtimeLanguageError ? (
+            <p className="mt-4 rounded-instrument border border-danger/40 bg-danger/10 p-3 text-sm text-danger">{error ?? runtimeLanguageError}</p>
+          ) : null}
 
-          <button disabled={startMutation.isPending || pendingFiles.length === 0} className="mt-6 inline-flex w-full items-center justify-center gap-3 rounded-lg bg-primary px-6 py-4 text-base font-bold text-white shadow-glow transition hover:bg-violet-500 disabled:opacity-50">
+          <button disabled={startMutation.isPending || pendingFiles.length === 0 || !runtimeLanguage} className="mt-6 inline-flex w-full items-center justify-center gap-3 rounded-lg bg-primary px-6 py-4 text-base font-bold text-white shadow-glow transition hover:bg-violet-500 disabled:opacity-50">
             {startMutation.isPending ? <Loader2 className="h-5 w-5 animate-spin" /> : <Play className="h-5 w-5" />}
             Start AI Processing
           </button>

@@ -17,6 +17,7 @@ import type {
   ProjectRead,
   ProjectUpdate,
   RetranslateRequest,
+  RuntimeLanguageRead,
   TextRegionRead,
   TextRegionUpdate,
   TranslationSettingsRead,
@@ -193,6 +194,16 @@ function ensureRegionsForPage(page: PageRead): void {
 }
 
 export const mockApi: ApiAdapter = {
+  async getRuntimeLanguage(): Promise<RuntimeLanguageRead> {
+    return delay({
+      source_language: "auto",
+      target_language: "en",
+      provider: "mock",
+      locked: true,
+      lock_message: "Ask a system administrator to change the language.",
+    });
+  },
+
   async listProjects(): Promise<ProjectRead[]> {
     return delay(store.projects.filter((project) => project.status !== "deleted"));
   },

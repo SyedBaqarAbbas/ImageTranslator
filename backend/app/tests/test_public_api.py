@@ -102,6 +102,24 @@ def _download_asset_bytes(client: TestClient, asset_id: str) -> bytes:
     return file_response.content
 
 
+def test_runtime_language_reports_configured_locked_language(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(settings, "translation_provider", "opus_mt")
+    monkeypatch.setattr(settings, "opus_mt_default_source_language", "kor")
+
+    response = client.get("/api/v1/runtime/language")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "source_language": "ko",
+        "target_language": "en",
+        "provider": "opus_mt",
+        "locked": True,
+        "lock_message": "Ask a system administrator to change the language.",
+    }
+
+
 def test_project_routes_use_public_user_without_authorization(client: TestClient) -> None:
     response = client.post(
         "/api/v1/projects",

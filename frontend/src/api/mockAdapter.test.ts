@@ -11,6 +11,17 @@ describe("mockApi", () => {
     vi.restoreAllMocks();
   });
 
+  it("returns locked runtime language metadata", async () => {
+    const mockApi = await loadMockApi();
+
+    await expect(mockApi.getRuntimeLanguage()).resolves.toMatchObject({
+      source_language: "auto",
+      target_language: "en",
+      locked: true,
+      lock_message: "Ask a system administrator to change the language.",
+    });
+  });
+
   it("soft deletes projects and hides them from project reads", async () => {
     const mockApi = await loadMockApi();
 
