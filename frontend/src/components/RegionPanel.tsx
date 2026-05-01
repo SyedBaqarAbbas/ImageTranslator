@@ -39,16 +39,38 @@ export interface RegionSaveFeedback {
 const DEFAULT_TEXT_COLOR = "#0f172a";
 const DEFAULT_FILL_COLOR = "#ffffff";
 const REGION_PANEL_WIDTH_STORAGE_KEY = "imageTranslator.editor.regionPanelWidth";
+const REGION_PANEL_HEIGHT_STORAGE_KEY = "imageTranslator.editor.regionPanelHeight";
+const SELECTED_REGION_HEIGHT_STORAGE_KEY = "imageTranslator.editor.selectedRegionHeight";
 const REGION_PANEL_MIN_WIDTH = 300;
 const REGION_PANEL_MAX_WIDTH = 560;
 const REGION_PANEL_MAX_VIEWPORT_RATIO = 0.45;
 const REGION_PANEL_DEFAULT_WIDTH = 360;
 const REGION_PANEL_KEYBOARD_STEP = 24;
+const REGION_PANEL_MIN_HEIGHT = 260;
+const REGION_PANEL_MAX_HEIGHT_VIEWPORT_RATIO = 0.75;
+const REGION_PANEL_MIN_CANVAS_HEIGHT = 220;
+const REGION_PANEL_DEFAULT_HEIGHT_VIEWPORT_RATIO = 0.52;
+const SELECTED_REGION_MIN_HEIGHT = 260;
+const SELECTED_REGION_MAX_VIEWPORT_RATIO = 0.9;
+const SELECTED_REGION_DEFAULT_HEIGHT = 420;
+const SELECTED_REGION_KEYBOARD_STEP = 24;
+
+interface SelectedRegionResizeDrag {
+  pointerId: number;
+  startClientY: number;
+  startHeight: number;
+}
 
 interface PanelResizeDrag {
   pointerId: number;
   startClientX: number;
   startWidth: number;
+}
+
+interface PanelHeightResizeDrag {
+  pointerId: number;
+  startClientY: number;
+  startHeight: number;
 }
 
 interface RegionPanelState {
@@ -148,6 +170,68 @@ function storedRegionPanelWidth(): number {
   }
 }
 
+function maxRegionPanelHeight(editorBodyHeight?: number, viewportHeight = typeof window === "undefined" ? 900 : window.innerHeight): number {
+  const viewportMax = Math.floor(viewportHeight * REGION_PANEL_MAX_HEIGHT_VIEWPORT_RATIO);
+  const editorMax = editorBodyHeight ? Math.floor(editorBodyHeight - REGION_PANEL_MIN_CANVAS_HEIGHT) : viewportMax;
+  return Math.max(REGION_PANEL_MIN_HEIGHT, Math.min(viewportMax, editorMax));
+}
+
+function defaultRegionPanelHeight(viewportHeight = typeof window === "undefined" ? 900 : window.innerHeight): number {
+  return Math.round(viewportHeight * REGION_PANEL_DEFAULT_HEIGHT_VIEWPORT_RATIO);
+}
+
+function clampRegionPanelHeight(height: number, maxHeight: number): number {
+  return Math.min(maxHeight, Math.max(REGION_PANEL_MIN_HEIGHT, Math.round(height)));
+}
+
+function storedRegionPanelHeight(maxHeight: number): number {
+  if (typeof window === "undefined") {
+    return clampRegionPanelHeight(defaultRegionPanelHeight(), maxHeight);
+  }
+
+  try {
+    const storedValue = window.localStorage.getItem(REGION_PANEL_HEIGHT_STORAGE_KEY);
+    if (!storedValue?.trim()) {
+      return clampRegionPanelHeight(defaultRegionPanelHeight(), maxHeight);
+    }
+
+    const storedHeight = Number(storedValue);
+    return Number.isFinite(storedHeight)
+      ? clampRegionPanelHeight(storedHeight, maxHeight)
+      : clampRegionPanelHeight(defaultRegionPanelHeight(), maxHeight);
+  } catch {
+    return clampRegionPanelHeight(defaultRegionPanelHeight(), maxHeight);
+  }
+}
+
+function maxSelectedRegionHeight(viewportHeight = typeof window === "undefined" ? 900 : window.innerHeight): number {
+  return Math.max(SELECTED_REGION_MIN_HEIGHT, Math.floor(viewportHeight * SELECTED_REGION_MAX_VIEWPORT_RATIO));
+}
+
+function clampSelectedRegionHeightValue(height: number, maxHeight: number): number {
+  return Math.min(maxHeight, Math.max(SELECTED_REGION_MIN_HEIGHT, Math.round(height)));
+}
+
+function storedSelectedRegionHeight(maxHeight: number): number {
+  if (typeof window === "undefined") {
+    return clampSelectedRegionHeightValue(SELECTED_REGION_DEFAULT_HEIGHT, maxHeight);
+  }
+
+  try {
+    const storedValue = window.localStorage.getItem(SELECTED_REGION_HEIGHT_STORAGE_KEY);
+    if (!storedValue?.trim()) {
+      return clampSelectedRegionHeightValue(SELECTED_REGION_DEFAULT_HEIGHT, maxHeight);
+    }
+
+    const storedHeight = Number(storedValue);
+    return Number.isFinite(storedHeight)
+      ? clampSelectedRegionHeightValue(storedHeight, maxHeight)
+      : clampSelectedRegionHeightValue(SELECTED_REGION_DEFAULT_HEIGHT, maxHeight);
+  } catch {
+    return clampSelectedRegionHeightValue(SELECTED_REGION_DEFAULT_HEIGHT, maxHeight);
+  }
+}
+
 export function RegionPanel({
   regions,
   selectedRegionId,
@@ -181,10 +265,20 @@ export function RegionPanel({
     stateForRegion,
   );
   const resizeDragRef = useRef<PanelResizeDrag | null>(null);
+  const heightResizeDragRef = useRef<PanelHeightResizeDrag | null>(null);
+  const selectedRegionResizeDragRef = useRef<SelectedRegionResizeDrag | null>(null);
+  const panelRef = useRef<HTMLElement | null>(null);
   const [preferredPanelWidth, setPreferredPanelWidth] = useState(storedRegionPanelWidth);
   const [panelMaxWidth, setPanelMaxWidth] = useState(maxRegionPanelWidth);
+  const [panelMaxHeight, setPanelMaxHeight] = useState(() => maxRegionPanelHeight());
+  const [preferredPanelHeight, setPreferredPanelHeight] = useState(() => storedRegionPanelHeight(maxRegionPanelHeight()));
+  const [selectedRegionMaxHeight, setSelectedRegionMaxHeight] = useState(() => maxSelectedRegionHeight());
+  const [selectedRegionHeight, setSelectedRegionHeight] = useState(() => storedSelectedRegionHeight(maxSelectedRegionHeight()));
   const [isResizingPanel, setIsResizingPanel] = useState(false);
+  const [isResizingPanelHeight, setIsResizingPanelHeight] = useState(false);
+  const [isResizingSelectedRegion, setIsResizingSelectedRegion] = useState(false);
   const panelWidth = clampRegionPanelWidth(preferredPanelWidth, panelMaxWidth);
+  const panelHeight = clampRegionPanelHeight(preferredPanelHeight, panelMaxHeight);
 
   useEffect(() => {
     dispatchPanel({ type: "reset", region: selectedRegion });
@@ -198,6 +292,15 @@ export function RegionPanel({
     const updatePanelBounds = () => {
       const nextMaxWidth = maxRegionPanelWidth();
       setPanelMaxWidth(nextMaxWidth);
+
+      const editorBodyHeight = panelRef.current?.parentElement?.getBoundingClientRect().height;
+      const nextMaxHeight = maxRegionPanelHeight(editorBodyHeight);
+      setPanelMaxHeight(nextMaxHeight);
+      setPreferredPanelHeight((current) => clampRegionPanelHeight(current, nextMaxHeight));
+
+      const nextSelectedRegionMaxHeight = maxSelectedRegionHeight();
+      setSelectedRegionMaxHeight(nextSelectedRegionMaxHeight);
+      setSelectedRegionHeight((current) => clampSelectedRegionHeightValue(current, nextSelectedRegionMaxHeight));
     };
 
     updatePanelBounds();
@@ -217,6 +320,30 @@ export function RegionPanel({
     }
   }, [preferredPanelWidth]);
 
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    try {
+      window.localStorage.setItem(REGION_PANEL_HEIGHT_STORAGE_KEY, String(panelHeight));
+    } catch {
+      // Persisting the layout is optional; keep resizing usable if storage is unavailable.
+    }
+  }, [panelHeight]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    try {
+      window.localStorage.setItem(SELECTED_REGION_HEIGHT_STORAGE_KEY, String(selectedRegionHeight));
+    } catch {
+      // Persisting the layout is optional; keep resizing usable if storage is unavailable.
+    }
+  }, [selectedRegionHeight]);
+
   const selectedSaveFeedback = selectedRegion && saveFeedback?.regionId === selectedRegion.id ? saveFeedback : null;
   const isSavePending = selectedSaveFeedback?.status === "pending" && selectedSaveFeedback.action === "save";
   const isApprovePending = selectedSaveFeedback?.status === "pending" && selectedSaveFeedback.action === "approve";
@@ -233,6 +360,51 @@ export function RegionPanel({
     const next = { ...styleDraft, ...patch };
     dispatchPanel({ type: "setStyle", styleDraft: next });
     onStyleDraftChange?.(selectedRegion.id, next);
+  }
+
+  function updatePanelHeight(nextHeight: number) {
+    setPreferredPanelHeight(clampRegionPanelHeight(nextHeight, panelMaxHeight));
+  }
+
+  function startPanelHeightResize(event: PointerEvent<HTMLDivElement>) {
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    heightResizeDragRef.current = {
+      pointerId: event.pointerId,
+      startClientY: event.clientY,
+      startHeight: panelHeight,
+    };
+    setIsResizingPanelHeight(true);
+  }
+
+  function resizePanelHeight(event: PointerEvent<HTMLDivElement>) {
+    const drag = heightResizeDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) {
+      return;
+    }
+
+    event.preventDefault();
+    updatePanelHeight(drag.startHeight + drag.startClientY - event.clientY);
+  }
+
+  function finishPanelHeightResize(event: PointerEvent<HTMLDivElement>) {
+    const drag = heightResizeDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) {
+      return;
+    }
+
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    heightResizeDragRef.current = null;
+    setIsResizingPanelHeight(false);
+  }
+
+  function clearPanelHeightResize(event: PointerEvent<HTMLDivElement>) {
+    if (heightResizeDragRef.current?.pointerId === event.pointerId) {
+      heightResizeDragRef.current = null;
+      setIsResizingPanelHeight(false);
+    }
   }
 
   async function pickColor(styleKey: ColorStyleKey) {
@@ -318,18 +490,130 @@ export function RegionPanel({
     updatePanelWidth(nextWidth);
   }
 
+  function resizePanelHeightWithKeyboard(event: KeyboardEvent<HTMLDivElement>) {
+    const step = event.shiftKey ? REGION_PANEL_KEYBOARD_STEP * 2 : REGION_PANEL_KEYBOARD_STEP;
+    let nextHeight: number | null = null;
+
+    if (event.key === "ArrowUp") {
+      nextHeight = panelHeight + step;
+    } else if (event.key === "ArrowDown") {
+      nextHeight = panelHeight - step;
+    } else if (event.key === "Home") {
+      nextHeight = REGION_PANEL_MIN_HEIGHT;
+    } else if (event.key === "End") {
+      nextHeight = panelMaxHeight;
+    }
+
+    if (nextHeight === null) {
+      return;
+    }
+
+    event.preventDefault();
+    updatePanelHeight(nextHeight);
+  }
+
+  function clampSelectedRegionHeight(nextHeight: number): number {
+    return clampSelectedRegionHeightValue(nextHeight, selectedRegionMaxHeight);
+  }
+
+  function startSelectedRegionResize(event: PointerEvent<HTMLDivElement>) {
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    selectedRegionResizeDragRef.current = {
+      pointerId: event.pointerId,
+      startClientY: event.clientY,
+      startHeight: selectedRegionHeight,
+    };
+    setIsResizingSelectedRegion(true);
+  }
+
+  function resizeSelectedRegion(event: PointerEvent<HTMLDivElement>) {
+    const drag = selectedRegionResizeDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) {
+      return;
+    }
+    event.preventDefault();
+    setSelectedRegionHeight(clampSelectedRegionHeight(drag.startHeight + drag.startClientY - event.clientY));
+  }
+
+  function finishSelectedRegionResize(event: PointerEvent<HTMLDivElement>) {
+    const drag = selectedRegionResizeDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) {
+      return;
+    }
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    selectedRegionResizeDragRef.current = null;
+    setIsResizingSelectedRegion(false);
+  }
+
+  function clearSelectedRegionResize(event: PointerEvent<HTMLDivElement>) {
+    if (selectedRegionResizeDragRef.current?.pointerId === event.pointerId) {
+      selectedRegionResizeDragRef.current = null;
+      setIsResizingSelectedRegion(false);
+    }
+  }
+
+  function resizeSelectedRegionWithKeyboard(event: KeyboardEvent<HTMLDivElement>) {
+    const step = event.shiftKey ? SELECTED_REGION_KEYBOARD_STEP * 2 : SELECTED_REGION_KEYBOARD_STEP;
+    let nextHeight: number | null = null;
+
+    if (event.key === "ArrowUp") {
+      nextHeight = selectedRegionHeight + step;
+    } else if (event.key === "ArrowDown") {
+      nextHeight = selectedRegionHeight - step;
+    } else if (event.key === "Home") {
+      nextHeight = SELECTED_REGION_MIN_HEIGHT;
+    } else if (event.key === "End") {
+      nextHeight = selectedRegionMaxHeight;
+    }
+
+    if (nextHeight === null) {
+      return;
+    }
+
+    event.preventDefault();
+    setSelectedRegionHeight(clampSelectedRegionHeight(nextHeight));
+  }
+
   const panelStyle = {
     "--region-panel-width": `${panelWidth}px`,
+    "--region-panel-height": `${panelHeight}px`,
   } as CSSProperties;
 
   return (
     <aside
-      className="relative flex h-[52vh] min-h-0 w-full shrink-0 flex-col border-t border-ink-border bg-surface-low lg:h-auto lg:w-[var(--region-panel-width)] lg:border-l lg:border-t-0"
+      ref={panelRef}
+      className="relative flex h-[var(--region-panel-height)] min-h-0 w-full shrink-0 flex-col border-t border-ink-border bg-surface-low lg:h-auto lg:w-[var(--region-panel-width)] lg:border-l lg:border-t-0"
       style={panelStyle}
     >
       <div
         role="separator"
-        aria-label="Resize translation cards panel"
+        aria-label="Resize translation cards panel height"
+        aria-orientation="horizontal"
+        aria-valuemin={REGION_PANEL_MIN_HEIGHT}
+        aria-valuemax={panelMaxHeight}
+        aria-valuenow={panelHeight}
+        aria-valuetext={`${panelHeight} pixels`}
+        tabIndex={0}
+        onPointerDown={startPanelHeightResize}
+        onPointerMove={resizePanelHeight}
+        onPointerUp={finishPanelHeightResize}
+        onPointerCancel={finishPanelHeightResize}
+        onLostPointerCapture={clearPanelHeightResize}
+        onKeyDown={resizePanelHeightWithKeyboard}
+        className="group absolute inset-x-0 top-0 z-20 flex h-4 -translate-y-1/2 cursor-row-resize touch-none items-center justify-center outline-none lg:hidden"
+      >
+        <span
+          className={`h-1 w-16 rounded-full transition ${
+            isResizingPanelHeight ? "bg-secondary shadow-cyan" : "bg-ink-border group-hover:bg-secondary group-focus-visible:bg-secondary"
+          }`}
+        />
+      </div>
+      <div
+        role="separator"
+        aria-label="Resize translation cards panel width"
         aria-orientation="vertical"
         aria-valuemin={REGION_PANEL_MIN_WIDTH}
         aria-valuemax={panelMaxWidth}
@@ -406,7 +690,33 @@ export function RegionPanel({
       </div>
 
       {selectedRegion ? (
-        <div className="shrink-0 border-t border-ink-border bg-surface p-4">
+        <div
+          className="relative shrink-0 overflow-y-auto border-t border-ink-border bg-surface p-4"
+          style={{ height: `${selectedRegionHeight}px`, minHeight: `${SELECTED_REGION_MIN_HEIGHT}px`, maxHeight: `${selectedRegionMaxHeight}px` }}
+        >
+          <div
+            role="separator"
+            aria-label="Resize selected region editor"
+            aria-orientation="horizontal"
+            aria-valuemin={SELECTED_REGION_MIN_HEIGHT}
+            aria-valuemax={selectedRegionMaxHeight}
+            aria-valuenow={selectedRegionHeight}
+            aria-valuetext={`${selectedRegionHeight} pixels`}
+            tabIndex={0}
+            onPointerDown={startSelectedRegionResize}
+            onPointerMove={resizeSelectedRegion}
+            onPointerUp={finishSelectedRegionResize}
+            onPointerCancel={finishSelectedRegionResize}
+            onLostPointerCapture={clearSelectedRegionResize}
+            onKeyDown={resizeSelectedRegionWithKeyboard}
+            className="group absolute inset-x-0 top-0 z-20 flex h-5 -translate-y-1/2 cursor-row-resize touch-none items-center justify-center outline-none"
+          >
+            <span
+              className={`h-1.5 w-20 rounded-full transition ${
+                isResizingSelectedRegion ? "bg-secondary shadow-cyan" : "bg-ink-border group-hover:bg-secondary group-focus-visible:bg-secondary"
+              }`}
+            />
+          </div>
           <div className="mb-3 flex items-center justify-between gap-3">
             <div>
               <p className="text-xs font-bold uppercase text-text-muted">Source</p>
@@ -439,7 +749,7 @@ export function RegionPanel({
                 onDraftChange?.(selectedRegion.id);
               }}
               disabled={!canEditSelectedRegion}
-              className="mt-2 min-h-20 w-full resize-none rounded-instrument border border-ink-border bg-background p-3 text-sm text-text-main outline-none transition focus:border-secondary focus:ring-1 focus:ring-secondary disabled:cursor-not-allowed disabled:opacity-65 lg:min-h-28"
+              className="mt-2 min-h-20 w-full resize-y rounded-instrument border border-ink-border bg-background p-3 text-sm text-text-main outline-none transition focus:border-secondary focus:ring-1 focus:ring-secondary disabled:cursor-not-allowed disabled:opacity-65 lg:min-h-28"
             />
           </label>
           <div className="mt-3 rounded-lg border border-ink-border bg-background p-3">
