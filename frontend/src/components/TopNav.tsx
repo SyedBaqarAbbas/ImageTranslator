@@ -33,7 +33,6 @@ export function TopNav() {
   const navLinks = [
     ["Projects", "/projects"],
     ["Assets", "/assets"],
-    ["Team", "/team"],
     ["Settings", "/settings"],
   ] as const;
 

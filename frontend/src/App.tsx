@@ -13,7 +13,6 @@ import { ProjectSetup } from "./pages/ProjectSetup";
 import { Review } from "./pages/Review";
 import { Settings } from "./pages/Settings";
 import { Support } from "./pages/Support";
-import { Team } from "./pages/Team";
 import { Typefaces } from "./pages/Typefaces";
 
 export default function App() {
@@ -23,7 +22,7 @@ export default function App() {
       <Route path="/projects" element={<Dashboard />} />
       <Route path="/projects/new" element={<ProjectSetup />} />
       <Route path="/assets" element={<Assets />} />
-      <Route path="/team" element={<Team />} />
+      <Route path="/team" element={<Navigate to="/projects" replace />} />
       <Route path="/settings" element={<Settings />} />
       <Route path="/batch-ocr" element={<BatchOCR />} />
       <Route path="/typefaces" element={<Typefaces />} />

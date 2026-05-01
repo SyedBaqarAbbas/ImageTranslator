@@ -92,11 +92,19 @@ async function clickTopNav(page, label, expectedPath) {
   await page.waitForLoadState("networkidle");
   await page.screenshot({ path: path.join(screenshotsDir, "navbar-fixes-dashboard.png"), fullPage: true });
   record("Dashboard loads", await page.getByRole("heading", { name: "Projects" }).isVisible());
+  record("Top nav Team link is absent", (await page.locator("header").getByRole("link", { name: "Team" }).count()) === 0);
 
   await clickTopNav(page, "Assets", "/assets");
-  await clickTopNav(page, "Team", "/team");
   await clickTopNav(page, "Settings", "/settings");
   await clickTopNav(page, "Projects", "/projects");
+
+  await page.goto(`${TARGET_URL}/team`);
+  await page.waitForLoadState("networkidle");
+  await expectPath(page, "Team route redirects to projects", "/projects");
+  record(
+    "Team management controls are not rendered",
+    !(await page.getByRole("button", { name: /Draft invite/i }).isVisible().catch(() => false)),
+  );
 
   const searchInput = page.getByPlaceholder("Search projects...").first();
   await searchInput.fill("Navbar Fix");
