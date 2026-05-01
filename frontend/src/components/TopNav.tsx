@@ -1,20 +1,73 @@
 import { Bell, CircleHelp, Search, Share2, UploadCloud } from "lucide-react";
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
 
 const SHARE_ENABLED = false;
+type TopNavMenu = "notifications" | "help" | "share";
 
 export function TopNav() {
   const navigate = useNavigate();
   const location = useLocation();
   const [search, setSearch] = useState("");
-  const [openMenu, setOpenMenu] = useState<"notifications" | "help" | "share" | null>(null);
+  const [openMenu, setOpenMenu] = useState<TopNavMenu | null>(null);
   const [shareStatus, setShareStatus] = useState("Copy link");
+  const notificationsTriggerRef = useRef<HTMLButtonElement>(null);
+  const helpTriggerRef = useRef<HTMLButtonElement>(null);
+  const shareTriggerRef = useRef<HTMLButtonElement>(null);
+  const notificationsPopoverRef = useRef<HTMLDivElement>(null);
+  const helpPopoverRef = useRef<HTMLDivElement>(null);
+  const sharePopoverRef = useRef<HTMLDivElement>(null);
   const currentUrl = `${window.location.origin}${location.pathname}${location.search}`;
 
   useEffect(() => {
     setOpenMenu(null);
   }, [location.pathname, location.search]);
+
+  useEffect(() => {
+    if (openMenu === null) {
+      return;
+    }
+
+    const activeMenu = openMenu;
+
+    function getActiveElements() {
+      switch (activeMenu) {
+        case "notifications":
+          return { trigger: notificationsTriggerRef.current, popover: notificationsPopoverRef.current };
+        case "help":
+          return { trigger: helpTriggerRef.current, popover: helpPopoverRef.current };
+        case "share":
+          return { trigger: shareTriggerRef.current, popover: sharePopoverRef.current };
+      }
+    }
+
+    function handlePointerDown(event: PointerEvent) {
+      if (!(event.target instanceof Node)) {
+        return;
+      }
+
+      const { trigger, popover } = getActiveElements();
+      if (trigger?.contains(event.target) || popover?.contains(event.target)) {
+        return;
+      }
+
+      setOpenMenu(null);
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setOpenMenu(null);
+      }
+    }
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [openMenu]);
 
   function handleSearchSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -77,6 +130,8 @@ export function TopNav() {
             />
           </form>
           <button
+            ref={notificationsTriggerRef}
+            type="button"
             className="rounded-instrument p-2 text-text-muted transition hover:bg-surface-high hover:text-white"
             aria-label="Notifications"
             aria-expanded={openMenu === "notifications"}
@@ -85,6 +140,8 @@ export function TopNav() {
             <Bell className="h-5 w-5" />
           </button>
           <button
+            ref={helpTriggerRef}
+            type="button"
             className="hidden rounded-instrument p-2 text-text-muted transition hover:bg-surface-high hover:text-white sm:block"
             aria-label="Help"
             aria-expanded={openMenu === "help"}
@@ -94,6 +151,8 @@ export function TopNav() {
           </button>
           <div className="relative hidden xl:block">
             <button
+              ref={shareTriggerRef}
+              type="button"
               className="hidden items-center gap-2 rounded-instrument border border-ink-border px-3 py-2 text-sm font-semibold text-text-main transition hover:bg-surface-high xl:flex"
               onClick={handleShare}
               aria-expanded={openMenu === "share"}
@@ -104,7 +163,10 @@ export function TopNav() {
 
             {openMenu === "share" ? (
               SHARE_ENABLED ? (
-                <div className="absolute left-0 top-[calc(100%+0.5rem)] w-80 rounded-lg border border-ink-border bg-surface p-4 shadow-2xl">
+                <div
+                  ref={sharePopoverRef}
+                  className="absolute left-0 top-[calc(100%+0.5rem)] w-80 rounded-lg border border-ink-border bg-surface p-4 shadow-2xl"
+                >
                   <div className="mb-3 flex items-center justify-between gap-3">
                     <p className="font-display text-sm font-bold text-white">Share workspace</p>
                     <span className="text-xs font-bold text-secondary">{shareStatus}</span>
@@ -117,13 +179,17 @@ export function TopNav() {
                   />
                 </div>
               ) : (
-                <div className="absolute left-1/2 top-[calc(100%+0.5rem)] -translate-x-1/2 rounded-lg border border-ink-border bg-surface px-4 py-3 text-center shadow-2xl">
+                <div
+                  ref={sharePopoverRef}
+                  className="absolute left-1/2 top-[calc(100%+0.5rem)] -translate-x-1/2 rounded-lg border border-ink-border bg-surface px-4 py-3 text-center shadow-2xl"
+                >
                   <p className="font-display text-sm font-bold text-white">Coming Soon</p>
                 </div>
               )
             ) : null}
           </div>
           <button
+            type="button"
             onClick={() => navigate("/")}
             aria-label="New project"
             aria-current={location.pathname === "/" ? "page" : undefined}
@@ -134,7 +200,10 @@ export function TopNav() {
           </button>
 
           {openMenu === "notifications" ? (
-            <div className="absolute right-20 top-12 w-80 rounded-lg border border-ink-border bg-surface p-4 shadow-2xl sm:right-28">
+            <div
+              ref={notificationsPopoverRef}
+              className="absolute right-20 top-12 w-80 rounded-lg border border-ink-border bg-surface p-4 shadow-2xl sm:right-28"
+            >
               <p className="font-display text-sm font-bold text-white">Notifications</p>
               <div className="mt-3 rounded-instrument border border-ink-border bg-background p-3 text-sm text-text-muted">
                 No new workspace notifications.
@@ -143,7 +212,10 @@ export function TopNav() {
           ) : null}
 
           {openMenu === "help" ? (
-            <div className="absolute right-12 top-12 w-64 rounded-lg border border-ink-border bg-surface p-2 shadow-2xl sm:right-16">
+            <div
+              ref={helpPopoverRef}
+              className="absolute right-12 top-12 w-64 rounded-lg border border-ink-border bg-surface p-2 shadow-2xl sm:right-16"
+            >
               <Link className="block rounded-instrument px-3 py-2 text-sm font-semibold text-text-muted opacity-50 cursor-not-allowed pointer-events-none" to="/support" aria-disabled="true" onClick={(e) => e.preventDefault()}>
                   Support
               </Link>
