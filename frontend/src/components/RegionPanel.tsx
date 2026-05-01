@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useReducer } from "react";
+import { useEffect, useMemo, useReducer, useRef, useState } from "react";
+import type { CSSProperties, KeyboardEvent, PointerEvent } from "react";
 import { BrainCircuit, Pipette, Save, Sparkles, Trash2 } from "lucide-react";
 
 import { statusLabel } from "../lib/routing";
@@ -37,6 +38,18 @@ export interface RegionSaveFeedback {
 
 const DEFAULT_TEXT_COLOR = "#0f172a";
 const DEFAULT_FILL_COLOR = "#ffffff";
+const REGION_PANEL_WIDTH_STORAGE_KEY = "imageTranslator.editor.regionPanelWidth";
+const REGION_PANEL_MIN_WIDTH = 300;
+const REGION_PANEL_MAX_WIDTH = 560;
+const REGION_PANEL_MAX_VIEWPORT_RATIO = 0.45;
+const REGION_PANEL_DEFAULT_WIDTH = 360;
+const REGION_PANEL_KEYBOARD_STEP = 24;
+
+interface PanelResizeDrag {
+  pointerId: number;
+  startClientX: number;
+  startWidth: number;
+}
 
 interface RegionPanelState {
   draft: string;
@@ -105,6 +118,36 @@ function numberValue(style: StyleDraft, key: string, fallback: number): number {
   return fallback;
 }
 
+function maxRegionPanelWidth(viewportWidth = typeof window === "undefined" ? 1440 : window.innerWidth): number {
+  return Math.max(REGION_PANEL_MIN_WIDTH, Math.min(REGION_PANEL_MAX_WIDTH, Math.floor(viewportWidth * REGION_PANEL_MAX_VIEWPORT_RATIO)));
+}
+
+function clampRegionPanelStoredWidth(width: number): number {
+  return Math.min(REGION_PANEL_MAX_WIDTH, Math.max(REGION_PANEL_MIN_WIDTH, Math.round(width)));
+}
+
+function clampRegionPanelWidth(width: number, maxWidth = maxRegionPanelWidth()): number {
+  return Math.min(maxWidth, clampRegionPanelStoredWidth(width));
+}
+
+function storedRegionPanelWidth(): number {
+  if (typeof window === "undefined") {
+    return REGION_PANEL_DEFAULT_WIDTH;
+  }
+
+  try {
+    const storedValue = window.localStorage.getItem(REGION_PANEL_WIDTH_STORAGE_KEY);
+    if (!storedValue?.trim()) {
+      return clampRegionPanelStoredWidth(REGION_PANEL_DEFAULT_WIDTH);
+    }
+
+    const storedWidth = Number(storedValue);
+    return Number.isFinite(storedWidth) ? clampRegionPanelStoredWidth(storedWidth) : clampRegionPanelStoredWidth(REGION_PANEL_DEFAULT_WIDTH);
+  } catch {
+    return clampRegionPanelStoredWidth(REGION_PANEL_DEFAULT_WIDTH);
+  }
+}
+
 export function RegionPanel({
   regions,
   selectedRegionId,
@@ -137,10 +180,42 @@ export function RegionPanel({
     selectedRegion,
     stateForRegion,
   );
+  const resizeDragRef = useRef<PanelResizeDrag | null>(null);
+  const [preferredPanelWidth, setPreferredPanelWidth] = useState(storedRegionPanelWidth);
+  const [panelMaxWidth, setPanelMaxWidth] = useState(maxRegionPanelWidth);
+  const [isResizingPanel, setIsResizingPanel] = useState(false);
+  const panelWidth = clampRegionPanelWidth(preferredPanelWidth, panelMaxWidth);
 
   useEffect(() => {
     dispatchPanel({ type: "reset", region: selectedRegion });
   }, [selectedRegion]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const updatePanelBounds = () => {
+      const nextMaxWidth = maxRegionPanelWidth();
+      setPanelMaxWidth(nextMaxWidth);
+    };
+
+    updatePanelBounds();
+    window.addEventListener("resize", updatePanelBounds);
+    return () => window.removeEventListener("resize", updatePanelBounds);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    try {
+      window.localStorage.setItem(REGION_PANEL_WIDTH_STORAGE_KEY, String(preferredPanelWidth));
+    } catch {
+      // Persisting the layout is optional; keep resizing usable if storage is unavailable.
+    }
+  }, [preferredPanelWidth]);
 
   const selectedSaveFeedback = selectedRegion && saveFeedback?.regionId === selectedRegion.id ? saveFeedback : null;
   const isSavePending = selectedSaveFeedback?.status === "pending" && selectedSaveFeedback.action === "save";
@@ -176,8 +251,105 @@ export function RegionPanel({
     }
   }
 
+  function updatePanelWidth(nextWidth: number) {
+    setPreferredPanelWidth(clampRegionPanelWidth(nextWidth, panelMaxWidth));
+  }
+
+  function startPanelResize(event: PointerEvent<HTMLDivElement>) {
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    resizeDragRef.current = {
+      pointerId: event.pointerId,
+      startClientX: event.clientX,
+      startWidth: panelWidth,
+    };
+    setIsResizingPanel(true);
+  }
+
+  function resizePanel(event: PointerEvent<HTMLDivElement>) {
+    const drag = resizeDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) {
+      return;
+    }
+
+    event.preventDefault();
+    updatePanelWidth(drag.startWidth + drag.startClientX - event.clientX);
+  }
+
+  function finishPanelResize(event: PointerEvent<HTMLDivElement>) {
+    const drag = resizeDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) {
+      return;
+    }
+
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    resizeDragRef.current = null;
+    setIsResizingPanel(false);
+  }
+
+  function clearPanelResize(event: PointerEvent<HTMLDivElement>) {
+    if (resizeDragRef.current?.pointerId === event.pointerId) {
+      resizeDragRef.current = null;
+      setIsResizingPanel(false);
+    }
+  }
+
+  function resizePanelWithKeyboard(event: KeyboardEvent<HTMLDivElement>) {
+    const step = event.shiftKey ? REGION_PANEL_KEYBOARD_STEP * 2 : REGION_PANEL_KEYBOARD_STEP;
+    let nextWidth: number | null = null;
+
+    if (event.key === "ArrowLeft" || event.key === "ArrowUp") {
+      nextWidth = panelWidth + step;
+    } else if (event.key === "ArrowRight" || event.key === "ArrowDown") {
+      nextWidth = panelWidth - step;
+    } else if (event.key === "Home") {
+      nextWidth = REGION_PANEL_MIN_WIDTH;
+    } else if (event.key === "End") {
+      nextWidth = panelMaxWidth;
+    }
+
+    if (nextWidth === null) {
+      return;
+    }
+
+    event.preventDefault();
+    updatePanelWidth(nextWidth);
+  }
+
+  const panelStyle = {
+    "--region-panel-width": `${panelWidth}px`,
+  } as CSSProperties;
+
   return (
-    <aside className="flex h-[52vh] min-h-0 w-full shrink-0 flex-col border-t border-ink-border bg-surface-low lg:h-auto lg:w-[360px] lg:border-l lg:border-t-0">
+    <aside
+      className="relative flex h-[52vh] min-h-0 w-full shrink-0 flex-col border-t border-ink-border bg-surface-low lg:h-auto lg:w-[var(--region-panel-width)] lg:border-l lg:border-t-0"
+      style={panelStyle}
+    >
+      <div
+        role="separator"
+        aria-label="Resize translation cards panel"
+        aria-orientation="vertical"
+        aria-valuemin={REGION_PANEL_MIN_WIDTH}
+        aria-valuemax={panelMaxWidth}
+        aria-valuenow={panelWidth}
+        aria-valuetext={`${panelWidth} pixels`}
+        tabIndex={0}
+        onPointerDown={startPanelResize}
+        onPointerMove={resizePanel}
+        onPointerUp={finishPanelResize}
+        onPointerCancel={finishPanelResize}
+        onLostPointerCapture={clearPanelResize}
+        onKeyDown={resizePanelWithKeyboard}
+        className="group absolute inset-y-0 left-0 z-20 hidden w-4 -translate-x-1/2 cursor-col-resize touch-none items-center justify-center outline-none lg:flex"
+      >
+        <span
+          className={`h-16 w-1 rounded-full transition ${
+            isResizingPanel ? "bg-secondary shadow-cyan" : "bg-ink-border group-hover:bg-secondary group-focus-visible:bg-secondary"
+          }`}
+        />
+      </div>
       <div className="shrink-0 border-b border-ink-border p-4">
         <p className="text-xs font-bold uppercase text-secondary">Translation Cards</p>
         <h2 className="mt-1 font-display text-lg font-bold text-white">{regions.length} detected regions</h2>
@@ -212,7 +384,9 @@ export function RegionPanel({
                     ) : null}
                   </span>
                 </div>
-                <p className="line-clamp-1 text-sm text-text-main lg:line-clamp-2">{region.user_text || region.translated_text || "Untranslated"}</p>
+                <p className="line-clamp-1 break-words text-sm text-text-main lg:line-clamp-2">
+                  {region.user_text || region.translated_text || "Untranslated"}
+                </p>
                 <p className="mt-2 hidden text-xs text-text-muted lg:block">
                   OCR {Math.round((region.ocr_confidence ?? 0) * 100)}% · Translation {Math.round((region.translation_confidence ?? 0) * 100)}%
                 </p>
@@ -236,7 +410,7 @@ export function RegionPanel({
           <div className="mb-3 flex items-center justify-between gap-3">
             <div>
               <p className="text-xs font-bold uppercase text-text-muted">Source</p>
-              <p className="mt-1 text-sm text-text-main">{selectedRegion.detected_text || "No OCR text"}</p>
+              <p className="mt-1 break-words text-sm text-text-main">{selectedRegion.detected_text || "No OCR text"}</p>
             </div>
             <button
               onClick={() => {

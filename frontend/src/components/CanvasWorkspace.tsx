@@ -541,7 +541,7 @@ export function CanvasWorkspace({
   }
 
   return (
-    <div ref={containerRef} className="min-h-[240px] flex-1 overflow-auto bg-background p-3 md:p-4 lg:min-h-0 lg:p-8">
+    <div ref={containerRef} className="min-h-[240px] min-w-0 flex-1 overflow-auto bg-background p-3 md:p-4 lg:min-h-0 lg:p-8">
       <div
         className="flex min-h-full min-w-full items-center justify-center"
         style={{
