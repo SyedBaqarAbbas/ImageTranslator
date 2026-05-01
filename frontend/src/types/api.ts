@@ -258,6 +258,7 @@ export interface ApiAdapter {
   updateRegion(regionId: string, payload: TextRegionUpdate): Promise<TextRegionRead>;
   deleteRegion(regionId: string): Promise<ProcessingJobRead>;
   retranslateRegion(regionId: string, payload: RetranslateRequest): Promise<ProcessingJobRead>;
+  getProcessingJob(jobId: string): Promise<ProcessingJobRead>;
   processProject(projectId: string, payload: ProcessProjectRequest): Promise<ProcessingJobRead>;
   getProcessingJobs(projectId: string): Promise<ProcessingJobRead[]>;
   createExport(projectId: string, payload: ExportRequest): Promise<ExportJobRead>;
