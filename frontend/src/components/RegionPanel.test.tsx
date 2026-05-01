@@ -83,6 +83,47 @@ describe("RegionPanel", () => {
     expect(screen.getByRole("status")).toHaveTextContent("Saving...");
   });
 
+  it("previews and saves fill opacity style changes", () => {
+    const onSave = vi.fn();
+    const onStyleDraftChange = vi.fn();
+    renderRegionPanel({ onSave, onStyleDraftChange }, { render_style: { fontSize: 24, backgroundColor: "#ffeeaa" } });
+
+    const fillOpacity = screen.getByLabelText(/fill opacity/i);
+    expect(fillOpacity).toHaveValue("0.27");
+    expect(screen.getByText("27%")).toBeInTheDocument();
+
+    fireEvent.change(fillOpacity, { target: { value: "0.5" } });
+
+    expect(onStyleDraftChange).toHaveBeenLastCalledWith(
+      "region-1",
+      expect.objectContaining({
+        backgroundColor: "#ffeeaa",
+        fillOpacity: 0.5,
+      }),
+    );
+    expect(screen.getByText("50%")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /save/i }));
+
+    expect(onSave).toHaveBeenCalledWith(
+      "region-1",
+      expect.objectContaining({
+        render_style: expect.objectContaining({
+          backgroundColor: "#ffeeaa",
+          fillOpacity: 0.5,
+        }),
+      }),
+      "save",
+    );
+  });
+
+  it("restores saved fill opacity in the style controls", () => {
+    renderRegionPanel({}, { render_style: { fontSize: 24, fillOpacity: "0.85" } });
+
+    expect(screen.getByLabelText(/fill opacity/i)).toHaveValue("0.85");
+    expect(screen.getByText("85%")).toBeInTheDocument();
+  });
+
   it("uses and persists the default desktop width for first-time sessions", () => {
     renderRegionPanel();
 
