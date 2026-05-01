@@ -1,0 +1,6 @@
+{
+  "ignore": {
+    "rules": ["react-doctor/no-react19-deprecated-apis"],
+    "files": ["tests/manual/**", "tests/button-audit/pages/**"]
+  }
+}

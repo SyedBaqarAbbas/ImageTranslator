@@ -1,5 +1,5 @@
 /* eslint-disable react-refresh/only-export-components */
-import { createContext, type ReactNode, useContext, useMemo, useState } from "react";
+import { createContext, type ReactNode, useContext, useMemo, useReducer } from "react";
 
 interface UploadFlowContextValue {
   pendingFiles: File[];
@@ -9,8 +9,12 @@ interface UploadFlowContextValue {
 
 const UploadFlowContext = createContext<UploadFlowContextValue | null>(null);
 
+function pendingFilesReducer(_current: File[], next: File[]): File[] {
+  return next;
+}
+
 export function UploadFlowProvider({ children }: { children: ReactNode }) {
-  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
+  const [pendingFiles, setPendingFiles] = useReducer(pendingFilesReducer, []);
   const value = useMemo(
     () => ({
       pendingFiles,

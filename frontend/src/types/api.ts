@@ -1,4 +1,4 @@
-export type ProjectStatus =
+type ProjectStatus =
   | "draft"
   | "uploading"
   | "ready"
@@ -11,7 +11,7 @@ export type ProjectStatus =
   | "failed"
   | "deleted";
 
-export type PageStatus =
+type PageStatus =
   | "uploaded"
   | "queued"
   | "preprocessing"
@@ -23,7 +23,7 @@ export type PageStatus =
   | "completed"
   | "failed";
 
-export type TextRegionStatus =
+type TextRegionStatus =
   | "detected"
   | "ocr_low_confidence"
   | "ocr_complete"
@@ -34,13 +34,13 @@ export type TextRegionStatus =
   | "needs_review"
   | "failed";
 
-export type JobStatus = "queued" | "running" | "succeeded" | "partial_success" | "failed" | "cancelled";
+type JobStatus = "queued" | "running" | "succeeded" | "partial_success" | "failed" | "cancelled";
 export type ReplacementMode = "replace" | "overlay" | "bilingual" | "side_panel" | "subtitle";
 export type ReadingDirection = "ltr" | "rtl" | "ttb";
-export type RegionType = "speech" | "caption" | "narration" | "sfx" | "unknown";
+type RegionType = "speech" | "caption" | "narration" | "sfx" | "unknown";
 export type ExportFormat = "zip" | "pdf" | "images";
 
-export interface Timestamped {
+interface Timestamped {
   created_at: string;
   updated_at: string;
 }

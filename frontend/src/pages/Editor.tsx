@@ -1,5 +1,5 @@
 import { Columns2, Download, Minus, Plus, RotateCcw, Save, Undo2 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useReducer } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
 
@@ -11,16 +11,52 @@ import { WorkspaceShell } from "../components/WorkspaceShell";
 import { assetUrlForPage } from "../lib/assets";
 import type { BoundingBox, TextRegionRead, TextRegionUpdate } from "../types/api";
 
+type EditorMode = "original" | "translated";
+
+interface EditorState {
+  selectedPageId?: string;
+  selectedRegionId?: string;
+  mode: EditorMode;
+  comparison: boolean;
+  zoom: number;
+  workspaceStatus: string;
+  styleDrafts: Record<string, Record<string, unknown>>;
+}
+
+type EditorAction =
+  | { type: "patch"; patch: Partial<EditorState> }
+  | { type: "toggleComparison" }
+  | { type: "setStyleDraft"; regionId: string; renderStyle: Record<string, unknown> };
+
+const initialEditorState: EditorState = {
+  mode: "translated",
+  comparison: false,
+  zoom: 1,
+  workspaceStatus: "Unsaved",
+  styleDrafts: {},
+};
+
+function editorReducer(state: EditorState, action: EditorAction): EditorState {
+  if (action.type === "toggleComparison") {
+    return { ...state, comparison: !state.comparison };
+  }
+
+  if (action.type === "setStyleDraft") {
+    return {
+      ...state,
+      workspaceStatus: "Unsaved",
+      styleDrafts: { ...state.styleDrafts, [action.regionId]: action.renderStyle },
+    };
+  }
+
+  return { ...state, ...action.patch };
+}
+
 export function Editor() {
   const { projectId = "" } = useParams();
   const queryClient = useQueryClient();
-  const [selectedPageId, setSelectedPageId] = useState<string | undefined>();
-  const [selectedRegionId, setSelectedRegionId] = useState<string | undefined>();
-  const [mode, setMode] = useState<"original" | "translated">("translated");
-  const [comparison, setComparison] = useState(false);
-  const [zoom, setZoom] = useState(1);
-  const [workspaceStatus, setWorkspaceStatus] = useState("Unsaved");
-  const [styleDrafts, setStyleDrafts] = useState<Record<string, Record<string, unknown>>>({});
+  const [{ selectedPageId, selectedRegionId, mode, comparison, zoom, workspaceStatus, styleDrafts }, dispatchEditor] =
+    useReducer(editorReducer, initialEditorState);
 
   const projectQuery = useQuery({ queryKey: queryKeys.project(projectId), queryFn: () => api.getProject(projectId), enabled: Boolean(projectId) });
   const pagesQuery = useQuery({ queryKey: queryKeys.pages(projectId), queryFn: () => api.listPages(projectId), enabled: Boolean(projectId) });
@@ -28,7 +64,9 @@ export function Editor() {
   const selectedPage = pages.find((page) => page.id === selectedPageId) ?? pages[0];
 
   useEffect(() => {
-    if (!selectedPageId && pages[0]) setSelectedPageId(pages[0].id);
+    if (!selectedPageId && pages[0]) {
+      dispatchEditor({ type: "patch", patch: { selectedPageId: pages[0].id } });
+    }
   }, [pages, selectedPageId]);
 
   const regionsQuery = useQuery({
@@ -47,14 +85,18 @@ export function Editor() {
   );
 
   useEffect(() => {
-    if (!selectedRegionId && regions[0]) setSelectedRegionId(regions[0].id);
+    if (!selectedRegionId && regions[0]) {
+      dispatchEditor({ type: "patch", patch: { selectedRegionId: regions[0].id } });
+    }
   }, [regions, selectedRegionId]);
 
   const saveMutation = useMutation({
     mutationFn: ({ regionId, payload }: { regionId: string; payload: TextRegionUpdate }) => api.updateRegion(regionId, payload),
     onSuccess: async () => {
-      if (selectedPage) await queryClient.invalidateQueries({ queryKey: queryKeys.regions(selectedPage.id) });
-      if (projectId) await queryClient.invalidateQueries({ queryKey: queryKeys.pages(projectId) });
+      await Promise.all([
+        selectedPage ? queryClient.invalidateQueries({ queryKey: queryKeys.regions(selectedPage.id) }) : Promise.resolve(),
+        projectId ? queryClient.invalidateQueries({ queryKey: queryKeys.pages(projectId) }) : Promise.resolve(),
+      ]);
     },
   });
 
@@ -80,17 +122,21 @@ export function Editor() {
       }
     },
     onSettled: async () => {
-      if (selectedPage) await queryClient.invalidateQueries({ queryKey: queryKeys.regions(selectedPage.id) });
-      if (projectId) await queryClient.invalidateQueries({ queryKey: queryKeys.pages(projectId) });
+      await Promise.all([
+        selectedPage ? queryClient.invalidateQueries({ queryKey: queryKeys.regions(selectedPage.id) }) : Promise.resolve(),
+        projectId ? queryClient.invalidateQueries({ queryKey: queryKeys.pages(projectId) }) : Promise.resolve(),
+      ]);
     },
   });
 
   const deleteMutation = useMutation({
     mutationFn: (regionId: string) => api.deleteRegion(regionId),
     onSuccess: async () => {
-      setSelectedRegionId(undefined);
-      if (selectedPage) await queryClient.invalidateQueries({ queryKey: queryKeys.regions(selectedPage.id) });
-      if (projectId) await queryClient.invalidateQueries({ queryKey: queryKeys.pages(projectId) });
+      dispatchEditor({ type: "patch", patch: { selectedRegionId: undefined } });
+      await Promise.all([
+        selectedPage ? queryClient.invalidateQueries({ queryKey: queryKeys.regions(selectedPage.id) }) : Promise.resolve(),
+        projectId ? queryClient.invalidateQueries({ queryKey: queryKeys.pages(projectId) }) : Promise.resolve(),
+      ]);
     },
   });
 
@@ -100,9 +146,11 @@ export function Editor() {
         source_text: sourceText,
         target_language: projectQuery.data?.target_language,
         tone: projectQuery.data?.translation_tone,
-      }),
+    }),
     onSuccess: async () => {
-      if (selectedPage) await queryClient.invalidateQueries({ queryKey: queryKeys.regions(selectedPage.id) });
+      if (selectedPage) {
+        await queryClient.invalidateQueries({ queryKey: queryKeys.regions(selectedPage.id) });
+      }
     },
   });
 
@@ -138,10 +186,7 @@ export function Editor() {
               <button
                 type="button"
                 onClick={() => {
-                  setMode("translated");
-                  setComparison(false);
-                  setZoom(1);
-                  setWorkspaceStatus("View reset");
+                  dispatchEditor({ type: "patch", patch: { mode: "translated", comparison: false, zoom: 1, workspaceStatus: "View reset" } });
                 }}
                 className="rounded-instrument p-2 text-text-muted transition hover:bg-surface-high hover:text-white"
                 aria-label="Reset view"
@@ -155,7 +200,7 @@ export function Editor() {
             <div className="flex items-center gap-2">
               <div className="hidden rounded-instrument border border-ink-border bg-background p-1 sm:flex">
                 {(["original", "translated"] as const).map((value) => (
-                  <button key={value} aria-pressed={mode === value} onClick={() => setMode(value)} className={`rounded-instrument px-3 py-1.5 text-xs font-bold capitalize ${mode === value ? "bg-surface-high text-white" : "text-text-muted hover:text-white"}`}>
+                  <button key={value} aria-pressed={mode === value} onClick={() => dispatchEditor({ type: "patch", patch: { mode: value } })} className={`rounded-instrument px-3 py-1.5 text-xs font-bold capitalize ${mode === value ? "bg-surface-high text-white" : "text-text-muted hover:text-white"}`}>
                     {value}
                   </button>
                 ))}
@@ -163,7 +208,7 @@ export function Editor() {
               <button
                 type="button"
                 aria-pressed={comparison}
-                onClick={() => setComparison((enabled) => !enabled)}
+                onClick={() => dispatchEditor({ type: "toggleComparison" })}
                 className={`rounded-instrument p-2 transition hover:bg-surface-high hover:text-white ${comparison ? "bg-secondary/10 text-secondary" : "text-text-muted"}`}
                 aria-label="Compare split"
               >
@@ -172,7 +217,7 @@ export function Editor() {
               <button
                 type="button"
                 disabled={zoom <= 0.75}
-                onClick={() => setZoom((value) => Math.max(0.75, Number((value - 0.15).toFixed(2))))}
+                onClick={() => dispatchEditor({ type: "patch", patch: { zoom: Math.max(0.75, Number((zoom - 0.15).toFixed(2))) } })}
                 className="hidden rounded-instrument p-2 text-text-muted transition hover:bg-surface-high hover:text-white disabled:cursor-not-allowed disabled:opacity-45 sm:block"
                 aria-label="Zoom out"
               >
@@ -181,7 +226,7 @@ export function Editor() {
               <button
                 type="button"
                 disabled={zoom >= 1.45}
-                onClick={() => setZoom((value) => Math.min(1.45, Number((value + 0.15).toFixed(2))))}
+                onClick={() => dispatchEditor({ type: "patch", patch: { zoom: Math.min(1.45, Number((zoom + 0.15).toFixed(2))) } })}
                 className="hidden rounded-instrument p-2 text-text-muted transition hover:bg-surface-high hover:text-white disabled:cursor-not-allowed disabled:opacity-45 sm:block"
                 aria-label="Zoom in"
               >
@@ -201,8 +246,7 @@ export function Editor() {
                   <button
                     key={page.id}
                     onClick={() => {
-                      setSelectedPageId(page.id);
-                      setSelectedRegionId(undefined);
+                      dispatchEditor({ type: "patch", patch: { selectedPageId: page.id, selectedRegionId: undefined } });
                     }}
                     disabled={selectedPage.id === page.id}
                     aria-current={selectedPage.id === page.id ? "true" : undefined}
@@ -221,7 +265,7 @@ export function Editor() {
               height={selectedPage.height}
               regions={displayRegions}
               selectedRegionId={selectedRegionId}
-              onSelectRegion={setSelectedRegionId}
+              onSelectRegion={(regionId) => dispatchEditor({ type: "patch", patch: { selectedRegionId: regionId } })}
               onMoveRegion={(regionId, boundingBox) => moveMutation.mutate({ regionId, boundingBox })}
               mode={mode}
               zoom={zoom}
@@ -231,13 +275,12 @@ export function Editor() {
             <RegionPanel
               regions={displayRegions}
               selectedRegionId={selectedRegionId}
-              onSelect={setSelectedRegionId}
+              onSelect={(regionId) => dispatchEditor({ type: "patch", patch: { selectedRegionId: regionId } })}
               onSave={(regionId, payload) => saveMutation.mutate({ regionId, payload })}
               onRetranslate={(regionId, sourceText) => retranslateMutation.mutate({ regionId, sourceText })}
               onDelete={(regionId) => deleteMutation.mutate(regionId)}
               onStyleDraftChange={(regionId, renderStyle) => {
-                setWorkspaceStatus("Unsaved");
-                setStyleDrafts((current) => ({ ...current, [regionId]: renderStyle }));
+                dispatchEditor({ type: "setStyleDraft", regionId, renderStyle });
               }}
               isSaving={saveMutation.isPending || moveMutation.isPending}
               isDeleting={deleteMutation.isPending}
@@ -249,7 +292,7 @@ export function Editor() {
             <span className="hidden text-secondary sm:inline">{comparison ? "Compare split on" : `Zoom ${Math.round(zoom * 100)}%`} · {workspaceStatus}</span>
             <button
               onClick={() => {
-                setWorkspaceStatus("Saved");
+                dispatchEditor({ type: "patch", patch: { workspaceStatus: "Saved" } });
                 if (selectedRegionId) saveMutation.mutate({ regionId: selectedRegionId, payload: { auto_rerender: true } });
               }}
               className="inline-flex items-center gap-2 rounded-instrument border border-ink-border px-3 py-1.5 text-text-main transition hover:bg-surface-high"

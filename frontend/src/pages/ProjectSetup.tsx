@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useReducer } from "react";
 import { ArrowLeft, Loader2, Play, UploadCloud } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "react-router-dom";
@@ -8,37 +8,71 @@ import { UploadDropzone } from "../components/UploadDropzone";
 import { useUploadFlow } from "../lib/uploadFlow";
 import type { ReadingDirection, ReplacementMode } from "../types/api";
 
+interface ProjectSetupState {
+  name: string;
+  description: string;
+  sourceLanguage: string;
+  targetLanguage: string;
+  tone: string;
+  replacementMode: ReplacementMode;
+  readingDirection: ReadingDirection;
+  preserveSfx: boolean;
+  error: string | null;
+  previewUrl?: string;
+}
+
+const initialProjectSetupState: ProjectSetupState = {
+  name: "",
+  description: "",
+  sourceLanguage: "auto",
+  targetLanguage: "en",
+  tone: "natural",
+  replacementMode: "replace",
+  readingDirection: "rtl",
+  preserveSfx: true,
+  error: null,
+};
+
+function projectSetupReducer(state: ProjectSetupState, patch: Partial<ProjectSetupState>): ProjectSetupState {
+  return { ...state, ...patch };
+}
+
 export function ProjectSetup() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { pendingFiles, setPendingFiles, clearPendingFiles } = useUploadFlow();
-  const [name, setName] = useState("");
-  const [description, setDescription] = useState("");
-  const [sourceLanguage, setSourceLanguage] = useState("auto");
-  const [targetLanguage, setTargetLanguage] = useState("en");
-  const [tone, setTone] = useState("natural");
-  const [replacementMode, setReplacementMode] = useState<ReplacementMode>("replace");
-  const [readingDirection, setReadingDirection] = useState<ReadingDirection>("rtl");
-  const [preserveSfx, setPreserveSfx] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [previewUrl, setPreviewUrl] = useState<string>();
+  const [
+    {
+      name,
+      description,
+      sourceLanguage,
+      targetLanguage,
+      tone,
+      replacementMode,
+      readingDirection,
+      preserveSfx,
+      error,
+      previewUrl,
+    },
+    setProjectSetupState,
+  ] = useReducer(projectSetupReducer, initialProjectSetupState);
 
   useEffect(() => {
     if (!name && pendingFiles[0]) {
       const baseName = pendingFiles[0].name.replace(/\.[^.]+$/, "").replace(/[-_]+/g, " ");
-      setName(baseName ? `${baseName} Translation` : "Untitled Translation");
+      setProjectSetupState({ name: baseName ? `${baseName} Translation` : "Untitled Translation" });
     }
   }, [name, pendingFiles]);
 
   useEffect(() => {
     const firstImage = pendingFiles.find((file) => file.type.startsWith("image/"));
     if (!firstImage) {
-      setPreviewUrl(undefined);
+      setProjectSetupState({ previewUrl: undefined });
       return;
     }
 
     const objectUrl = URL.createObjectURL(firstImage);
-    setPreviewUrl(objectUrl);
+    setProjectSetupState({ previewUrl: objectUrl });
     return () => {
       window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1_000);
     };
@@ -49,7 +83,7 @@ export function ProjectSetup() {
       if (pendingFiles.length === 0) {
         throw new Error("Upload at least one page before starting processing.");
       }
-      const project = await api.createProject({
+      return api.createProject({
         name: name.trim() || "Untitled Translation",
         description: description.trim() || null,
         source_language: sourceLanguage,
@@ -57,20 +91,23 @@ export function ProjectSetup() {
         translation_tone: tone,
         replacement_mode: replacementMode,
         reading_direction: readingDirection,
-      });
-      await api.updateSettings(project.id, {
-        source_language: sourceLanguage,
-        target_language: targetLanguage,
-        translation_tone: tone,
-        replacement_mode: replacementMode,
-        reading_direction: readingDirection,
-        preserve_sfx: preserveSfx,
-        bilingual: replacementMode === "bilingual",
-        font_family: "Anime Ace",
-      });
-      await api.uploadPages(project.id, pendingFiles);
-      await api.processProject(project.id, { force: false });
-      return project.id;
+      }).then((project) =>
+        Promise.all([
+          api.updateSettings(project.id, {
+            source_language: sourceLanguage,
+            target_language: targetLanguage,
+            translation_tone: tone,
+            replacement_mode: replacementMode,
+            reading_direction: readingDirection,
+            preserve_sfx: preserveSfx,
+            bilingual: replacementMode === "bilingual",
+            font_family: "Anime Ace",
+          }),
+          api.uploadPages(project.id, pendingFiles),
+        ])
+          .then(() => api.processProject(project.id, { force: false }))
+          .then(() => project.id),
+      );
     },
     onSuccess: async (projectId) => {
       clearPendingFiles();
@@ -78,13 +115,13 @@ export function ProjectSetup() {
       navigate(`/projects/${projectId}/processing`);
     },
     onError: (mutationError) => {
-      setError(mutationError instanceof Error ? mutationError.message : "Unable to start processing.");
+      setProjectSetupState({ error: mutationError instanceof Error ? mutationError.message : "Unable to start processing." });
     },
   });
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setError(null);
+    setProjectSetupState({ error: null });
     startMutation.mutate();
   }
 
@@ -128,17 +165,17 @@ export function ProjectSetup() {
           <div className="mt-6 space-y-4">
             <label className="block">
               <span className="text-xs font-bold uppercase text-text-muted">Project Name</span>
-              <input value={name} onChange={(event) => setName(event.target.value)} className="mt-2 w-full rounded-instrument border border-ink-border bg-background px-3 py-3 text-sm text-text-main outline-none focus:border-secondary" />
+              <input value={name} onChange={(event) => setProjectSetupState({ name: event.target.value })} className="mt-2 w-full rounded-instrument border border-ink-border bg-background px-3 py-3 text-sm text-text-main outline-none focus:border-secondary" />
             </label>
             <label className="block">
               <span className="text-xs font-bold uppercase text-text-muted">Description</span>
-              <textarea value={description} onChange={(event) => setDescription(event.target.value)} rows={3} className="mt-2 w-full resize-none rounded-instrument border border-ink-border bg-background px-3 py-3 text-sm text-text-main outline-none focus:border-secondary" />
+              <textarea value={description} onChange={(event) => setProjectSetupState({ description: event.target.value })} rows={3} className="mt-2 w-full resize-none rounded-instrument border border-ink-border bg-background px-3 py-3 text-sm text-text-main outline-none focus:border-secondary" />
             </label>
 
             <div className="grid grid-cols-2 gap-3">
               <label className="block">
                 <span className="text-xs font-bold uppercase text-text-muted">Source</span>
-                <select value={sourceLanguage} onChange={(event) => setSourceLanguage(event.target.value)} className="mt-2 w-full rounded-instrument border border-ink-border bg-background px-3 py-3 text-sm text-text-main outline-none focus:border-secondary">
+                <select value={sourceLanguage} onChange={(event) => setProjectSetupState({ sourceLanguage: event.target.value })} className="mt-2 w-full rounded-instrument border border-ink-border bg-background px-3 py-3 text-sm text-text-main outline-none focus:border-secondary">
                   <option value="auto">Auto detect</option>
                   <option value="ko">Korean</option>
                   <option value="ja">Japanese</option>
@@ -147,7 +184,7 @@ export function ProjectSetup() {
               </label>
               <label className="block">
                 <span className="text-xs font-bold uppercase text-text-muted">Target</span>
-                <select value={targetLanguage} onChange={(event) => setTargetLanguage(event.target.value)} className="mt-2 w-full rounded-instrument border border-ink-border bg-background px-3 py-3 text-sm text-text-main outline-none focus:border-secondary">
+                <select value={targetLanguage} onChange={(event) => setProjectSetupState({ targetLanguage: event.target.value })} className="mt-2 w-full rounded-instrument border border-ink-border bg-background px-3 py-3 text-sm text-text-main outline-none focus:border-secondary">
                   <option value="en">English</option>
                   <option value="es">Spanish</option>
                   <option value="fr">French</option>
@@ -158,7 +195,7 @@ export function ProjectSetup() {
 
             <label className="block">
               <span className="text-xs font-bold uppercase text-text-muted">Tone</span>
-              <select value={tone} onChange={(event) => setTone(event.target.value)} className="mt-2 w-full rounded-instrument border border-ink-border bg-background px-3 py-3 text-sm text-text-main outline-none focus:border-secondary">
+              <select value={tone} onChange={(event) => setProjectSetupState({ tone: event.target.value })} className="mt-2 w-full rounded-instrument border border-ink-border bg-background px-3 py-3 text-sm text-text-main outline-none focus:border-secondary">
                 <option value="natural">Natural</option>
                 <option value="dramatic">Dramatic</option>
                 <option value="literal">Literal</option>
@@ -169,7 +206,7 @@ export function ProjectSetup() {
             <div className="grid grid-cols-2 gap-3">
               <label className="block">
                 <span className="text-xs font-bold uppercase text-text-muted">Replacement</span>
-                <select value={replacementMode} onChange={(event) => setReplacementMode(event.target.value as ReplacementMode)} className="mt-2 w-full rounded-instrument border border-ink-border bg-background px-3 py-3 text-sm text-text-main outline-none focus:border-secondary">
+                <select value={replacementMode} onChange={(event) => setProjectSetupState({ replacementMode: event.target.value as ReplacementMode })} className="mt-2 w-full rounded-instrument border border-ink-border bg-background px-3 py-3 text-sm text-text-main outline-none focus:border-secondary">
                   <option value="replace">Replace</option>
                   <option value="overlay">Overlay</option>
                   <option value="bilingual">Bilingual</option>
@@ -177,7 +214,7 @@ export function ProjectSetup() {
               </label>
               <label className="block">
                 <span className="text-xs font-bold uppercase text-text-muted">Reading</span>
-                <select value={readingDirection} onChange={(event) => setReadingDirection(event.target.value as ReadingDirection)} className="mt-2 w-full rounded-instrument border border-ink-border bg-background px-3 py-3 text-sm text-text-main outline-none focus:border-secondary">
+                <select value={readingDirection} onChange={(event) => setProjectSetupState({ readingDirection: event.target.value as ReadingDirection })} className="mt-2 w-full rounded-instrument border border-ink-border bg-background px-3 py-3 text-sm text-text-main outline-none focus:border-secondary">
                   <option value="rtl">Right to left</option>
                   <option value="ltr">Left to right</option>
                   <option value="ttb">Top to bottom</option>
@@ -185,13 +222,20 @@ export function ProjectSetup() {
               </label>
             </div>
 
-            <label className="flex items-center justify-between rounded-lg border border-ink-border bg-background p-3">
+            <div className="flex items-center justify-between rounded-lg border border-ink-border bg-background p-3">
               <span>
-                <span className="block text-sm font-bold text-white">Preserve SFX</span>
-                <span className="block text-xs text-text-muted">Flag sound effects separately for manual review.</span>
+                <span id="preserve-sfx-label" className="block text-sm font-bold text-white">Preserve SFX</span>
+                <span id="preserve-sfx-description" className="block text-xs text-text-muted">Flag sound effects separately for manual review.</span>
               </span>
-              <input type="checkbox" checked={preserveSfx} onChange={(event) => setPreserveSfx(event.target.checked)} className="h-5 w-5 rounded border-ink-border bg-surface text-primary focus:ring-primary" />
-            </label>
+              <input
+                type="checkbox"
+                checked={preserveSfx}
+                onChange={(event) => setProjectSetupState({ preserveSfx: event.target.checked })}
+                className="h-5 w-5 rounded border-ink-border bg-surface text-primary focus:ring-primary"
+                aria-labelledby="preserve-sfx-label"
+                aria-describedby="preserve-sfx-description"
+              />
+            </div>
           </div>
 
           {error ? <p className="mt-4 rounded-instrument border border-danger/40 bg-danger/10 p-3 text-sm text-danger">{error}</p> : null}

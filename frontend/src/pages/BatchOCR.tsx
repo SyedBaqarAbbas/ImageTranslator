@@ -18,9 +18,11 @@ export function BatchOCR() {
   const processMutation = useMutation({
     mutationFn: (project: ProjectRead) => api.processProject(project.id, { force: true }),
     onSuccess: async (_job, project) => {
-      await queryClient.invalidateQueries({ queryKey: queryKeys.jobs(project.id) });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.project(project.id) });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.projects });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.jobs(project.id) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.project(project.id) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.projects }),
+      ]);
     },
   });
 

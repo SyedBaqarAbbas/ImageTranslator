@@ -1,14 +1,4 @@
-const formatter = new Intl.DateTimeFormat(undefined, {
-  month: "short",
-  day: "numeric",
-  year: "numeric",
-});
-
 const relativeFormatter = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
-
-export function formatDate(value: string): string {
-  return formatter.format(new Date(value));
-}
 
 export function formatRelative(value: string): string {
   const diffMs = new Date(value).getTime() - Date.now();

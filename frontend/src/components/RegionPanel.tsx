@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useReducer } from "react";
 import { BrainCircuit, Pipette, Save, Sparkles, Trash2 } from "lucide-react";
 
 import { statusLabel } from "../lib/routing";
@@ -28,6 +28,44 @@ type ColorStyleKey = "textColor" | "backgroundColor";
 
 const DEFAULT_TEXT_COLOR = "#0f172a";
 const DEFAULT_FILL_COLOR = "#ffffff";
+
+interface RegionPanelState {
+  draft: string;
+  aiStatus: string;
+  styleDraft: StyleDraft;
+  styleNotice: string | null;
+}
+
+type RegionPanelAction =
+  | { type: "reset"; region?: TextRegionRead }
+  | { type: "setDraft"; draft: string }
+  | { type: "setAiStatus"; aiStatus: string }
+  | { type: "setStyle"; styleDraft: StyleDraft }
+  | { type: "setStyleNotice"; styleNotice: string | null };
+
+function stateForRegion(region?: TextRegionRead): RegionPanelState {
+  return {
+    draft: region?.user_text || region?.translated_text || "",
+    aiStatus: "AI",
+    styleDraft: { ...(region?.render_style ?? {}) },
+    styleNotice: null,
+  };
+}
+
+function regionPanelReducer(state: RegionPanelState, action: RegionPanelAction): RegionPanelState {
+  switch (action.type) {
+    case "reset":
+      return stateForRegion(action.region);
+    case "setDraft":
+      return { ...state, draft: action.draft };
+    case "setAiStatus":
+      return { ...state, aiStatus: action.aiStatus };
+    case "setStyle":
+      return { ...state, styleDraft: action.styleDraft, styleNotice: null };
+    case "setStyleNotice":
+      return { ...state, styleNotice: action.styleNotice };
+  }
+}
 
 function colorValue(style: StyleDraft, keys: string[], fallback: string): string {
   for (const key of keys) {
@@ -83,17 +121,15 @@ export function RegionPanel({
     () => regions.find((region) => region.id === selectedRegionId) ?? regions[0],
     [regions, selectedRegionId],
   );
-  const [draft, setDraft] = useState("");
-  const [aiStatus, setAiStatus] = useState("AI");
-  const [styleDraft, setStyleDraft] = useState<StyleDraft>({});
-  const [styleNotice, setStyleNotice] = useState<string | null>(null);
+  const [{ draft, aiStatus, styleDraft, styleNotice }, dispatchPanel] = useReducer(
+    regionPanelReducer,
+    selectedRegion,
+    stateForRegion,
+  );
 
   useEffect(() => {
-    setDraft(selectedRegion?.user_text || selectedRegion?.translated_text || "");
-    setAiStatus("AI");
-    setStyleDraft({ ...(selectedRegion?.render_style ?? {}) });
-    setStyleNotice(null);
-  }, [selectedRegion?.id, selectedRegion?.render_style, selectedRegion?.translated_text, selectedRegion?.user_text]);
+    dispatchPanel({ type: "reset", region: selectedRegion });
+  }, [selectedRegion]);
 
   const textColor = colorValue(styleDraft, ["textColor", "text_color", "color"], DEFAULT_TEXT_COLOR);
   const backgroundColor = colorValue(styleDraft, ["backgroundColor", "background_color", "fillColor", "fill"], DEFAULT_FILL_COLOR);
@@ -104,8 +140,7 @@ export function RegionPanel({
       return;
     }
     const next = { ...styleDraft, ...patch };
-    setStyleDraft(next);
-    setStyleNotice(null);
+    dispatchPanel({ type: "setStyle", styleDraft: next });
     onStyleDraftChange?.(selectedRegion.id, next);
   }
 
@@ -114,14 +149,14 @@ export function RegionPanel({
       return;
     }
     if (!window.EyeDropper) {
-      setStyleNotice("Eyedropper is not available in this browser. Use the color input instead.");
+      dispatchPanel({ type: "setStyleNotice", styleNotice: "Eyedropper is not available in this browser. Use the color input instead." });
       return;
     }
     try {
       const result = await new window.EyeDropper().open();
       updateStyle({ [styleKey]: result.sRGBHex });
     } catch {
-      setStyleNotice("Color pick cancelled.");
+      dispatchPanel({ type: "setStyleNotice", styleNotice: "Color pick cancelled." });
     }
   }
 
@@ -182,7 +217,7 @@ export function RegionPanel({
             </div>
             <button
               onClick={() => {
-                setAiStatus("Queued");
+                dispatchPanel({ type: "setAiStatus", aiStatus: "Queued" });
                 onRetranslate(selectedRegion.id, selectedRegion.detected_text || draft);
               }}
               className="inline-flex items-center gap-2 rounded-instrument border border-primary/40 px-3 py-2 text-xs font-bold text-primary-soft transition hover:bg-primary/10"
@@ -195,7 +230,7 @@ export function RegionPanel({
             <span className="text-xs font-bold uppercase text-secondary">Target</span>
             <textarea
               value={draft}
-              onChange={(event) => setDraft(event.target.value)}
+              onChange={(event) => dispatchPanel({ type: "setDraft", draft: event.target.value })}
               className="mt-2 min-h-20 w-full resize-none rounded-instrument border border-ink-border bg-background p-3 text-sm text-text-main outline-none transition focus:border-secondary focus:ring-1 focus:ring-secondary lg:min-h-28"
             />
           </label>

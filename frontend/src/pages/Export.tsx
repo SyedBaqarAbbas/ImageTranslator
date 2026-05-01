@@ -1,5 +1,5 @@
 import { Archive, Download, FileImage, FileText, Loader2, PackageCheck } from "lucide-react";
-import { FormEvent, useState } from "react";
+import { FormEvent, useReducer } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
 
@@ -10,14 +10,33 @@ import { WorkspaceShell } from "../components/WorkspaceShell";
 import { assetUrlForPage, downloadUrlForAsset } from "../lib/assets";
 import type { ExportFormat } from "../types/api";
 
+interface ExportState {
+  format: ExportFormat;
+  includeOriginals: boolean;
+  filename: string;
+  exportJobId: string | null;
+  exportError: string | null;
+}
+
+const initialExportState: ExportState = {
+  format: "zip",
+  includeOriginals: false,
+  filename: "",
+  exportJobId: null,
+  exportError: null,
+};
+
+function exportStateReducer(state: ExportState, patch: Partial<ExportState>): ExportState {
+  return { ...state, ...patch };
+}
+
 export function Export() {
   const { projectId = "" } = useParams();
   const queryClient = useQueryClient();
-  const [format, setFormat] = useState<ExportFormat>("zip");
-  const [includeOriginals, setIncludeOriginals] = useState(false);
-  const [filename, setFilename] = useState("");
-  const [exportJobId, setExportJobId] = useState<string | null>(null);
-  const [exportError, setExportError] = useState<string | null>(null);
+  const [{ format, includeOriginals, filename, exportJobId, exportError }, setExportState] = useReducer(
+    exportStateReducer,
+    initialExportState,
+  );
   const projectQuery = useQuery({ queryKey: queryKeys.project(projectId), queryFn: () => api.getProject(projectId), enabled: Boolean(projectId) });
   const pagesQuery = useQuery({ queryKey: queryKeys.pages(projectId), queryFn: () => api.listPages(projectId), enabled: Boolean(projectId) });
   const exportQuery = useQuery({
@@ -35,15 +54,17 @@ export function Export() {
         filename: filename.trim() || null,
       }),
     onMutate: () => {
-      setExportError(null);
+      setExportState({ exportError: null });
     },
     onSuccess: async (job) => {
-      setExportJobId(job.id);
-      await queryClient.invalidateQueries({ queryKey: queryKeys.project(projectId) });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.pages(projectId) });
+      setExportState({ exportJobId: job.id });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.project(projectId) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.pages(projectId) }),
+      ]);
     },
     onError: (error) => {
-      setExportError(error instanceof Error ? error.message : "Unable to create export.");
+      setExportState({ exportError: error instanceof Error ? error.message : "Unable to create export." });
     },
   });
 
@@ -55,7 +76,7 @@ export function Export() {
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setExportError(null);
+    setExportState({ exportError: null });
     exportMutation.mutate();
   }
 
@@ -101,7 +122,7 @@ export function Export() {
                 <button
                   key={value}
                   type="button"
-                  onClick={() => setFormat(value as ExportFormat)}
+                  onClick={() => setExportState({ format: value as ExportFormat })}
                   aria-pressed={format === value}
                   className={`rounded-lg border p-4 text-left transition ${
                     format === value ? "border-secondary bg-secondary/10 text-white shadow-cyan" : "border-ink-border bg-background text-text-muted hover:border-primary/50 hover:text-white"
@@ -116,22 +137,35 @@ export function Export() {
             <div className="mt-6 space-y-4">
               <label className="block">
                 <span className="text-xs font-bold uppercase text-text-muted">Filename</span>
-                <input value={filename} onChange={(event) => setFilename(event.target.value)} placeholder={`${project.name}-translated`} className="mt-2 w-full rounded-instrument border border-ink-border bg-background px-3 py-3 text-sm text-text-main outline-none focus:border-secondary" />
+                <input value={filename} onChange={(event) => setExportState({ filename: event.target.value })} placeholder={`${project.name}-translated`} className="mt-2 w-full rounded-instrument border border-ink-border bg-background px-3 py-3 text-sm text-text-main outline-none focus:border-secondary" />
               </label>
-              <label className="flex items-center justify-between rounded-lg border border-ink-border bg-background p-3">
+              <div className="flex items-center justify-between rounded-lg border border-ink-border bg-background p-3">
                 <span>
-                  <span className="block text-sm font-bold text-white">Include originals</span>
-                  <span className="block text-xs text-text-muted">Package source scans alongside translated output.</span>
+                  <span id="include-originals-label" className="block text-sm font-bold text-white">Include originals</span>
+                  <span id="include-originals-description" className="block text-xs text-text-muted">Package source scans alongside translated output.</span>
                 </span>
-                <input type="checkbox" checked={includeOriginals} onChange={(event) => setIncludeOriginals(event.target.checked)} className="h-5 w-5 rounded border-ink-border bg-surface text-primary focus:ring-primary" />
-              </label>
-              <label className="flex items-center justify-between rounded-lg border border-ink-border bg-background p-3">
+                <input
+                  type="checkbox"
+                  checked={includeOriginals}
+                  onChange={(event) => setExportState({ includeOriginals: event.target.checked })}
+                  className="h-5 w-5 rounded border-ink-border bg-surface text-primary focus:ring-primary"
+                  aria-labelledby="include-originals-label"
+                  aria-describedby="include-originals-description"
+                />
+              </div>
+              <div className="flex items-center justify-between rounded-lg border border-ink-border bg-background p-3">
                 <span>
-                  <span className="block text-sm font-bold text-white">High quality resampling</span>
-                  <span className="block text-xs text-text-muted">Preserve output quality for final release builds.</span>
+                  <span id="high-quality-label" className="block text-sm font-bold text-white">High quality resampling</span>
+                  <span id="high-quality-description" className="block text-xs text-text-muted">Preserve output quality for final release builds.</span>
                 </span>
-                <input type="checkbox" defaultChecked className="h-5 w-5 rounded border-ink-border bg-surface text-primary focus:ring-primary" />
-              </label>
+                <input
+                  type="checkbox"
+                  defaultChecked
+                  className="h-5 w-5 rounded border-ink-border bg-surface text-primary focus:ring-primary"
+                  aria-labelledby="high-quality-label"
+                  aria-describedby="high-quality-description"
+                />
+              </div>
             </div>
 
             {currentExport ? (

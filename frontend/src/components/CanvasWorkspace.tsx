@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useReducer, useRef, useState } from "react";
 import type { PointerEvent } from "react";
 
 import type { BoundingBox, TextRegionRead } from "../types/api";
@@ -12,6 +12,11 @@ interface DragState {
   box: BoundingBox;
   kind: "move" | "resize";
   handle?: ResizeHandle;
+}
+
+interface DisplaySize {
+  width: number;
+  height: number;
 }
 
 type ResizeHandle = "n" | "ne" | "e" | "se" | "s" | "sw" | "w" | "nw";
@@ -73,6 +78,220 @@ function translucentColor(value: string): string {
   return value;
 }
 
+function containerSizeReducer(_current: DisplaySize, next: DisplaySize): DisplaySize {
+  return next;
+}
+
+function clampBox(box: BoundingBox, canvasWidth: number, canvasHeight: number): BoundingBox {
+  const width = Math.max(MIN_REGION_SIZE, Math.min(Math.round(box.width), canvasWidth));
+  const height = Math.max(MIN_REGION_SIZE, Math.min(Math.round(box.height), canvasHeight));
+  return {
+    x: Math.max(0, Math.min(Math.round(box.x), Math.max(canvasWidth - width, 0))),
+    y: Math.max(0, Math.min(Math.round(box.y), Math.max(canvasHeight - height, 0))),
+    width,
+    height,
+  };
+}
+
+function resizeBoxForPointer(
+  startBox: BoundingBox,
+  handle: ResizeHandle,
+  deltaX: number,
+  deltaY: number,
+  canvasWidth: number,
+  canvasHeight: number,
+): BoundingBox {
+  let x = startBox.x;
+  let y = startBox.y;
+  let width = startBox.width;
+  let height = startBox.height;
+
+  if (handle.includes("e")) {
+    width = startBox.width + deltaX;
+  }
+  if (handle.includes("s")) {
+    height = startBox.height + deltaY;
+  }
+  if (handle.includes("w")) {
+    x = startBox.x + deltaX;
+    width = startBox.width - deltaX;
+    if (width < MIN_REGION_SIZE) {
+      x = startBox.x + startBox.width - MIN_REGION_SIZE;
+      width = MIN_REGION_SIZE;
+    }
+  }
+  if (handle.includes("n")) {
+    y = startBox.y + deltaY;
+    height = startBox.height - deltaY;
+    if (height < MIN_REGION_SIZE) {
+      y = startBox.y + startBox.height - MIN_REGION_SIZE;
+      height = MIN_REGION_SIZE;
+    }
+  }
+  if (x < 0) {
+    width += x;
+    x = 0;
+  }
+  if (y < 0) {
+    height += y;
+    y = 0;
+  }
+  if (x + width > canvasWidth) {
+    width = canvasWidth - x;
+  }
+  if (y + height > canvasHeight) {
+    height = canvasHeight - y;
+  }
+
+  return clampBox({ x, y, width, height }, canvasWidth, canvasHeight);
+}
+
+function boxForPointer(
+  event: PointerEvent,
+  state: DragState,
+  displaySize: DisplaySize | null,
+  canvasWidth: number,
+  canvasHeight: number,
+): BoundingBox {
+  if (!displaySize) {
+    return state.box;
+  }
+  const deltaX = ((event.clientX - state.startClientX) / displaySize.width) * canvasWidth;
+  const deltaY = ((event.clientY - state.startClientY) / displaySize.height) * canvasHeight;
+  if (state.kind === "resize" && state.handle) {
+    return resizeBoxForPointer(state.startBox, state.handle, deltaX, deltaY, canvasWidth, canvasHeight);
+  }
+  return clampBox(
+    {
+      ...state.startBox,
+      x: state.startBox.x + deltaX,
+      y: state.startBox.y + deltaY,
+    },
+    canvasWidth,
+    canvasHeight,
+  );
+}
+
+function PagePreview({ imageUrl }: { imageUrl?: string }) {
+  return imageUrl ? (
+    <img className="h-full w-full rounded-instrument border border-ink-border object-contain shadow-2xl" src={imageUrl} alt="Selected comic page" />
+  ) : (
+    <div className="flex h-full w-full items-center justify-center rounded-instrument border border-ink-border bg-surface-low text-text-muted">
+      No page preview available
+    </div>
+  );
+}
+
+function ComparisonOverlay() {
+  return (
+    <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-instrument">
+      <div className="absolute inset-y-0 left-1/2 w-px bg-secondary shadow-cyan" />
+      <div className="absolute left-3 top-3 rounded-instrument border border-ink-border bg-background/85 px-2 py-1 text-[11px] font-bold uppercase text-text-muted">
+        Original
+      </div>
+      <div className="absolute right-3 top-3 rounded-instrument border border-secondary/60 bg-secondary/15 px-2 py-1 text-[11px] font-bold uppercase text-secondary">
+        Translated
+      </div>
+    </div>
+  );
+}
+
+function CanvasRegion({
+  region,
+  active,
+  boundingBox,
+  canvasWidth,
+  canvasHeight,
+  displaySize,
+  mode,
+  onSelectRegion,
+  onStartDrag,
+  onStartResize,
+  onUpdateDrag,
+  onFinishDrag,
+  onCancelDrag,
+}: {
+  region: TextRegionRead;
+  active: boolean;
+  boundingBox: BoundingBox;
+  canvasWidth: number;
+  canvasHeight: number;
+  displaySize: DisplaySize | null;
+  mode: "original" | "translated";
+  onSelectRegion: (regionId: string) => void;
+  onStartDrag: (event: PointerEvent<HTMLDivElement>, region: TextRegionRead) => void;
+  onStartResize: (event: PointerEvent<HTMLSpanElement>, region: TextRegionRead, handle: ResizeHandle) => void;
+  onUpdateDrag: (event: PointerEvent<HTMLDivElement>) => void;
+  onFinishDrag: (event: PointerEvent<HTMLDivElement>) => void;
+  onCancelDrag: () => void;
+}) {
+  const left = (boundingBox.x / canvasWidth) * 100;
+  const top = (boundingBox.y / canvasHeight) * 100;
+  const boxWidth = (boundingBox.width / canvasWidth) * 100;
+  const boxHeight = (boundingBox.height / canvasHeight) * 100;
+  const fontSize = renderStyleNumber(region, "fontSize");
+  const scaledFontSize = fontSize && displaySize ? Math.max(7, fontSize * (displaySize.width / canvasWidth)) : null;
+  const textColor = renderStyleValue(region, ["textColor", "text_color", "color"], DEFAULT_TEXT_COLOR);
+  const fillColor = renderStyleValue(
+    region,
+    ["backgroundColor", "background_color", "fillColor", "fill"],
+    mode === "translated" ? DEFAULT_FILL_COLOR : undefined,
+  );
+  const backgroundColor = fillColor
+    ? mode === "translated"
+      ? fillColor
+      : translucentColor(fillColor)
+    : undefined;
+
+  return (
+    <div
+      role="button"
+      aria-current={active ? "true" : undefined}
+      tabIndex={0}
+      title={`Region ${region.region_index}`}
+      onPointerDown={(event) => onStartDrag(event, region)}
+      onPointerMove={onUpdateDrag}
+      onPointerUp={onFinishDrag}
+      onPointerCancel={onCancelDrag}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          onSelectRegion(region.id);
+        }
+      }}
+      className={`absolute cursor-move select-none rounded-[3px] text-left transition ${
+        active ? "border-2 border-secondary bg-secondary/12 shadow-cyan" : "border-2 border-dashed border-secondary/80 bg-secondary/5 hover:bg-secondary/10"
+      }`}
+      style={{
+        left: `${left}%`,
+        top: `${top}%`,
+        width: `${boxWidth}%`,
+        height: `${boxHeight}%`,
+        backgroundColor,
+      }}
+    >
+      {mode === "translated" ? (
+        <span
+          className="flex h-full w-full items-center justify-center overflow-hidden break-words px-1 text-center font-comic text-[clamp(7px,0.85vw,14px)] font-bold leading-[1.05]"
+          style={{ color: textColor, fontSize: scaledFontSize ? `${scaledFontSize}px` : undefined }}
+        >
+          {region.user_text || region.translated_text || ""}
+        </span>
+      ) : null}
+      {active
+        ? RESIZE_HANDLES.map((handle) => (
+            <span
+              key={handle}
+              aria-hidden="true"
+              onPointerDown={(event) => onStartResize(event, region, handle)}
+              className={`absolute h-3 w-3 rounded-[2px] border border-background bg-secondary shadow-cyan ${handleClassName[handle]}`}
+            />
+          ))
+        : null}
+    </div>
+  );
+}
+
 export function CanvasWorkspace({
   imageUrl,
   width = 920,
@@ -99,7 +318,7 @@ export function CanvasWorkspace({
   const canvasWidth = width ?? 920;
   const canvasHeight = height ?? 1320;
   const containerRef = useRef<HTMLDivElement>(null);
-  const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
+  const [containerSize, setContainerSize] = useReducer(containerSizeReducer, { width: 0, height: 0 });
   const [drag, setDrag] = useState<DragState | null>(null);
   const displaySize = useMemo(() => {
     const aspect = canvasWidth / canvasHeight;
@@ -147,79 +366,6 @@ export function CanvasWorkspace({
     return () => observer.disconnect();
   }, []);
 
-  function clampBox(box: BoundingBox): BoundingBox {
-    const width = Math.max(MIN_REGION_SIZE, Math.min(Math.round(box.width), canvasWidth));
-    const height = Math.max(MIN_REGION_SIZE, Math.min(Math.round(box.height), canvasHeight));
-    return {
-      x: Math.max(0, Math.min(Math.round(box.x), Math.max(canvasWidth - width, 0))),
-      y: Math.max(0, Math.min(Math.round(box.y), Math.max(canvasHeight - height, 0))),
-      width,
-      height,
-    };
-  }
-
-  function boxForPointer(event: PointerEvent, state: DragState): BoundingBox {
-    if (!displaySize) {
-      return state.box;
-    }
-    const deltaX = ((event.clientX - state.startClientX) / displaySize.width) * canvasWidth;
-    const deltaY = ((event.clientY - state.startClientY) / displaySize.height) * canvasHeight;
-    if (state.kind === "resize" && state.handle) {
-      return resizeBoxForPointer(state.startBox, state.handle, deltaX, deltaY);
-    }
-    return clampBox({
-      ...state.startBox,
-      x: state.startBox.x + deltaX,
-      y: state.startBox.y + deltaY,
-    });
-  }
-
-  function resizeBoxForPointer(startBox: BoundingBox, handle: ResizeHandle, deltaX: number, deltaY: number): BoundingBox {
-    let x = startBox.x;
-    let y = startBox.y;
-    let width = startBox.width;
-    let height = startBox.height;
-
-    if (handle.includes("e")) {
-      width = startBox.width + deltaX;
-    }
-    if (handle.includes("s")) {
-      height = startBox.height + deltaY;
-    }
-    if (handle.includes("w")) {
-      x = startBox.x + deltaX;
-      width = startBox.width - deltaX;
-      if (width < MIN_REGION_SIZE) {
-        x = startBox.x + startBox.width - MIN_REGION_SIZE;
-        width = MIN_REGION_SIZE;
-      }
-    }
-    if (handle.includes("n")) {
-      y = startBox.y + deltaY;
-      height = startBox.height - deltaY;
-      if (height < MIN_REGION_SIZE) {
-        y = startBox.y + startBox.height - MIN_REGION_SIZE;
-        height = MIN_REGION_SIZE;
-      }
-    }
-    if (x < 0) {
-      width += x;
-      x = 0;
-    }
-    if (y < 0) {
-      height += y;
-      y = 0;
-    }
-    if (x + width > canvasWidth) {
-      width = canvasWidth - x;
-    }
-    if (y + height > canvasHeight) {
-      height = canvasHeight - y;
-    }
-
-    return clampBox({ x, y, width, height });
-  }
-
   function startDrag(event: PointerEvent<HTMLDivElement>, region: TextRegionRead) {
     if (!displaySize || !onMoveRegion) {
       onSelectRegion(region.id);
@@ -265,7 +411,7 @@ export function CanvasWorkspace({
       if (!current || current.pointerId !== event.pointerId) {
         return current;
       }
-      return { ...current, box: boxForPointer(event, current) };
+      return { ...current, box: boxForPointer(event, current, displaySize, canvasWidth, canvasHeight) };
     });
   }
 
@@ -297,93 +443,30 @@ export function CanvasWorkspace({
           maxHeight: "100%",
         }}
       >
-        {imageUrl ? (
-          <img className="h-full w-full rounded-instrument border border-ink-border object-contain shadow-2xl" src={imageUrl} alt="Selected comic page" />
-        ) : (
-          <div className="flex h-full w-full items-center justify-center rounded-instrument border border-ink-border bg-surface-low text-text-muted">
-            No page preview available
-          </div>
-        )}
+        <PagePreview imageUrl={imageUrl} />
 
-        {comparison ? (
-          <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-instrument">
-            <div className="absolute inset-y-0 left-1/2 w-px bg-secondary shadow-cyan" />
-            <div className="absolute left-3 top-3 rounded-instrument border border-ink-border bg-background/85 px-2 py-1 text-[11px] font-bold uppercase text-text-muted">
-              Original
-            </div>
-            <div className="absolute right-3 top-3 rounded-instrument border border-secondary/60 bg-secondary/15 px-2 py-1 text-[11px] font-bold uppercase text-secondary">
-              Translated
-            </div>
-          </div>
-        ) : null}
+        {comparison ? <ComparisonOverlay /> : null}
 
         {regions.map((region) => {
           const active = region.id === selectedRegionId;
           const boundingBox = drag?.regionId === region.id ? drag.box : region.bounding_box;
-          const left = (boundingBox.x / canvasWidth) * 100;
-          const top = (boundingBox.y / canvasHeight) * 100;
-          const boxWidth = (boundingBox.width / canvasWidth) * 100;
-          const boxHeight = (boundingBox.height / canvasHeight) * 100;
-          const fontSize = renderStyleNumber(region, "fontSize");
-          const scaledFontSize = fontSize && displaySize ? Math.max(7, fontSize * (displaySize.width / canvasWidth)) : null;
-          const textColor = renderStyleValue(region, ["textColor", "text_color", "color"], DEFAULT_TEXT_COLOR);
-          const fillColor = renderStyleValue(
-            region,
-            ["backgroundColor", "background_color", "fillColor", "fill"],
-            mode === "translated" ? DEFAULT_FILL_COLOR : undefined,
-          );
-          const backgroundColor = fillColor
-            ? mode === "translated"
-              ? fillColor
-              : translucentColor(fillColor)
-            : undefined;
           return (
-            <div
+            <CanvasRegion
               key={region.id}
-              role="button"
-              aria-current={active ? "true" : undefined}
-              tabIndex={0}
-              title={`Region ${region.region_index}`}
-              onPointerDown={(event) => startDrag(event, region)}
-              onPointerMove={updateDrag}
-              onPointerUp={finishDrag}
-              onPointerCancel={() => setDrag(null)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" || event.key === " ") {
-                  event.preventDefault();
-                  onSelectRegion(region.id);
-                }
-              }}
-              className={`absolute cursor-move select-none rounded-[3px] text-left transition ${
-                active ? "border-2 border-secondary bg-secondary/12 shadow-cyan" : "border-2 border-dashed border-secondary/80 bg-secondary/5 hover:bg-secondary/10"
-              }`}
-              style={{
-                left: `${left}%`,
-                top: `${top}%`,
-                width: `${boxWidth}%`,
-                height: `${boxHeight}%`,
-                backgroundColor,
-              }}
-            >
-              {mode === "translated" ? (
-                <span
-                  className="flex h-full w-full items-center justify-center overflow-hidden break-words px-1 text-center font-comic text-[clamp(7px,0.85vw,14px)] font-bold leading-[1.05]"
-                  style={{ color: textColor, fontSize: scaledFontSize ? `${scaledFontSize}px` : undefined }}
-                >
-                  {region.user_text || region.translated_text || ""}
-                </span>
-              ) : null}
-              {active
-                ? RESIZE_HANDLES.map((handle) => (
-                    <span
-                      key={handle}
-                      aria-hidden="true"
-                      onPointerDown={(event) => startResize(event, region, handle)}
-                      className={`absolute h-3 w-3 rounded-[2px] border border-background bg-secondary shadow-cyan ${handleClassName[handle]}`}
-                    />
-                  ))
-                : null}
-            </div>
+              region={region}
+              active={active}
+              boundingBox={boundingBox}
+              canvasWidth={canvasWidth}
+              canvasHeight={canvasHeight}
+              displaySize={displaySize}
+              mode={mode}
+              onSelectRegion={onSelectRegion}
+              onStartDrag={startDrag}
+              onStartResize={startResize}
+              onUpdateDrag={updateDrag}
+              onFinishDrag={finishDrag}
+              onCancelDrag={() => setDrag(null)}
+            />
           );
         })}
       </div>

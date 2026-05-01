@@ -51,13 +51,20 @@ export function Settings() {
               <Moon className="h-5 w-5 text-primary-soft" />
               <h2 className="font-display text-xl font-bold text-white">Processing</h2>
             </div>
-            <label className="flex items-center justify-between rounded-instrument border border-ink-border bg-background p-3">
+            <div className="flex items-center justify-between rounded-instrument border border-ink-border bg-background p-3">
               <span>
-                <span className="block text-sm font-bold text-white">Auto-start processing</span>
-                <span className="block text-xs text-text-muted">Begin OCR after upload setup is complete.</span>
+                <span id="auto-process-label" className="block text-sm font-bold text-white">Auto-start processing</span>
+                <span id="auto-process-description" className="block text-xs text-text-muted">Begin OCR after upload setup is complete.</span>
               </span>
-              <input type="checkbox" checked={autoProcess} onChange={(event) => setAutoProcess(event.target.checked)} className="h-5 w-5 rounded border-ink-border bg-surface text-primary focus:ring-primary" />
-            </label>
+              <input
+                type="checkbox"
+                checked={autoProcess}
+                onChange={(event) => setAutoProcess(event.target.checked)}
+                className="h-5 w-5 rounded border-ink-border bg-surface text-primary focus:ring-primary"
+                aria-labelledby="auto-process-label"
+                aria-describedby="auto-process-description"
+              />
+            </div>
             <div className="mt-4 grid gap-2 sm:grid-cols-2">
               {(["balanced", "high"] as const).map((mode) => (
                 <button

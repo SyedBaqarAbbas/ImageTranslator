@@ -32,7 +32,14 @@ export function Review() {
       enabled: pages.length > 0,
     })),
   });
-  const reviewRegions = regionQueries.flatMap((query) => query.data ?? []).filter(needsReview);
+  const reviewRegions = regionQueries.reduce<TextRegionRead[]>((matches, query) => {
+    for (const region of query.data ?? []) {
+      if (needsReview(region)) {
+        matches.push(region);
+      }
+    }
+    return matches;
+  }, []);
 
   const approveMutation = useMutation({
     mutationFn: (region: TextRegionRead) =>
