@@ -47,6 +47,13 @@ docker compose logs -f frontend
 
 Documentation-only changes usually do not need tests, but inspect Markdown structure manually.
 
+## Testing Expectations
+
+- Add or update comprehensive tests for every behavior change, bug fix, and meaningful refactor.
+- Treat testing as the final validation step after implementation is complete: run focused tests first, then relevant existing suites based on the blast radius.
+- Run e2e/browser tests when changes affect navigation, routed workflows, upload, processing, editor, review, export, or other cross-screen UI behavior.
+- If a change touches shared contracts or infrastructure, run the existing frontend/backend tests needed to prove no regressions were introduced.
+
 ## Git and Workspace Hygiene
 
 - The worktree may already contain user changes. Do not revert changes you did not make.
@@ -64,7 +71,8 @@ Documentation-only changes usually do not need tests, but inspect Markdown struc
 - Base it on latest `main` unless told otherwise.
 - Commit with a meaningful `[prefix] <message>`.
 - Push the branch.
-- Create a normal open PR against `main`, not a draft PR, unless the user explicitly asks for a draft.
+- Create a normal open PR against `main`, not a draft PR, unless the user explicitly asks for a draft. Always use gh outside of sandbox for this (gh inside the sandbox does not have access to keyring).
+- If you are blocked because of any issue, post a comment on the ticket in Linear through MCP in 2 stages: first, summarizing the issue in one-line for a general idea and second, explaining it comprehensively for a detailed specific idea.
 
 ## Known Sharp Edges
 
