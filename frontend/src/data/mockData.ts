@@ -22,6 +22,12 @@ export function createAsset(params: {
   width?: number;
   height?: number;
 }): AssetRead {
+  const contentType = params.filename.endsWith(".zip")
+    ? "application/zip"
+    : params.filename.endsWith(".pdf")
+      ? "application/pdf"
+      : "image/png";
+
   return {
     id: params.id,
     user_id: userId,
@@ -32,7 +38,7 @@ export function createAsset(params: {
     bucket: null,
     key: `mock/${params.projectId}/${params.filename}`,
     filename: params.filename,
-    content_type: params.filename.endsWith(".zip") ? "application/zip" : "image/png",
+    content_type: contentType,
     size_bytes: 182_000,
     checksum: null,
     width: params.width ?? 920,
