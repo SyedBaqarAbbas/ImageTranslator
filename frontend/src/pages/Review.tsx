@@ -1,4 +1,5 @@
 import { Check, ExternalLink, PenLine, RefreshCw } from "lucide-react";
+import { useState } from "react";
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
 
@@ -8,7 +9,18 @@ import { StatusPill } from "../components/StatusPill";
 import { WorkspaceShell } from "../components/WorkspaceShell";
 import type { TextRegionRead } from "../types/api";
 
+type ApprovalFeedbackStatus = "pending" | "success" | "error";
+
+interface ApprovalFeedback {
+  regionId: string;
+  status: ApprovalFeedbackStatus;
+  message: string;
+}
+
 function needsReview(region: TextRegionRead): boolean {
+  if (!region.editable) {
+    return false;
+  }
   return (
     region.status === "needs_review" ||
     region.status === "ocr_low_confidence" ||
@@ -22,6 +34,7 @@ function needsReview(region: TextRegionRead): boolean {
 export function Review() {
   const { projectId = "" } = useParams();
   const queryClient = useQueryClient();
+  const [approvalFeedback, setApprovalFeedback] = useState<ApprovalFeedback | null>(null);
   const projectQuery = useQuery({ queryKey: queryKeys.project(projectId), queryFn: () => api.getProject(projectId), enabled: Boolean(projectId) });
   const pagesQuery = useQuery({ queryKey: queryKeys.pages(projectId), queryFn: () => api.listPages(projectId), enabled: Boolean(projectId) });
   const pages = pagesQuery.data ?? [];
@@ -48,8 +61,35 @@ export function Review() {
         editable: false,
         auto_rerender: true,
       }),
-    onSuccess: async (region) => {
-      await queryClient.invalidateQueries({ queryKey: queryKeys.regions(region.page_id) });
+    onMutate: (region) => {
+      setApprovalFeedback({
+        regionId: region.id,
+        status: "pending",
+        message: `Approving region #${region.region_index}...`,
+      });
+    },
+    onSuccess: async (updatedRegion) => {
+      queryClient.setQueryData<TextRegionRead[]>(queryKeys.regions(updatedRegion.page_id), (current) =>
+        current?.map((region) => (region.id === updatedRegion.id ? updatedRegion : region)) ?? current,
+      );
+      setApprovalFeedback({
+        regionId: updatedRegion.id,
+        status: "success",
+        message: `Approved region #${updatedRegion.region_index}.`,
+      });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.regions(updatedRegion.page_id) }),
+        projectId ? queryClient.invalidateQueries({ queryKey: queryKeys.pages(projectId) }) : Promise.resolve(),
+        projectId ? queryClient.invalidateQueries({ queryKey: queryKeys.project(projectId) }) : Promise.resolve(),
+      ]);
+    },
+    onError: (error, region) => {
+      const message = error instanceof Error && error.message ? error.message : "The request failed.";
+      setApprovalFeedback({
+        regionId: region.id,
+        status: "error",
+        message: `Approve failed: ${message}`,
+      });
     },
   });
 
@@ -94,6 +134,21 @@ export function Review() {
             </div>
           </div>
 
+          {approvalFeedback ? (
+            <div
+              role={approvalFeedback.status === "error" ? "alert" : "status"}
+              className={`mb-5 rounded-lg border px-4 py-3 text-sm font-semibold ${
+                approvalFeedback.status === "error"
+                  ? "border-danger/40 bg-danger/10 text-danger"
+                  : approvalFeedback.status === "success"
+                    ? "border-emerald-400/40 bg-emerald-400/10 text-emerald-200"
+                    : "border-secondary/40 bg-secondary/10 text-secondary"
+              }`}
+            >
+              {approvalFeedback.message}
+            </div>
+          ) : null}
+
           {reviewRegions.length === 0 ? (
             <section className="rounded-lg border border-ink-border bg-surface-low p-10 text-center">
               <Check className="mx-auto mb-4 h-12 w-12 text-emerald-300" />
@@ -104,6 +159,7 @@ export function Review() {
             <div className="space-y-4">
               {reviewRegions.map((region) => {
                 const page = pages.find((item) => item.id === region.page_id);
+                const isApprovePending = approveMutation.isPending && approveMutation.variables?.id === region.id;
                 return (
                   <article key={region.id} className="grid gap-4 rounded-lg border border-ink-border bg-surface-low p-4 md:grid-cols-[180px_1fr_auto] md:items-center">
                     <div className="rounded-lg border border-ink-border bg-background p-4">
@@ -121,15 +177,21 @@ export function Review() {
                       <p className="mt-2 text-xs text-text-muted">
                         Box {region.bounding_box.x}, {region.bounding_box.y}, {region.bounding_box.width}x{region.bounding_box.height}
                       </p>
+                      {approvalFeedback?.status === "error" && approvalFeedback.regionId === region.id ? (
+                        <p role="alert" className="mt-3 text-xs font-semibold text-danger">
+                          {approvalFeedback.message}
+                        </p>
+                      ) : null}
                     </div>
                     <div className="flex gap-2 md:flex-col">
                       <button
                         onClick={() => approveMutation.mutate(region)}
                         disabled={approveMutation.isPending}
-                        className="inline-flex flex-1 items-center justify-center gap-2 rounded-instrument bg-primary px-4 py-2 text-sm font-bold text-white shadow-glow transition hover:bg-violet-500 disabled:opacity-60"
+                        aria-busy={isApprovePending}
+                        className="inline-flex flex-1 items-center justify-center gap-2 rounded-instrument bg-primary px-4 py-2 text-sm font-bold text-white shadow-glow transition hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-60"
                       >
                         <Check className="h-4 w-4" />
-                        Approve
+                        {isApprovePending ? "Approving" : "Approve"}
                       </button>
                       <Link to={`/projects/${projectId}/editor`} className="inline-flex flex-1 items-center justify-center gap-2 rounded-instrument border border-ink-border px-4 py-2 text-sm font-bold text-text-main transition hover:bg-surface-high">
                         <RefreshCw className="h-4 w-4" />

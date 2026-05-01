@@ -25,6 +25,15 @@ declare global {
 
 type StyleDraft = Record<string, unknown>;
 type ColorStyleKey = "textColor" | "backgroundColor";
+export type RegionSaveAction = "save" | "approve";
+type RegionSaveStatus = "pending" | "success" | "error";
+
+export interface RegionSaveFeedback {
+  regionId: string;
+  action: RegionSaveAction;
+  status: RegionSaveStatus;
+  message: string;
+}
 
 const DEFAULT_TEXT_COLOR = "#0f172a";
 const DEFAULT_FILL_COLOR = "#ffffff";
@@ -104,17 +113,19 @@ export function RegionPanel({
   onRetranslate,
   onDelete,
   onStyleDraftChange,
-  isSaving = false,
+  onDraftChange,
+  saveFeedback = null,
   isDeleting = false,
 }: {
   regions: TextRegionRead[];
   selectedRegionId?: string;
   onSelect: (regionId: string) => void;
-  onSave: (regionId: string, payload: TextRegionUpdate) => void;
+  onSave: (regionId: string, payload: TextRegionUpdate, action: RegionSaveAction) => void;
   onRetranslate: (regionId: string, sourceText: string) => void;
   onDelete: (regionId: string) => void;
   onStyleDraftChange?: (regionId: string, renderStyle: StyleDraft) => void;
-  isSaving?: boolean;
+  onDraftChange?: (regionId: string) => void;
+  saveFeedback?: RegionSaveFeedback | null;
   isDeleting?: boolean;
 }) {
   const selectedRegion = useMemo(
@@ -131,12 +142,17 @@ export function RegionPanel({
     dispatchPanel({ type: "reset", region: selectedRegion });
   }, [selectedRegion]);
 
+  const selectedSaveFeedback = selectedRegion && saveFeedback?.regionId === selectedRegion.id ? saveFeedback : null;
+  const isSavePending = selectedSaveFeedback?.status === "pending" && selectedSaveFeedback.action === "save";
+  const isApprovePending = selectedSaveFeedback?.status === "pending" && selectedSaveFeedback.action === "approve";
+  const isSaveActionPending = selectedSaveFeedback?.status === "pending";
+  const canEditSelectedRegion = selectedRegion?.editable !== false && !isSaveActionPending;
   const textColor = colorValue(styleDraft, ["textColor", "text_color", "color"], DEFAULT_TEXT_COLOR);
   const backgroundColor = colorValue(styleDraft, ["backgroundColor", "background_color", "fillColor", "fill"], DEFAULT_FILL_COLOR);
   const fontSize = Math.max(8, Math.min(72, Math.round(numberValue(styleDraft, "fontSize", 24))));
 
   function updateStyle(patch: StyleDraft) {
-    if (!selectedRegion) {
+    if (!selectedRegion || !canEditSelectedRegion) {
       return;
     }
     const next = { ...styleDraft, ...patch };
@@ -145,7 +161,7 @@ export function RegionPanel({
   }
 
   async function pickColor(styleKey: ColorStyleKey) {
-    if (!selectedRegion) {
+    if (!selectedRegion || !canEditSelectedRegion) {
       return;
     }
     if (!window.EyeDropper) {
@@ -187,7 +203,14 @@ export function RegionPanel({
                   <span className="text-[11px] font-bold uppercase text-text-muted lg:text-xs">
                     #{region.region_index} {statusLabel(region.region_type)}
                   </span>
-                  <StatusPill status={region.status} />
+                  <span className="flex items-center gap-2">
+                    <StatusPill status={region.status} />
+                    {!region.editable ? (
+                      <span className="rounded-full border border-emerald-400/40 bg-emerald-400/10 px-2 py-0.5 text-[10px] font-bold uppercase text-emerald-200">
+                        Approved
+                      </span>
+                    ) : null}
+                  </span>
                 </div>
                 <p className="line-clamp-1 text-sm text-text-main lg:line-clamp-2">{region.user_text || region.translated_text || "Untranslated"}</p>
                 <p className="mt-2 hidden text-xs text-text-muted lg:block">
@@ -227,11 +250,22 @@ export function RegionPanel({
             </button>
           </div>
           <label className="block">
-            <span className="text-xs font-bold uppercase text-secondary">Target</span>
+            <span className="flex items-center justify-between gap-2">
+              <span className="text-xs font-bold uppercase text-secondary">Target</span>
+              {!selectedRegion.editable ? (
+                <span className="rounded-full border border-emerald-400/40 bg-emerald-400/10 px-2 py-0.5 text-[10px] font-bold uppercase text-emerald-200">
+                  Approved
+                </span>
+              ) : null}
+            </span>
             <textarea
               value={draft}
-              onChange={(event) => dispatchPanel({ type: "setDraft", draft: event.target.value })}
-              className="mt-2 min-h-20 w-full resize-none rounded-instrument border border-ink-border bg-background p-3 text-sm text-text-main outline-none transition focus:border-secondary focus:ring-1 focus:ring-secondary lg:min-h-28"
+              onChange={(event) => {
+                dispatchPanel({ type: "setDraft", draft: event.target.value });
+                onDraftChange?.(selectedRegion.id);
+              }}
+              disabled={!canEditSelectedRegion}
+              className="mt-2 min-h-20 w-full resize-none rounded-instrument border border-ink-border bg-background p-3 text-sm text-text-main outline-none transition focus:border-secondary focus:ring-1 focus:ring-secondary disabled:cursor-not-allowed disabled:opacity-65 lg:min-h-28"
             />
           </label>
           <div className="mt-3 rounded-lg border border-ink-border bg-background p-3">
@@ -243,13 +277,15 @@ export function RegionPanel({
                     type="color"
                     value={textColor}
                     onChange={(event) => updateStyle({ textColor: event.target.value })}
-                    className="h-9 w-11 rounded-instrument border border-ink-border bg-surface p-1"
+                    disabled={!canEditSelectedRegion}
+                    className="h-9 w-11 rounded-instrument border border-ink-border bg-surface p-1 disabled:cursor-not-allowed disabled:opacity-60"
                     aria-label="Text color"
                   />
                   <button
                     type="button"
                     onClick={() => pickColor("textColor")}
-                    className="inline-flex h-9 flex-1 items-center justify-center gap-2 rounded-instrument border border-ink-border px-2 text-xs font-bold text-text-main transition hover:bg-surface-high"
+                    disabled={!canEditSelectedRegion}
+                    className="inline-flex h-9 flex-1 items-center justify-center gap-2 rounded-instrument border border-ink-border px-2 text-xs font-bold text-text-main transition hover:bg-surface-high disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     <Pipette className="h-3.5 w-3.5" />
                     Pick
@@ -263,13 +299,15 @@ export function RegionPanel({
                     type="color"
                     value={backgroundColor}
                     onChange={(event) => updateStyle({ backgroundColor: event.target.value })}
-                    className="h-9 w-11 rounded-instrument border border-ink-border bg-surface p-1"
+                    disabled={!canEditSelectedRegion}
+                    className="h-9 w-11 rounded-instrument border border-ink-border bg-surface p-1 disabled:cursor-not-allowed disabled:opacity-60"
                     aria-label="Box fill color"
                   />
                   <button
                     type="button"
                     onClick={() => pickColor("backgroundColor")}
-                    className="inline-flex h-9 flex-1 items-center justify-center gap-2 rounded-instrument border border-ink-border px-2 text-xs font-bold text-text-main transition hover:bg-surface-high"
+                    disabled={!canEditSelectedRegion}
+                    className="inline-flex h-9 flex-1 items-center justify-center gap-2 rounded-instrument border border-ink-border px-2 text-xs font-bold text-text-main transition hover:bg-surface-high disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     <Pipette className="h-3.5 w-3.5" />
                     Pick
@@ -285,7 +323,8 @@ export function RegionPanel({
                 max="72"
                 value={fontSize}
                 onChange={(event) => updateStyle({ fontSize: Number(event.target.value) })}
-                className="mt-2 w-full accent-primary"
+                disabled={!canEditSelectedRegion}
+                className="mt-2 w-full accent-primary disabled:cursor-not-allowed disabled:opacity-60"
                 aria-label="Text size"
               />
             </label>
@@ -293,20 +332,22 @@ export function RegionPanel({
           </div>
           <div className="mt-3 grid grid-cols-3 gap-3">
             <button
-              onClick={() => onSave(selectedRegion.id, { user_text: draft, render_style: styleDraft, auto_rerender: true })}
-              disabled={isSaving}
-              className="inline-flex items-center justify-center gap-2 rounded-instrument bg-primary px-3 py-2 text-sm font-bold text-white shadow-glow transition hover:bg-violet-500 disabled:opacity-60"
+              onClick={() => onSave(selectedRegion.id, { user_text: draft, render_style: styleDraft, auto_rerender: true }, "save")}
+              disabled={!canEditSelectedRegion}
+              aria-busy={isSavePending}
+              className="inline-flex items-center justify-center gap-2 rounded-instrument bg-primary px-3 py-2 text-sm font-bold text-white shadow-glow transition hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-60"
             >
               <Save className="h-4 w-4" />
-              Save
+              {isSavePending ? "Saving" : "Save"}
             </button>
             <button
-              onClick={() => onSave(selectedRegion.id, { user_text: selectedRegion.translated_text, render_style: styleDraft, editable: false, auto_rerender: true })}
-              disabled={isSaving}
-              className="inline-flex items-center justify-center gap-2 rounded-instrument border border-ink-border px-3 py-2 text-sm font-bold text-text-main transition hover:bg-surface-high disabled:opacity-60"
+              onClick={() => onSave(selectedRegion.id, { user_text: draft, render_style: styleDraft, editable: false, auto_rerender: true }, "approve")}
+              disabled={!canEditSelectedRegion}
+              aria-busy={isApprovePending}
+              className="inline-flex items-center justify-center gap-2 rounded-instrument border border-ink-border px-3 py-2 text-sm font-bold text-text-main transition hover:bg-surface-high disabled:cursor-not-allowed disabled:opacity-60"
             >
               <Sparkles className="h-4 w-4" />
-              Approve
+              {isApprovePending ? "Approving" : selectedRegion.editable ? "Approve" : "Approved"}
             </button>
             <button
               onClick={() => onDelete(selectedRegion.id)}
@@ -317,6 +358,24 @@ export function RegionPanel({
               Reject
             </button>
           </div>
+          {selectedSaveFeedback ? (
+            <p
+              role={selectedSaveFeedback.status === "error" ? "alert" : "status"}
+              className={`mt-3 text-xs font-semibold ${
+                selectedSaveFeedback.status === "error"
+                  ? "text-danger"
+                  : selectedSaveFeedback.status === "success"
+                    ? "text-emerald-300"
+                    : "text-secondary"
+              }`}
+            >
+              {selectedSaveFeedback.message}
+            </p>
+          ) : !selectedRegion.editable ? (
+            <p role="status" className="mt-3 text-xs font-semibold text-emerald-300">
+              Approved and locked.
+            </p>
+          ) : null}
         </div>
       ) : null}
     </aside>

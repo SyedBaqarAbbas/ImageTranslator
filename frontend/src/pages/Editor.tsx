@@ -6,12 +6,14 @@ import { Link, useParams } from "react-router-dom";
 import { api, queryKeys } from "../api";
 import { CanvasWorkspace } from "../components/CanvasWorkspace";
 import { RegionPanel } from "../components/RegionPanel";
+import type { RegionSaveAction, RegionSaveFeedback } from "../components/RegionPanel";
 import { ErrorState, LoadingState } from "../components/States";
 import { WorkspaceShell } from "../components/WorkspaceShell";
 import { assetUrlForPage } from "../lib/assets";
 import type { BoundingBox, TextRegionRead, TextRegionUpdate } from "../types/api";
 
 type EditorMode = "original" | "translated";
+type EditorSaveAction = RegionSaveAction | "workspace";
 
 interface EditorState {
   selectedPageId?: string;
@@ -21,12 +23,16 @@ interface EditorState {
   zoom: number;
   workspaceStatus: string;
   styleDrafts: Record<string, Record<string, unknown>>;
+  regionSaveFeedback: RegionSaveFeedback | null;
 }
 
 type EditorAction =
   | { type: "patch"; patch: Partial<EditorState> }
   | { type: "toggleComparison" }
-  | { type: "setStyleDraft"; regionId: string; renderStyle: Record<string, unknown> };
+  | { type: "setStyleDraft"; regionId: string; renderStyle: Record<string, unknown> }
+  | { type: "clearStyleDraft"; regionId: string }
+  | { type: "markRegionDirty"; regionId: string }
+  | { type: "setRegionSaveFeedback"; feedback: RegionSaveFeedback | null };
 
 const ZOOM_MIN = 0.75;
 const ZOOM_MAX = 1.45;
@@ -38,6 +44,7 @@ const initialEditorState: EditorState = {
   zoom: 1,
   workspaceStatus: "Unsaved",
   styleDrafts: {},
+  regionSaveFeedback: null,
 };
 
 function editorReducer(state: EditorState, action: EditorAction): EditorState {
@@ -49,8 +56,27 @@ function editorReducer(state: EditorState, action: EditorAction): EditorState {
     return {
       ...state,
       workspaceStatus: "Unsaved",
+      regionSaveFeedback: state.regionSaveFeedback?.regionId === action.regionId ? null : state.regionSaveFeedback,
       styleDrafts: { ...state.styleDrafts, [action.regionId]: action.renderStyle },
     };
+  }
+
+  if (action.type === "clearStyleDraft") {
+    const styleDrafts = { ...state.styleDrafts };
+    delete styleDrafts[action.regionId];
+    return { ...state, styleDrafts };
+  }
+
+  if (action.type === "markRegionDirty") {
+    return {
+      ...state,
+      workspaceStatus: "Unsaved",
+      regionSaveFeedback: state.regionSaveFeedback?.regionId === action.regionId ? null : state.regionSaveFeedback,
+    };
+  }
+
+  if (action.type === "setRegionSaveFeedback") {
+    return { ...state, regionSaveFeedback: action.feedback };
   }
 
   return { ...state, ...action.patch };
@@ -60,10 +86,28 @@ function clampZoom(value: number): number {
   return Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Number(value.toFixed(2))));
 }
 
+function errorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error && error.message ? error.message : fallback;
+}
+
+function pendingMessage(action: EditorSaveAction): string {
+  return action === "approve" ? "Approving..." : "Saving...";
+}
+
+function successMessage(action: EditorSaveAction): string {
+  return action === "approve" ? "Approved" : "Saved";
+}
+
+interface SaveRegionVariables {
+  regionId: string;
+  payload: TextRegionUpdate;
+  action: EditorSaveAction;
+}
+
 export function Editor() {
   const { projectId = "" } = useParams();
   const queryClient = useQueryClient();
-  const [{ selectedPageId, selectedRegionId, mode, comparison, zoom, workspaceStatus, styleDrafts }, dispatchEditor] =
+  const [{ selectedPageId, selectedRegionId, mode, comparison, zoom, workspaceStatus, styleDrafts, regionSaveFeedback }, dispatchEditor] =
     useReducer(editorReducer, initialEditorState);
   const zoomLabel = `${Math.round(zoom * 100)}%`;
 
@@ -100,12 +144,66 @@ export function Editor() {
   }, [regions, selectedRegionId]);
 
   const saveMutation = useMutation({
-    mutationFn: ({ regionId, payload }: { regionId: string; payload: TextRegionUpdate }) => api.updateRegion(regionId, payload),
-    onSuccess: async () => {
+    mutationFn: ({ regionId, payload }: SaveRegionVariables) => api.updateRegion(regionId, payload),
+    onMutate: ({ regionId, action }) => {
+      if (action === "workspace") {
+        dispatchEditor({ type: "patch", patch: { workspaceStatus: "Saving..." } });
+        return;
+      }
+      dispatchEditor({
+        type: "setRegionSaveFeedback",
+        feedback: {
+          regionId,
+          action,
+          status: "pending",
+          message: pendingMessage(action),
+        },
+      });
+      dispatchEditor({ type: "patch", patch: { workspaceStatus: "Saving..." } });
+    },
+    onSuccess: async (updatedRegion, variables) => {
+      queryClient.setQueryData<TextRegionRead[]>(queryKeys.regions(updatedRegion.page_id), (current) =>
+        current?.map((region) => (region.id === updatedRegion.id ? updatedRegion : region)) ?? current,
+      );
+      if (variables.payload.render_style !== undefined) {
+        dispatchEditor({ type: "clearStyleDraft", regionId: updatedRegion.id });
+      }
+      if (variables.action === "workspace") {
+        dispatchEditor({ type: "patch", patch: { workspaceStatus: "Saved" } });
+      } else {
+        dispatchEditor({
+          type: "setRegionSaveFeedback",
+          feedback: {
+            regionId: updatedRegion.id,
+            action: variables.action,
+            status: "success",
+            message: successMessage(variables.action),
+          },
+        });
+        dispatchEditor({ type: "patch", patch: { workspaceStatus: "Saved" } });
+      }
       await Promise.all([
-        selectedPage ? queryClient.invalidateQueries({ queryKey: queryKeys.regions(selectedPage.id) }) : Promise.resolve(),
+        queryClient.invalidateQueries({ queryKey: queryKeys.regions(updatedRegion.page_id) }),
         projectId ? queryClient.invalidateQueries({ queryKey: queryKeys.pages(projectId) }) : Promise.resolve(),
+        projectId ? queryClient.invalidateQueries({ queryKey: queryKeys.project(projectId) }) : Promise.resolve(),
       ]);
+    },
+    onError: (error, variables) => {
+      const message = errorMessage(error, "The request failed.");
+      if (variables.action === "workspace") {
+        dispatchEditor({ type: "patch", patch: { workspaceStatus: `Save failed: ${message}` } });
+        return;
+      }
+      dispatchEditor({
+        type: "setRegionSaveFeedback",
+        feedback: {
+          regionId: variables.regionId,
+          action: variables.action,
+          status: "error",
+          message: `${variables.action === "approve" ? "Approve" : "Save"} failed: ${message}`,
+        },
+      });
+      dispatchEditor({ type: "patch", patch: { workspaceStatus: "Unsaved" } });
     },
   });
 
@@ -286,13 +384,14 @@ export function Editor() {
               regions={displayRegions}
               selectedRegionId={selectedRegionId}
               onSelect={(regionId) => dispatchEditor({ type: "patch", patch: { selectedRegionId: regionId } })}
-              onSave={(regionId, payload) => saveMutation.mutate({ regionId, payload })}
+              onSave={(regionId, payload, action) => saveMutation.mutate({ regionId, payload, action })}
               onRetranslate={(regionId, sourceText) => retranslateMutation.mutate({ regionId, sourceText })}
               onDelete={(regionId) => deleteMutation.mutate(regionId)}
+              onDraftChange={(regionId) => dispatchEditor({ type: "markRegionDirty", regionId })}
               onStyleDraftChange={(regionId, renderStyle) => {
                 dispatchEditor({ type: "setStyleDraft", regionId, renderStyle });
               }}
-              isSaving={saveMutation.isPending || moveMutation.isPending}
+              saveFeedback={regionSaveFeedback}
               isDeleting={deleteMutation.isPending}
             />
           </div>
@@ -301,14 +400,17 @@ export function Editor() {
             <span>{regions.length} regions · Page {selectedPage.page_number}</span>
             <span className="hidden text-secondary sm:inline">Zoom {zoomLabel}{comparison ? " · Compare split on" : ""} · {workspaceStatus}</span>
             <button
+              type="button"
+              disabled={!selectedRegionId || saveMutation.isPending}
               onClick={() => {
-                dispatchEditor({ type: "patch", patch: { workspaceStatus: "Saved" } });
-                if (selectedRegionId) saveMutation.mutate({ regionId: selectedRegionId, payload: { auto_rerender: true } });
+                if (selectedRegionId) {
+                  saveMutation.mutate({ regionId: selectedRegionId, payload: { auto_rerender: true }, action: "workspace" });
+                }
               }}
-              className="inline-flex items-center gap-2 rounded-instrument border border-ink-border px-3 py-1.5 text-text-main transition hover:bg-surface-high"
+              className="inline-flex items-center gap-2 rounded-instrument border border-ink-border px-3 py-1.5 text-text-main transition hover:bg-surface-high disabled:cursor-not-allowed disabled:opacity-60"
             >
               <Save className="h-3.5 w-3.5" />
-              Save workspace
+              {saveMutation.isPending && saveMutation.variables?.action === "workspace" ? "Saving" : "Save workspace"}
             </button>
           </div>
         </div>
