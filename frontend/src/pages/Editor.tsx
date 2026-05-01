@@ -28,6 +28,10 @@ type EditorAction =
   | { type: "toggleComparison" }
   | { type: "setStyleDraft"; regionId: string; renderStyle: Record<string, unknown> };
 
+const ZOOM_MIN = 0.75;
+const ZOOM_MAX = 1.45;
+const ZOOM_STEP = 0.15;
+
 const initialEditorState: EditorState = {
   mode: "translated",
   comparison: false,
@@ -52,11 +56,16 @@ function editorReducer(state: EditorState, action: EditorAction): EditorState {
   return { ...state, ...action.patch };
 }
 
+function clampZoom(value: number): number {
+  return Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Number(value.toFixed(2))));
+}
+
 export function Editor() {
   const { projectId = "" } = useParams();
   const queryClient = useQueryClient();
   const [{ selectedPageId, selectedRegionId, mode, comparison, zoom, workspaceStatus, styleDrafts }, dispatchEditor] =
     useReducer(editorReducer, initialEditorState);
+  const zoomLabel = `${Math.round(zoom * 100)}%`;
 
   const projectQuery = useQuery({ queryKey: queryKeys.project(projectId), queryFn: () => api.getProject(projectId), enabled: Boolean(projectId) });
   const pagesQuery = useQuery({ queryKey: queryKeys.pages(projectId), queryFn: () => api.listPages(projectId), enabled: Boolean(projectId) });
@@ -216,17 +225,18 @@ export function Editor() {
               </button>
               <button
                 type="button"
-                disabled={zoom <= 0.75}
-                onClick={() => dispatchEditor({ type: "patch", patch: { zoom: Math.max(0.75, Number((zoom - 0.15).toFixed(2))) } })}
+                disabled={zoom <= ZOOM_MIN}
+                onClick={() => dispatchEditor({ type: "patch", patch: { zoom: clampZoom(zoom - ZOOM_STEP) } })}
                 className="hidden rounded-instrument p-2 text-text-muted transition hover:bg-surface-high hover:text-white disabled:cursor-not-allowed disabled:opacity-45 sm:block"
                 aria-label="Zoom out"
               >
                 <Minus className="h-4 w-4" />
               </button>
+              <span className="hidden w-12 shrink-0 text-center text-xs font-bold tabular-nums text-secondary sm:inline-block">{zoomLabel}</span>
               <button
                 type="button"
-                disabled={zoom >= 1.45}
-                onClick={() => dispatchEditor({ type: "patch", patch: { zoom: Math.min(1.45, Number((zoom + 0.15).toFixed(2))) } })}
+                disabled={zoom >= ZOOM_MAX}
+                onClick={() => dispatchEditor({ type: "patch", patch: { zoom: clampZoom(zoom + ZOOM_STEP) } })}
                 className="hidden rounded-instrument p-2 text-text-muted transition hover:bg-surface-high hover:text-white disabled:cursor-not-allowed disabled:opacity-45 sm:block"
                 aria-label="Zoom in"
               >
@@ -289,7 +299,7 @@ export function Editor() {
 
           <div className="flex h-12 shrink-0 items-center justify-between border-t border-ink-border bg-background px-4 text-xs font-semibold text-text-muted">
             <span>{regions.length} regions · Page {selectedPage.page_number}</span>
-            <span className="hidden text-secondary sm:inline">{comparison ? "Compare split on" : `Zoom ${Math.round(zoom * 100)}%`} · {workspaceStatus}</span>
+            <span className="hidden text-secondary sm:inline">Zoom {zoomLabel}{comparison ? " · Compare split on" : ""} · {workspaceStatus}</span>
             <button
               onClick={() => {
                 dispatchEditor({ type: "patch", patch: { workspaceStatus: "Saved" } });

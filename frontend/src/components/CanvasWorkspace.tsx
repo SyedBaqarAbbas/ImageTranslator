@@ -23,6 +23,7 @@ type ResizeHandle = "n" | "ne" | "e" | "se" | "s" | "sw" | "w" | "nw";
 
 const RESIZE_HANDLES: ResizeHandle[] = ["nw", "n", "ne", "e", "se", "s", "sw", "w"];
 const MIN_REGION_SIZE = 24;
+const BASE_FIT_WIDTH = 760;
 const DEFAULT_TEXT_COLOR = "#0f172a";
 const DEFAULT_FILL_COLOR = "#ffffff";
 
@@ -322,26 +323,31 @@ export function CanvasWorkspace({
   const [drag, setDrag] = useState<DragState | null>(null);
   const displaySize = useMemo(() => {
     const aspect = canvasWidth / canvasHeight;
-    const maxWidth = Math.round(760 * zoom);
     const availableWidth = Math.max(containerSize.width, 0);
     const availableHeight = Math.max(containerSize.height, 0);
     if (!availableWidth || !availableHeight) {
       return null;
     }
 
-    let displayWidth = Math.min(availableWidth, maxWidth, availableHeight * aspect);
-    let displayHeight = displayWidth / aspect;
-
-    if (displayHeight > availableHeight) {
-      displayHeight = availableHeight;
-      displayWidth = displayHeight * aspect;
-    }
+    const fitWidth = Math.min(availableWidth, availableHeight * aspect, BASE_FIT_WIDTH);
+    const fitHeight = fitWidth / aspect;
+    const displayWidth = fitWidth * zoom;
+    const displayHeight = fitHeight * zoom;
 
     return {
       width: Math.max(displayWidth, 1),
       height: Math.max(displayHeight, 1),
     };
   }, [canvasHeight, canvasWidth, containerSize.height, containerSize.width, zoom]);
+  const stageSize = useMemo(() => {
+    if (!displaySize) {
+      return null;
+    }
+    return {
+      width: Math.max(displaySize.width, containerSize.width),
+      height: Math.max(displaySize.height, containerSize.height),
+    };
+  }, [containerSize.height, containerSize.width, displaySize]);
 
   useEffect(() => {
     const element = containerRef.current;
@@ -432,43 +438,49 @@ export function CanvasWorkspace({
   }
 
   return (
-    <div ref={containerRef} className="flex min-h-[240px] flex-1 items-center justify-center overflow-auto bg-background p-3 md:p-4 lg:min-h-0 lg:p-8">
+    <div ref={containerRef} className="min-h-[240px] flex-1 overflow-auto bg-background p-3 md:p-4 lg:min-h-0 lg:p-8">
       <div
-        className="relative shrink-0"
+        className="flex min-h-full min-w-full items-center justify-center"
         style={{
-          aspectRatio: `${canvasWidth} / ${canvasHeight}`,
-          width: displaySize?.width ?? "100%",
-          height: displaySize?.height ?? "auto",
-          maxWidth: "100%",
-          maxHeight: "100%",
+          width: stageSize?.width ?? "100%",
+          height: stageSize?.height ?? "100%",
         }}
       >
-        <PagePreview imageUrl={imageUrl} />
+        <div
+          className="relative shrink-0"
+          style={{
+            aspectRatio: `${canvasWidth} / ${canvasHeight}`,
+            width: displaySize?.width ?? "100%",
+            height: displaySize?.height ?? "auto",
+          }}
+        >
+          <PagePreview imageUrl={imageUrl} />
 
-        {comparison ? <ComparisonOverlay /> : null}
+          {comparison ? <ComparisonOverlay /> : null}
 
-        {regions.map((region) => {
-          const active = region.id === selectedRegionId;
-          const boundingBox = drag?.regionId === region.id ? drag.box : region.bounding_box;
-          return (
-            <CanvasRegion
-              key={region.id}
-              region={region}
-              active={active}
-              boundingBox={boundingBox}
-              canvasWidth={canvasWidth}
-              canvasHeight={canvasHeight}
-              displaySize={displaySize}
-              mode={mode}
-              onSelectRegion={onSelectRegion}
-              onStartDrag={startDrag}
-              onStartResize={startResize}
-              onUpdateDrag={updateDrag}
-              onFinishDrag={finishDrag}
-              onCancelDrag={() => setDrag(null)}
-            />
-          );
-        })}
+          {regions.map((region) => {
+            const active = region.id === selectedRegionId;
+            const boundingBox = drag?.regionId === region.id ? drag.box : region.bounding_box;
+            return (
+              <CanvasRegion
+                key={region.id}
+                region={region}
+                active={active}
+                boundingBox={boundingBox}
+                canvasWidth={canvasWidth}
+                canvasHeight={canvasHeight}
+                displaySize={displaySize}
+                mode={mode}
+                onSelectRegion={onSelectRegion}
+                onStartDrag={startDrag}
+                onStartResize={startResize}
+                onUpdateDrag={updateDrag}
+                onFinishDrag={finishDrag}
+                onCancelDrag={() => setDrag(null)}
+              />
+            );
+          })}
+        </div>
       </div>
     </div>
   );
