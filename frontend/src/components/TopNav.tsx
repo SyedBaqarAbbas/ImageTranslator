@@ -92,14 +92,37 @@ export function TopNav() {
           >
             <CircleHelp className="h-5 w-5" />
           </button>
-          <button
-            className="hidden items-center gap-2 rounded-instrument border border-ink-border px-3 py-2 text-sm font-semibold text-text-main transition hover:bg-surface-high xl:flex"
-            onClick={handleShare}
-            aria-expanded={openMenu === "share"}
-          >
-            <Share2 className="h-4 w-4" />
-            Share
-          </button>
+          <div className="relative hidden xl:block">
+            <button
+              className="hidden items-center gap-2 rounded-instrument border border-ink-border px-3 py-2 text-sm font-semibold text-text-main transition hover:bg-surface-high xl:flex"
+              onClick={handleShare}
+              aria-expanded={openMenu === "share"}
+            >
+              <Share2 className="h-4 w-4" />
+              Share
+            </button>
+
+            {openMenu === "share" ? (
+              SHARE_ENABLED ? (
+                <div className="absolute left-0 top-[calc(100%+0.5rem)] w-80 rounded-lg border border-ink-border bg-surface p-4 shadow-2xl">
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <p className="font-display text-sm font-bold text-white">Share workspace</p>
+                    <span className="text-xs font-bold text-secondary">{shareStatus}</span>
+                  </div>
+                  <input
+                    readOnly
+                    value={currentUrl}
+                    className="w-full rounded-instrument border border-ink-border bg-background px-3 py-2 text-xs text-text-muted outline-none"
+                    onFocus={(event) => event.target.select()}
+                  />
+                </div>
+              ) : (
+                <div className="absolute left-0 top-[calc(100%+0.5rem)] rounded-lg border border-ink-border bg-surface px-4 py-3 shadow-2xl">
+                  <p className="font-display text-sm font-bold text-white">Coming Soon</p>
+                </div>
+              )
+            ) : null}
+          </div>
           <button
             onClick={() => navigate("/")}
             aria-label="New project"
@@ -133,26 +156,6 @@ export function TopNav() {
             </div>
           ) : null}
 
-          {openMenu === "share" ? (
-            SHARE_ENABLED ? (
-              <div className="absolute right-0 top-12 w-80 rounded-lg border border-ink-border bg-surface p-4 shadow-2xl">
-                <div className="mb-3 flex items-center justify-between gap-3">
-                  <p className="font-display text-sm font-bold text-white">Share workspace</p>
-                  <span className="text-xs font-bold text-secondary">{shareStatus}</span>
-                </div>
-                <input
-                  readOnly
-                  value={currentUrl}
-                  className="w-full rounded-instrument border border-ink-border bg-background px-3 py-2 text-xs text-text-muted outline-none"
-                  onFocus={(event) => event.target.select()}
-                />
-              </div>
-            ) : (
-              <div className="absolute right-0 top-12 rounded-lg border border-ink-border bg-surface px-4 py-3 shadow-2xl">
-                <p className="font-display text-sm font-bold text-white">Coming Soon</p>
-              </div>
-            )
-          ) : null}
         </div>
       </div>
     </header>
