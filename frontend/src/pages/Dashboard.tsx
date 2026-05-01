@@ -1,5 +1,5 @@
 import { Filter, Plus, Search } from "lucide-react";
-import { useQueries, useQuery } from "@tanstack/react-query";
+import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 
@@ -8,16 +8,33 @@ import { ProjectCard } from "../components/ProjectCard";
 import { ErrorState, LoadingState } from "../components/States";
 import { WorkspaceShell } from "../components/WorkspaceShell";
 import { assetUrlForPage } from "../lib/assets";
+import type { ProjectRead } from "../types/api";
 
 export function Dashboard() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
   const [filter, setFilter] = useState<"all" | "active" | "completed">("all");
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [sortMode, setSortMode] = useState<"recent" | "name">("recent");
   const [search, setSearch] = useState(searchParams.get("search") ?? "");
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const projectsQuery = useQuery({ queryKey: queryKeys.projects, queryFn: api.listProjects });
   const projects = useMemo(() => projectsQuery.data ?? [], [projectsQuery.data]);
+
+  const deleteMutation = useMutation({
+    mutationFn: (projectId: string) => api.deleteProject(projectId),
+    onMutate: () => {
+      setDeleteError(null);
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: queryKeys.projects });
+    },
+    onError: (error) => {
+      const message = error instanceof Error && error.message ? error.message : "The request failed.";
+      setDeleteError(`Unable to delete project: ${message}`);
+    },
+  });
 
   useEffect(() => {
     setSearch(searchParams.get("search") ?? "");
@@ -32,6 +49,14 @@ export function Dashboard() {
       nextParams.delete("search");
     }
     setSearchParams(nextParams, { replace: true });
+  }
+
+  function handleDeleteProject(project: ProjectRead) {
+    const confirmed = window.confirm(`Delete "${project.name}"?\n\nThis hides the project from the dashboard.`);
+    if (!confirmed) {
+      return;
+    }
+    deleteMutation.mutate(project.id);
   }
 
   const pageQueries = useQueries({
@@ -150,6 +175,11 @@ export function Dashboard() {
 
         {projectsQuery.isLoading ? <LoadingState /> : null}
         {projectsQuery.isError ? <ErrorState message={projectsQuery.error.message} /> : null}
+        {deleteError ? (
+          <p role="alert" className="mb-6 rounded-instrument border border-danger/40 bg-danger/10 p-3 text-sm font-semibold text-danger">
+            {deleteError}
+          </p>
+        ) : null}
 
         {!projectsQuery.isLoading && !projectsQuery.isError && filteredProjects.length === 0 ? (
           <section className="flex min-h-[520px] items-center justify-center rounded-lg border border-dashed border-ink-border bg-surface-low p-8 text-center">
@@ -170,7 +200,14 @@ export function Dashboard() {
         {filteredProjects.length > 0 ? (
           <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
             {filteredProjects.map((project) => (
-              <ProjectCard key={project.id} project={project} coverUrl={covers.get(project.id)} />
+              <ProjectCard
+                key={project.id}
+                project={project}
+                coverUrl={covers.get(project.id)}
+                onDelete={() => handleDeleteProject(project)}
+                isDeleteDisabled={deleteMutation.isPending}
+                isDeleting={deleteMutation.isPending && deleteMutation.variables === project.id}
+              />
             ))}
             <button onClick={() => navigate("/")} className="min-h-[360px] rounded-lg border border-dashed border-ink-border bg-background p-6 text-text-muted transition hover:border-primary hover:bg-primary/5 hover:text-primary-soft">
               <Plus className="mx-auto mb-4 h-10 w-10" />

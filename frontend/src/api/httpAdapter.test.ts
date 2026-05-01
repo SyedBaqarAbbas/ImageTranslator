@@ -197,4 +197,23 @@ describe("httpApi", () => {
       expect.objectContaining({ method: "DELETE" }),
     );
   });
+
+  it("uses backend project delete path", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "http://api.test/api/v1/projects/project-1") {
+        return new Response(null, { status: 204 });
+      }
+      return jsonResponse({ error: { message: `Unexpected ${url}` } }, { status: 404 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const httpApi = await loadHttpApi();
+    await httpApi.deleteProject("project-1");
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://api.test/api/v1/projects/project-1",
+      expect.objectContaining({ method: "DELETE" }),
+    );
+  });
 });

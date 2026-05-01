@@ -239,6 +239,7 @@ export interface ApiAdapter {
   listProjects(): Promise<ProjectRead[]>;
   createProject(payload: ProjectCreate): Promise<ProjectDetail>;
   updateProject(projectId: string, payload: ProjectUpdate): Promise<ProjectDetail>;
+  deleteProject(projectId: string): Promise<void>;
   updateSettings(projectId: string, payload: TranslationSettingsUpdate): Promise<TranslationSettingsRead>;
   uploadPages(projectId: string, files: File[]): Promise<PageRead[]>;
   getProject(projectId: string): Promise<ProjectDetail>;
