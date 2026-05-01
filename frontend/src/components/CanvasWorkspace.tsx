@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useReducer, useRef, useState } from "react";
-import type { PointerEvent } from "react";
+import type { KeyboardEvent, PointerEvent } from "react";
 
 import type { BoundingBox, TextRegionRead } from "../types/api";
 
@@ -26,6 +26,10 @@ const MIN_REGION_SIZE = 24;
 const BASE_FIT_WIDTH = 760;
 const DEFAULT_TEXT_COLOR = "#0f172a";
 const DEFAULT_FILL_COLOR = "#ffffff";
+const COMPARE_SPLIT_MIN = 5;
+const COMPARE_SPLIT_MAX = 95;
+const COMPARE_SPLIT_STEP = 2;
+const COMPARE_SPLIT_LARGE_STEP = 10;
 
 const handleClassName: Record<ResizeHandle, string> = {
   n: "left-1/2 top-0 -translate-x-1/2 -translate-y-1/2 cursor-ns-resize",
@@ -92,6 +96,10 @@ function clampBox(box: BoundingBox, canvasWidth: number, canvasHeight: number): 
     width,
     height,
   };
+}
+
+function clampComparisonSplit(value: number): number {
+  return Math.min(COMPARE_SPLIT_MAX, Math.max(COMPARE_SPLIT_MIN, Number(value.toFixed(1))));
 }
 
 function resizeBoxForPointer(
@@ -183,16 +191,35 @@ function PagePreview({ imageUrl }: { imageUrl?: string }) {
   );
 }
 
-function ComparisonOverlay() {
+function ComparisonPreview({
+  originalImageUrl,
+  translatedImageUrl,
+  splitPercent,
+}: {
+  originalImageUrl?: string;
+  translatedImageUrl?: string;
+  splitPercent: number;
+}) {
+  const originalLayerUrl = originalImageUrl ?? translatedImageUrl;
+  const translatedLayerUrl = translatedImageUrl ?? originalImageUrl;
+
+  if (!originalLayerUrl && !translatedLayerUrl) {
+    return <PagePreview />;
+  }
+
   return (
-    <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-instrument">
-      <div className="absolute inset-y-0 left-1/2 w-px bg-secondary shadow-cyan" />
-      <div className="absolute left-3 top-3 rounded-instrument border border-ink-border bg-background/85 px-2 py-1 text-[11px] font-bold uppercase text-text-muted">
-        Original
-      </div>
-      <div className="absolute right-3 top-3 rounded-instrument border border-secondary/60 bg-secondary/15 px-2 py-1 text-[11px] font-bold uppercase text-secondary">
-        Translated
-      </div>
+    <div className="relative h-full w-full overflow-hidden rounded-instrument border border-ink-border bg-surface-low shadow-2xl">
+      {translatedLayerUrl ? (
+        <img className="pointer-events-none absolute inset-0 h-full w-full object-contain" src={translatedLayerUrl} alt="Translated page" />
+      ) : null}
+      {originalLayerUrl ? (
+        <img
+          className="pointer-events-none absolute inset-0 h-full w-full object-contain"
+          src={originalLayerUrl}
+          alt="Original page"
+          style={{ clipPath: `inset(0 ${100 - splitPercent}% 0 0)` }}
+        />
+      ) : null}
     </div>
   );
 }
@@ -295,6 +322,10 @@ function CanvasRegion({
 
 export function CanvasWorkspace({
   imageUrl,
+  comparisonOriginalImageUrl,
+  comparisonTranslatedImageUrl,
+  comparisonSplit,
+  onComparisonSplitChange,
   width = 920,
   height = 1320,
   regions,
@@ -306,6 +337,10 @@ export function CanvasWorkspace({
   comparison = false,
 }: {
   imageUrl?: string;
+  comparisonOriginalImageUrl?: string;
+  comparisonTranslatedImageUrl?: string;
+  comparisonSplit?: number;
+  onComparisonSplitChange?: (splitPercent: number) => void;
   width?: number | null;
   height?: number | null;
   regions: TextRegionRead[];
@@ -319,8 +354,15 @@ export function CanvasWorkspace({
   const canvasWidth = width ?? 920;
   const canvasHeight = height ?? 1320;
   const containerRef = useRef<HTMLDivElement>(null);
+  const canvasFrameRef = useRef<HTMLDivElement>(null);
+  const comparisonPointerId = useRef<number | null>(null);
   const [containerSize, setContainerSize] = useReducer(containerSizeReducer, { width: 0, height: 0 });
   const [drag, setDrag] = useState<DragState | null>(null);
+  const [internalComparisonSplit, setInternalComparisonSplit] = useState(50);
+  const activeComparisonSplit = clampComparisonSplit(comparisonSplit ?? internalComparisonSplit);
+  const setComparisonSplit = onComparisonSplitChange ?? setInternalComparisonSplit;
+  const originalComparisonUrl = comparisonOriginalImageUrl ?? imageUrl;
+  const translatedComparisonUrl = comparisonTranslatedImageUrl ?? imageUrl;
   const displaySize = useMemo(() => {
     const aspect = canvasWidth / canvasHeight;
     const availableWidth = Math.max(containerSize.width, 0);
@@ -371,6 +413,67 @@ export function CanvasWorkspace({
     observer.observe(element);
     return () => observer.disconnect();
   }, []);
+
+  function splitForPointer(event: PointerEvent<HTMLElement>): number | null {
+    const rect = canvasFrameRef.current?.getBoundingClientRect();
+    if (!rect?.width) {
+      return null;
+    }
+    return ((event.clientX - rect.left) / rect.width) * 100;
+  }
+
+  function updateComparisonSplitFromPointer(event: PointerEvent<HTMLElement>) {
+    const nextSplit = splitForPointer(event);
+    if (nextSplit === null) {
+      return;
+    }
+    setComparisonSplit(clampComparisonSplit(nextSplit));
+  }
+
+  function startComparisonDrag(event: PointerEvent<HTMLDivElement>) {
+    event.preventDefault();
+    event.stopPropagation();
+    comparisonPointerId.current = event.pointerId;
+    event.currentTarget.setPointerCapture(event.pointerId);
+    updateComparisonSplitFromPointer(event);
+  }
+
+  function updateComparisonDrag(event: PointerEvent<HTMLDivElement>) {
+    if (comparisonPointerId.current !== event.pointerId) {
+      return;
+    }
+    updateComparisonSplitFromPointer(event);
+  }
+
+  function finishComparisonDrag(event: PointerEvent<HTMLDivElement>) {
+    if (comparisonPointerId.current !== event.pointerId) {
+      return;
+    }
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    comparisonPointerId.current = null;
+  }
+
+  function handleComparisonKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+    const step = event.shiftKey ? COMPARE_SPLIT_LARGE_STEP : COMPARE_SPLIT_STEP;
+    if (event.key === "ArrowLeft" || event.key === "ArrowDown") {
+      event.preventDefault();
+      setComparisonSplit(clampComparisonSplit(activeComparisonSplit - step));
+    }
+    if (event.key === "ArrowRight" || event.key === "ArrowUp") {
+      event.preventDefault();
+      setComparisonSplit(clampComparisonSplit(activeComparisonSplit + step));
+    }
+    if (event.key === "Home") {
+      event.preventDefault();
+      setComparisonSplit(COMPARE_SPLIT_MIN);
+    }
+    if (event.key === "End") {
+      event.preventDefault();
+      setComparisonSplit(COMPARE_SPLIT_MAX);
+    }
+  }
 
   function startDrag(event: PointerEvent<HTMLDivElement>, region: TextRegionRead) {
     if (!displaySize || !onMoveRegion) {
@@ -447,6 +550,7 @@ export function CanvasWorkspace({
         }}
       >
         <div
+          ref={canvasFrameRef}
           className="relative shrink-0"
           style={{
             aspectRatio: `${canvasWidth} / ${canvasHeight}`,
@@ -454,9 +558,15 @@ export function CanvasWorkspace({
             height: displaySize?.height ?? "auto",
           }}
         >
-          <PagePreview imageUrl={imageUrl} />
-
-          {comparison ? <ComparisonOverlay /> : null}
+          {comparison ? (
+            <ComparisonPreview
+              originalImageUrl={originalComparisonUrl}
+              translatedImageUrl={translatedComparisonUrl}
+              splitPercent={activeComparisonSplit}
+            />
+          ) : (
+            <PagePreview imageUrl={imageUrl} />
+          )}
 
           {regions.map((region) => {
             const active = region.id === selectedRegionId;
@@ -470,7 +580,7 @@ export function CanvasWorkspace({
                 canvasWidth={canvasWidth}
                 canvasHeight={canvasHeight}
                 displaySize={displaySize}
-                mode={mode}
+                mode={comparison ? "original" : mode}
                 onSelectRegion={onSelectRegion}
                 onStartDrag={startDrag}
                 onStartResize={startResize}
@@ -480,6 +590,43 @@ export function CanvasWorkspace({
               />
             );
           })}
+
+          {comparison ? (
+            <>
+              <div className="pointer-events-none absolute inset-0 z-30 overflow-hidden rounded-instrument">
+                <div className="absolute left-3 top-3 rounded-instrument border border-ink-border bg-background/85 px-2 py-1 text-[11px] font-bold uppercase text-text-muted">
+                  <span className="sm:hidden">Orig</span>
+                  <span className="hidden sm:inline">Original</span>
+                </div>
+                <div className="absolute right-3 top-3 rounded-instrument border border-secondary/60 bg-secondary/15 px-2 py-1 text-[11px] font-bold uppercase text-secondary">
+                  <span className="sm:hidden">Trans</span>
+                  <span className="hidden sm:inline">Translated</span>
+                </div>
+              </div>
+              <div
+                role="separator"
+                aria-label="Compare split position"
+                aria-orientation="vertical"
+                aria-valuemin={COMPARE_SPLIT_MIN}
+                aria-valuemax={COMPARE_SPLIT_MAX}
+                aria-valuenow={Math.round(activeComparisonSplit)}
+                aria-valuetext={`Original ${Math.round(activeComparisonSplit)} percent, translated ${Math.round(100 - activeComparisonSplit)} percent`}
+                tabIndex={0}
+                onPointerDown={startComparisonDrag}
+                onPointerMove={updateComparisonDrag}
+                onPointerUp={finishComparisonDrag}
+                onPointerCancel={finishComparisonDrag}
+                onKeyDown={handleComparisonKeyDown}
+                className="group absolute inset-y-0 z-40 w-9 -translate-x-1/2 cursor-ew-resize touch-none focus-visible:outline-none"
+                style={{ left: `${activeComparisonSplit}%` }}
+              >
+                <span className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-secondary shadow-cyan" />
+                <span className="absolute left-1/2 top-1/2 flex h-11 w-5 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-secondary/70 bg-background/90 text-secondary shadow-cyan transition group-focus-visible:outline group-focus-visible:outline-2 group-focus-visible:outline-offset-2 group-focus-visible:outline-secondary">
+                  <span className="h-6 w-px rounded-full bg-secondary/80" />
+                </span>
+              </div>
+            </>
+          ) : null}
         </div>
       </div>
     </div>
