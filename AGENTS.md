@@ -55,6 +55,7 @@ Documentation-only changes usually do not need tests, but inspect Markdown struc
 - Use commit messages in the format `[prefix] <message>`, for example `[fix] handle empty OCR results` or `[docs] update setup notes`.
 - The `testing/` folder contains generated evidence and is intentionally ignored by git.
 - `.gitignore` may have local changes; do not include it in commits unless the user asks or the task requires it.
+- When fixing issues from Linear, automations only run if the branch name contains the ticket. Checkout to the branch name containing ticket name.
 
 ## Known Sharp Edges
 
