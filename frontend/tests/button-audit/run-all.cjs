@@ -10,6 +10,7 @@ const defaultPages = [
   "dashboard",
   "project-setup",
   "assets",
+  "team",
   "settings",
   "batch-ocr",
   "typefaces",
