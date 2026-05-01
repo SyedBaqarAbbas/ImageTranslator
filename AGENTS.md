@@ -52,6 +52,7 @@ Documentation-only changes usually do not need tests, but inspect Markdown struc
 - The worktree may already contain user changes. Do not revert changes you did not make.
 - Check `git status --short` before staging or committing.
 - Stage only files relevant to the requested task.
+- Use commit messages in the format `[prefix] <message>`, for example `[fix] handle empty OCR results` or `[docs] update setup notes`.
 - The `testing/` folder contains generated evidence and is intentionally ignored by git.
 - `.gitignore` may have local changes; do not include it in commits unless the user asks or the task requires it.
 
