@@ -63,7 +63,8 @@ Documentation-only changes usually do not need tests, but inspect Markdown struc
 - Create a branch containing the Linear ticket ID/name.
 - Base it on latest `main` unless told otherwise.
 - Commit with a meaningful `[prefix] <message>`.
-- Push the branch and open a PR against `main`.
+- Push the branch.
+- Create a normal open PR against `main`, not a draft PR, unless the user explicitly asks for a draft.
 
 ## Known Sharp Edges
 
