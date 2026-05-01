@@ -599,7 +599,7 @@ export function RegionPanel({
                 onDraftChange?.(selectedRegion.id);
               }}
               disabled={!canEditSelectedRegion}
-              className="mt-2 min-h-20 w-full resize-none rounded-instrument border border-ink-border bg-background p-3 text-sm text-text-main outline-none transition focus:border-secondary focus:ring-1 focus:ring-secondary disabled:cursor-not-allowed disabled:opacity-65 lg:min-h-28"
+              className="mt-2 min-h-20 w-full resize-y rounded-instrument border border-ink-border bg-background p-3 text-sm text-text-main outline-none transition focus:border-secondary focus:ring-1 focus:ring-secondary disabled:cursor-not-allowed disabled:opacity-65 lg:min-h-28"
             />
           </label>
           <div className="mt-3 rounded-lg border border-ink-border bg-background p-3">
