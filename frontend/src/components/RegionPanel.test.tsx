@@ -26,6 +26,7 @@ const region: TextRegionRead = {
   updated_at: "2026-05-01T00:00:00Z",
 };
 const panelWidthStorageKey = "imageTranslator.editor.regionPanelWidth";
+const panelHeightStorageKey = "imageTranslator.editor.regionPanelHeight";
 
 beforeEach(() => {
   window.localStorage.clear();
@@ -85,16 +86,17 @@ describe("RegionPanel", () => {
   it("uses and persists the default desktop width for first-time sessions", () => {
     renderRegionPanel();
 
-    const separator = screen.getByRole("separator", { name: /resize translation cards panel/i });
+    const separator = screen.getByRole("separator", { name: /resize translation cards panel width/i });
     expect(separator).toHaveAttribute("aria-valuenow", "360");
     expect(window.localStorage.getItem(panelWidthStorageKey)).toBe("360");
+    expect(window.localStorage.getItem(panelHeightStorageKey)).toBeTruthy();
   });
 
   it("resizes the desktop panel with the keyboard and persists the width", () => {
     window.localStorage.setItem(panelWidthStorageKey, "520");
     renderRegionPanel();
 
-    const separator = screen.getByRole("separator", { name: /resize translation cards panel/i });
+    const separator = screen.getByRole("separator", { name: /resize translation cards panel width/i });
     expect(separator).toHaveAttribute("aria-orientation", "vertical");
     expect(separator).toHaveAttribute("aria-valuenow", "520");
     expect(separator).toHaveAttribute("aria-valuemax", "560");
@@ -118,7 +120,7 @@ describe("RegionPanel", () => {
     window.localStorage.setItem(panelWidthStorageKey, "520");
     renderRegionPanel();
 
-    const separator = screen.getByRole("separator", { name: /resize translation cards panel/i });
+    const separator = screen.getByRole("separator", { name: /resize translation cards panel width/i });
     expect(separator).toHaveAttribute("aria-valuenow", "300");
     expect(window.localStorage.getItem(panelWidthStorageKey)).toBe("520");
 
@@ -127,5 +129,26 @@ describe("RegionPanel", () => {
 
     expect(separator).toHaveAttribute("aria-valuenow", "520");
     expect(window.localStorage.getItem(panelWidthStorageKey)).toBe("520");
+  });
+
+  it("resizes the stacked panel height with keyboard controls and persists the height", () => {
+    Object.defineProperty(window, "innerWidth", { configurable: true, writable: true, value: 390 });
+    Object.defineProperty(window, "innerHeight", { configurable: true, writable: true, value: 900 });
+    window.localStorage.setItem(panelHeightStorageKey, "460");
+    renderRegionPanel();
+
+    const separator = screen.getByRole("separator", { name: /resize translation cards panel height/i });
+    expect(separator).toHaveAttribute("aria-orientation", "horizontal");
+    expect(separator).toHaveAttribute("aria-valuenow", "460");
+
+    fireEvent.keyDown(separator, { key: "ArrowUp" });
+    expect(separator).toHaveAttribute("aria-valuenow", "484");
+    expect(window.localStorage.getItem(panelHeightStorageKey)).toBe("484");
+
+    fireEvent.keyDown(separator, { key: "Home" });
+    expect(separator).toHaveAttribute("aria-valuenow", "260");
+
+    fireEvent.keyDown(separator, { key: "End" });
+    expect(separator).toHaveAttribute("aria-valuenow", separator.getAttribute("aria-valuemax"));
   });
 });
