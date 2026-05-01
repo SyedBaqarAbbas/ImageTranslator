@@ -40,8 +40,8 @@ export function Support() {
           <aside className="rounded-lg border border-ink-border bg-surface-low p-5">
             <Mail className="mb-4 h-8 w-8 text-primary-soft" />
             <h2 className="font-display text-lg font-bold text-white">Contact</h2>
-            <a className="mt-3 block rounded-instrument border border-ink-border bg-background p-3 text-sm font-semibold text-primary-soft transition hover:bg-surface-high" href="mailto:support@comicflow.ai">
-              support@comicflow.ai
+            <a className="mt-3 block rounded-instrument border border-ink-border bg-background p-3 text-sm font-semibold text-primary-soft transition hover:bg-surface-high" href="mailto:baqar2001@hotmail.com">
+              baqar2001@hotmail.com
             </a>
             <p className="mt-4 rounded-instrument border border-ink-border bg-background p-3 text-sm font-semibold text-secondary">{status}</p>
           </aside>
