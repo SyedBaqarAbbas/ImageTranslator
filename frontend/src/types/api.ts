@@ -91,6 +91,14 @@ export interface TranslationSettingsRead extends Timestamped {
   notes: string | null;
 }
 
+export interface RuntimeLanguageRead {
+  source_language: string;
+  target_language: string;
+  provider: string;
+  locked: boolean;
+  lock_message: string;
+}
+
 export interface ProjectRead extends Timestamped {
   id: string;
   user_id: string;
@@ -236,6 +244,7 @@ export interface ExportJobRead extends Timestamped {
 }
 
 export interface ApiAdapter {
+  getRuntimeLanguage(): Promise<RuntimeLanguageRead>;
   listProjects(): Promise<ProjectRead[]>;
   createProject(payload: ProjectCreate): Promise<ProjectDetail>;
   updateProject(projectId: string, payload: ProjectUpdate): Promise<ProjectDetail>;

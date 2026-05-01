@@ -66,6 +66,29 @@ describe("httpApi", () => {
     vi.restoreAllMocks();
   });
 
+  it("reads runtime language metadata from the backend", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "http://api.test/api/v1/runtime/language") {
+        return jsonResponse({
+          source_language: "ko",
+          target_language: "en",
+          provider: "opus_mt",
+          locked: true,
+          lock_message: "Ask a system administrator to change the language.",
+        });
+      }
+      return jsonResponse({ error: { message: `Unexpected ${url}` } }, { status: 404 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const httpApi = await loadHttpApi();
+    const runtimeLanguage = await httpApi.getRuntimeLanguage();
+
+    expect(runtimeLanguage.source_language).toBe("ko");
+    expect(fetchMock).toHaveBeenCalledWith("http://api.test/api/v1/runtime/language", expect.any(Object));
+  });
+
   it("uses backend page upload and hydrates asset download URLs", async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);

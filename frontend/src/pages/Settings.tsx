@@ -1,12 +1,23 @@
 import { Check, Languages, Moon, Save } from "lucide-react";
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 
+import { api, queryKeys } from "../api";
+import { LockedLanguageSelect } from "../components/LockedLanguageSelect";
 import { WorkspaceShell } from "../components/WorkspaceShell";
 
 export function Settings() {
   const [autoProcess, setAutoProcess] = useState(true);
   const [qualityMode, setQualityMode] = useState<"balanced" | "high">("balanced");
   const [status, setStatus] = useState("Unsaved");
+  const runtimeLanguageQuery = useQuery({
+    queryKey: queryKeys.runtimeLanguage,
+    queryFn: () => api.getRuntimeLanguage(),
+  });
+  const runtimeLanguage = runtimeLanguageQuery.data;
+  const sourceLanguage = runtimeLanguage?.source_language ?? "auto";
+  const targetLanguage = runtimeLanguage?.target_language ?? "en";
+  const lockMessage = runtimeLanguage?.lock_message ?? "Ask a system administrator to change the language.";
 
   function handleSave() {
     setStatus("Saved locally");
@@ -27,23 +38,12 @@ export function Settings() {
               <h2 className="font-display text-xl font-bold text-white">Translation defaults</h2>
             </div>
             <div className="grid gap-4 md:grid-cols-2">
-              <label className="block">
-                <span className="text-xs font-bold uppercase text-text-muted">Source language</span>
-                <select className="mt-2 h-11 w-full rounded-instrument border border-ink-border bg-background px-3 text-sm text-text-main outline-none focus:border-secondary" defaultValue="ko">
-                  <option value="ko">Korean</option>
-                  <option value="ja">Japanese</option>
-                  <option value="zh">Chinese</option>
-                </select>
-              </label>
-              <label className="block">
-                <span className="text-xs font-bold uppercase text-text-muted">Target language</span>
-                <select className="mt-2 h-11 w-full rounded-instrument border border-ink-border bg-background px-3 text-sm text-text-main outline-none focus:border-secondary" defaultValue="en">
-                  <option value="en">English</option>
-                  <option value="es">Spanish</option>
-                  <option value="fr">French</option>
-                </select>
-              </label>
+              <LockedLanguageSelect isLoading={runtimeLanguageQuery.isLoading} label="Source language" lockMessage={lockMessage} value={sourceLanguage} />
+              <LockedLanguageSelect isLoading={runtimeLanguageQuery.isLoading} label="Target language" lockMessage={lockMessage} value={targetLanguage} />
             </div>
+            {runtimeLanguageQuery.isError ? (
+              <p className="mt-4 rounded-instrument border border-danger/40 bg-danger/10 p-3 text-sm text-danger">Unable to load the configured translation language.</p>
+            ) : null}
           </section>
 
           <section className="rounded-lg border border-ink-border bg-surface-low p-5">

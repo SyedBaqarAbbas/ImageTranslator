@@ -11,6 +11,7 @@ import type {
   ProjectRead,
   ProjectUpdate,
   RetranslateRequest,
+  RuntimeLanguageRead,
   TextRegionRead,
   TextRegionUpdate,
   TranslationSettingsRead,
@@ -113,6 +114,10 @@ async function hydrateExportJob(job: ExportJobRead): Promise<ExportJobRead> {
 }
 
 export const httpApi: ApiAdapter = {
+  getRuntimeLanguage(): Promise<RuntimeLanguageRead> {
+    return request<RuntimeLanguageRead>("/runtime/language");
+  },
+
   listProjects(): Promise<ProjectRead[]> {
     return request<ProjectRead[]>("/projects");
   },
