@@ -65,6 +65,14 @@ function findRegion(regionId: string): TextRegionRead {
   return region;
 }
 
+function findJob(jobId: string): ProcessingJobRead {
+  const job = jobs.find((item) => item.id === jobId);
+  if (!job) {
+    throw new Error("Job not found.");
+  }
+  return job;
+}
+
 function buildJob(projectId: string, jobType: string, result: Record<string, unknown> | null = null): ProcessingJobRead {
   const now = iso();
   return {
@@ -406,6 +414,15 @@ export const mockApi: ApiAdapter = {
     job.region_id = region.id;
     jobs.unshift(job);
     window.setTimeout(() => {
+      job.status = "running";
+      job.progress = 45;
+      job.stage = "translating_region";
+      job.started_at = iso();
+      job.updated_at = iso();
+      region.status = "translating";
+      region.updated_at = iso();
+    }, 300);
+    window.setTimeout(() => {
       job.status = "succeeded";
       job.progress = 100;
       job.stage = "complete";
@@ -417,6 +434,10 @@ export const mockApi: ApiAdapter = {
       region.updated_at = iso();
     }, 900);
     return delay(job);
+  },
+
+  async getProcessingJob(jobId: string): Promise<ProcessingJobRead> {
+    return delay(findJob(jobId));
   },
 
   async processProject(projectId: string, payload: ProcessProjectRequest): Promise<ProcessingJobRead> {

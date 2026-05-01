@@ -6,10 +6,11 @@ import { Link, useParams } from "react-router-dom";
 import { api, queryKeys } from "../api";
 import { CanvasWorkspace } from "../components/CanvasWorkspace";
 import { RegionPanel } from "../components/RegionPanel";
-import type { RegionSaveAction, RegionSaveFeedback } from "../components/RegionPanel";
+import type { RegionRetranslateFeedback, RegionRetranslateSource, RegionSaveAction, RegionSaveFeedback } from "../components/RegionPanel";
 import { ErrorState, LoadingState } from "../components/States";
 import { WorkspaceShell } from "../components/WorkspaceShell";
 import { assetUrlForPage } from "../lib/assets";
+import { waitForSuccessfulRetranslateJob } from "../lib/retranslateJob";
 import type { BoundingBox, TextRegionRead, TextRegionUpdate } from "../types/api";
 
 type EditorMode = "original" | "translated";
@@ -25,6 +26,7 @@ interface EditorState {
   workspaceStatus: string;
   styleDrafts: Record<string, Record<string, unknown>>;
   regionSaveFeedback: RegionSaveFeedback | null;
+  regionRetranslateFeedback: RegionRetranslateFeedback | null;
 }
 
 type EditorAction =
@@ -33,7 +35,8 @@ type EditorAction =
   | { type: "setStyleDraft"; regionId: string; renderStyle: Record<string, unknown> }
   | { type: "clearStyleDraft"; regionId: string }
   | { type: "markRegionDirty"; regionId: string }
-  | { type: "setRegionSaveFeedback"; feedback: RegionSaveFeedback | null };
+  | { type: "setRegionSaveFeedback"; feedback: RegionSaveFeedback | null }
+  | { type: "setRegionRetranslateFeedback"; feedback: RegionRetranslateFeedback | null };
 
 const ZOOM_MIN = 0.75;
 const ZOOM_MAX = 1.45;
@@ -47,6 +50,7 @@ const initialEditorState: EditorState = {
   workspaceStatus: "Unsaved",
   styleDrafts: {},
   regionSaveFeedback: null,
+  regionRetranslateFeedback: null,
 };
 
 function editorReducer(state: EditorState, action: EditorAction): EditorState {
@@ -59,6 +63,8 @@ function editorReducer(state: EditorState, action: EditorAction): EditorState {
       ...state,
       workspaceStatus: "Unsaved",
       regionSaveFeedback: state.regionSaveFeedback?.regionId === action.regionId ? null : state.regionSaveFeedback,
+      regionRetranslateFeedback:
+        state.regionRetranslateFeedback?.regionId === action.regionId ? null : state.regionRetranslateFeedback,
       styleDrafts: { ...state.styleDrafts, [action.regionId]: action.renderStyle },
     };
   }
@@ -74,11 +80,22 @@ function editorReducer(state: EditorState, action: EditorAction): EditorState {
       ...state,
       workspaceStatus: "Unsaved",
       regionSaveFeedback: state.regionSaveFeedback?.regionId === action.regionId ? null : state.regionSaveFeedback,
+      regionRetranslateFeedback:
+        state.regionRetranslateFeedback?.regionId === action.regionId ? null : state.regionRetranslateFeedback,
     };
   }
 
   if (action.type === "setRegionSaveFeedback") {
     return { ...state, regionSaveFeedback: action.feedback };
+  }
+
+  if (action.type === "setRegionRetranslateFeedback") {
+    return {
+      ...state,
+      regionRetranslateFeedback: action.feedback,
+      regionSaveFeedback:
+        action.feedback && state.regionSaveFeedback?.regionId === action.feedback.regionId ? null : state.regionSaveFeedback,
+    };
   }
 
   return { ...state, ...action.patch };
@@ -100,17 +117,29 @@ function successMessage(action: EditorSaveAction): string {
   return action === "approve" ? "Approved" : "Saved";
 }
 
+function retranslateSourceLabel(source: RegionRetranslateSource): string {
+  return source === "detected_text" ? "OCR source text" : "current target draft";
+}
+
 interface SaveRegionVariables {
   regionId: string;
   payload: TextRegionUpdate;
   action: EditorSaveAction;
 }
 
+interface RetranslateRegionVariables {
+  regionId: string;
+  sourceText: string;
+  source: RegionRetranslateSource;
+}
+
 export function Editor() {
   const { projectId = "" } = useParams();
   const queryClient = useQueryClient();
-  const [{ selectedPageId, selectedRegionId, mode, comparison, comparisonSplit, zoom, workspaceStatus, styleDrafts, regionSaveFeedback }, dispatchEditor] =
-    useReducer(editorReducer, initialEditorState);
+  const [
+    { selectedPageId, selectedRegionId, mode, comparison, comparisonSplit, zoom, workspaceStatus, styleDrafts, regionSaveFeedback, regionRetranslateFeedback },
+    dispatchEditor,
+  ] = useReducer(editorReducer, initialEditorState);
   const zoomLabel = `${Math.round(zoom * 100)}%`;
 
   const projectQuery = useQuery({ queryKey: queryKeys.project(projectId), queryFn: () => api.getProject(projectId), enabled: Boolean(projectId) });
@@ -250,16 +279,53 @@ export function Editor() {
   });
 
   const retranslateMutation = useMutation({
-    mutationFn: ({ regionId, sourceText }: { regionId: string; sourceText: string }) =>
-      api.retranslateRegion(regionId, {
+    mutationFn: async ({ regionId, sourceText }: RetranslateRegionVariables) => {
+      const job = await api.retranslateRegion(regionId, {
         source_text: sourceText,
         target_language: projectQuery.data?.target_language,
         tone: projectQuery.data?.translation_tone,
-    }),
-    onSuccess: async () => {
-      if (selectedPage) {
-        await queryClient.invalidateQueries({ queryKey: queryKeys.regions(selectedPage.id) });
-      }
+      });
+      return waitForSuccessfulRetranslateJob(job, { getProcessingJob: api.getProcessingJob });
+    },
+    onMutate: ({ regionId, source }) => {
+      dispatchEditor({
+        type: "setRegionRetranslateFeedback",
+        feedback: {
+          regionId,
+          status: "pending",
+          message: `Translating from ${retranslateSourceLabel(source)}.`,
+        },
+      });
+      dispatchEditor({ type: "patch", patch: { workspaceStatus: "Translating region..." } });
+    },
+    onSuccess: async (job, variables) => {
+      const pageId = job.page_id ?? selectedPage?.id;
+      await Promise.all([
+        pageId ? queryClient.invalidateQueries({ queryKey: queryKeys.regions(pageId) }) : Promise.resolve(),
+        projectId ? queryClient.invalidateQueries({ queryKey: queryKeys.jobs(projectId) }) : Promise.resolve(),
+        projectId ? queryClient.invalidateQueries({ queryKey: queryKeys.pages(projectId) }) : Promise.resolve(),
+        projectId ? queryClient.invalidateQueries({ queryKey: queryKeys.project(projectId) }) : Promise.resolve(),
+      ]);
+      dispatchEditor({
+        type: "setRegionRetranslateFeedback",
+        feedback: {
+          regionId: variables.regionId,
+          status: "success",
+          message: "Translation updated.",
+        },
+      });
+      dispatchEditor({ type: "patch", patch: { workspaceStatus: "Translation updated" } });
+    },
+    onError: (error, variables) => {
+      dispatchEditor({
+        type: "setRegionRetranslateFeedback",
+        feedback: {
+          regionId: variables.regionId,
+          status: "error",
+          message: `Translation failed: ${errorMessage(error, "The request failed.")}`,
+        },
+      });
+      dispatchEditor({ type: "patch", patch: { workspaceStatus: "Translation failed" } });
     },
   });
 
@@ -391,13 +457,14 @@ export function Editor() {
               selectedRegionId={selectedRegionId}
               onSelect={(regionId) => dispatchEditor({ type: "patch", patch: { selectedRegionId: regionId } })}
               onSave={(regionId, payload, action) => saveMutation.mutate({ regionId, payload, action })}
-              onRetranslate={(regionId, sourceText) => retranslateMutation.mutate({ regionId, sourceText })}
+              onRetranslate={(regionId, sourceText, source) => retranslateMutation.mutate({ regionId, sourceText, source })}
               onDelete={(regionId) => deleteMutation.mutate(regionId)}
               onDraftChange={(regionId) => dispatchEditor({ type: "markRegionDirty", regionId })}
               onStyleDraftChange={(regionId, renderStyle) => {
                 dispatchEditor({ type: "setStyleDraft", regionId, renderStyle });
               }}
               saveFeedback={regionSaveFeedback}
+              retranslateFeedback={regionRetranslateFeedback}
               isDeleting={deleteMutation.isPending}
             />
           </div>

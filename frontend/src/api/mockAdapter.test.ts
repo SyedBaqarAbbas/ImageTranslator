@@ -6,8 +6,14 @@ async function loadMockApi() {
   return module.mockApi;
 }
 
+async function resolveDelayed<T>(promise: Promise<T>, ms = 180): Promise<T> {
+  await vi.advanceTimersByTimeAsync(ms);
+  return promise;
+}
+
 describe("mockApi", () => {
   afterEach(() => {
+    vi.useRealTimers();
     vi.restoreAllMocks();
   });
 
@@ -31,5 +37,27 @@ describe("mockApi", () => {
 
     expect((await mockApi.listProjects()).some((project) => project.id === "project-cyber")).toBe(false);
     await expect(mockApi.getProject("project-cyber")).rejects.toThrow("Project not found.");
+  });
+
+  it("reports completed retranslation jobs with updated region text", async () => {
+    vi.useFakeTimers();
+    const mockApi = await loadMockApi();
+    const pages = await resolveDelayed(mockApi.listPages("project-cyber"));
+    const regions = await resolveDelayed(mockApi.listRegions(pages[0].id));
+
+    const acceptedJob = await resolveDelayed(
+      mockApi.retranslateRegion(regions[0].id, {
+        source_text: "Fresh source",
+      }),
+    );
+
+    expect(acceptedJob.status).toBe("queued");
+
+    await vi.advanceTimersByTimeAsync(900);
+    const completedJob = await resolveDelayed(mockApi.getProcessingJob(acceptedJob.id));
+    const updatedRegions = await resolveDelayed(mockApi.listRegions(pages[0].id));
+
+    expect(completedJob.status).toBe("succeeded");
+    expect(updatedRegions.find((item) => item.id === regions[0].id)?.translated_text).toBe("Fresh source (AI polished)");
   });
 });

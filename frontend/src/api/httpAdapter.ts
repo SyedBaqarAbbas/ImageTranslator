@@ -195,6 +195,10 @@ export const httpApi: ApiAdapter = {
     });
   },
 
+  getProcessingJob(jobId: string): Promise<ProcessingJobRead> {
+    return request<ProcessingJobRead>(`/jobs/${jobId}`);
+  },
+
   processProject(projectId: string, payload: ProcessProjectRequest): Promise<ProcessingJobRead> {
     return request<ProcessingJobRead>(`/projects/${projectId}/process`, {
       method: "POST",

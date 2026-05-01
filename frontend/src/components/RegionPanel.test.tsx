@@ -124,6 +124,97 @@ describe("RegionPanel", () => {
     expect(screen.getByText("85%")).toBeInTheDocument();
   });
 
+  it("uses a clear retranslate action and sends OCR source text", () => {
+    const onRetranslate = vi.fn();
+    renderRegionPanel({ onRetranslate });
+
+    const button = screen.getByRole("button", { name: /retranslate region/i });
+
+    expect(button).toHaveTextContent("Retranslate");
+    expect(screen.queryByText(/^AI$/)).not.toBeInTheDocument();
+    expect(screen.getByText("Input: OCR source text")).toBeInTheDocument();
+
+    fireEvent.click(button);
+
+    expect(onRetranslate).toHaveBeenCalledWith("region-1", "source text", "detected_text");
+  });
+
+  it("makes the target draft fallback visible before retranslating", () => {
+    const onRetranslate = vi.fn();
+    renderRegionPanel(
+      { onRetranslate },
+      {
+        detected_text: null,
+        translated_text: "Existing target draft",
+        user_text: null,
+      },
+    );
+
+    expect(screen.getByText("Input: current target draft")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /retranslate region/i }));
+
+    expect(onRetranslate).toHaveBeenCalledWith("region-1", "Existing target draft", "target_draft");
+  });
+
+  it("disables retranslation when there is no source or draft text", () => {
+    const onRetranslate = vi.fn();
+    renderRegionPanel(
+      { onRetranslate },
+      {
+        detected_text: null,
+        translated_text: null,
+        user_text: null,
+      },
+    );
+
+    const button = screen.getByRole("button", { name: /retranslate region/i });
+
+    expect(button).toBeDisabled();
+    expect(button.getAttribute("title")).toMatch(/Add OCR source text/);
+    expect(screen.getByText("Add OCR source text or a target draft before retranslating.")).toBeInTheDocument();
+
+    fireEvent.click(button);
+
+    expect(onRetranslate).not.toHaveBeenCalled();
+  });
+
+  it("shows retranslation pending feedback on the action", () => {
+    renderRegionPanel({
+      retranslateFeedback: {
+        regionId: "region-1",
+        status: "pending",
+        message: "Translating from OCR source text.",
+      },
+    });
+
+    expect(screen.getByRole("button", { name: /translating region/i })).toBeDisabled();
+    expect(screen.getByRole("status")).toHaveTextContent("Translating from OCR source text.");
+  });
+
+  it("shows retranslation success and error feedback", () => {
+    const { unmount } = renderRegionPanel({
+      retranslateFeedback: {
+        regionId: "region-1",
+        status: "success",
+        message: "Translation updated.",
+      },
+    });
+
+    expect(screen.getByRole("status")).toHaveTextContent("Translation updated.");
+
+    unmount();
+    renderRegionPanel({
+      retranslateFeedback: {
+        regionId: "region-1",
+        status: "error",
+        message: "Translation failed: Provider unavailable.",
+      },
+    });
+
+    expect(screen.getByRole("alert")).toHaveTextContent("Translation failed: Provider unavailable.");
+  });
+
   it("uses and persists the default desktop width for first-time sessions", () => {
     renderRegionPanel();
 

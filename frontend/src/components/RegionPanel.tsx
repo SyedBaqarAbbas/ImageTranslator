@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useReducer, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useReducer, useRef, useState } from "react";
 import type { CSSProperties, KeyboardEvent, PointerEvent } from "react";
-import { BrainCircuit, Pipette, Save, Sparkles, Trash2 } from "lucide-react";
+import { Languages, Pipette, Save, Sparkles, Trash2 } from "lucide-react";
 
 import { statusLabel } from "../lib/routing";
 import { fillOpacityFromStyle, fillOpacityPercent } from "../lib/renderStyle";
@@ -34,6 +34,15 @@ export interface RegionSaveFeedback {
   regionId: string;
   action: RegionSaveAction;
   status: RegionSaveStatus;
+  message: string;
+}
+
+export type RegionRetranslateSource = "detected_text" | "target_draft";
+type RegionRetranslateStatus = "pending" | "success" | "error";
+
+export interface RegionRetranslateFeedback {
+  regionId: string;
+  status: RegionRetranslateStatus;
   message: string;
 }
 
@@ -76,7 +85,6 @@ interface PanelHeightResizeDrag {
 
 interface RegionPanelState {
   draft: string;
-  aiStatus: string;
   styleDraft: StyleDraft;
   styleNotice: string | null;
 }
@@ -84,14 +92,12 @@ interface RegionPanelState {
 type RegionPanelAction =
   | { type: "reset"; region?: TextRegionRead }
   | { type: "setDraft"; draft: string }
-  | { type: "setAiStatus"; aiStatus: string }
   | { type: "setStyle"; styleDraft: StyleDraft }
   | { type: "setStyleNotice"; styleNotice: string | null };
 
 function stateForRegion(region?: TextRegionRead): RegionPanelState {
   return {
     draft: region?.user_text || region?.translated_text || "",
-    aiStatus: "AI",
     styleDraft: { ...(region?.render_style ?? {}) },
     styleNotice: null,
   };
@@ -103,8 +109,6 @@ function regionPanelReducer(state: RegionPanelState, action: RegionPanelAction):
       return stateForRegion(action.region);
     case "setDraft":
       return { ...state, draft: action.draft };
-    case "setAiStatus":
-      return { ...state, aiStatus: action.aiStatus };
     case "setStyle":
       return { ...state, styleDraft: action.styleDraft, styleNotice: null };
     case "setStyleNotice":
@@ -243,28 +247,32 @@ export function RegionPanel({
   onStyleDraftChange,
   onDraftChange,
   saveFeedback = null,
+  retranslateFeedback = null,
   isDeleting = false,
 }: {
   regions: TextRegionRead[];
   selectedRegionId?: string;
   onSelect: (regionId: string) => void;
   onSave: (regionId: string, payload: TextRegionUpdate, action: RegionSaveAction) => void;
-  onRetranslate: (regionId: string, sourceText: string) => void;
+  onRetranslate: (regionId: string, sourceText: string, source: RegionRetranslateSource) => void;
   onDelete: (regionId: string) => void;
   onStyleDraftChange?: (regionId: string, renderStyle: StyleDraft) => void;
   onDraftChange?: (regionId: string) => void;
   saveFeedback?: RegionSaveFeedback | null;
+  retranslateFeedback?: RegionRetranslateFeedback | null;
   isDeleting?: boolean;
 }) {
   const selectedRegion = useMemo(
     () => regions.find((region) => region.id === selectedRegionId) ?? regions[0],
     [regions, selectedRegionId],
   );
-  const [{ draft, aiStatus, styleDraft, styleNotice }, dispatchPanel] = useReducer(
+  const [{ draft, styleDraft, styleNotice }, dispatchPanel] = useReducer(
     regionPanelReducer,
     selectedRegion,
     stateForRegion,
   );
+  const retranslateHintId = useId();
+  const retranslateFeedbackId = useId();
   const resizeDragRef = useRef<PanelResizeDrag | null>(null);
   const heightResizeDragRef = useRef<PanelHeightResizeDrag | null>(null);
   const selectedRegionResizeDragRef = useRef<SelectedRegionResizeDrag | null>(null);
@@ -346,15 +354,39 @@ export function RegionPanel({
   }, [selectedRegionHeight]);
 
   const selectedSaveFeedback = selectedRegion && saveFeedback?.regionId === selectedRegion.id ? saveFeedback : null;
+  const selectedRetranslateFeedback = selectedRegion && retranslateFeedback?.regionId === selectedRegion.id ? retranslateFeedback : null;
   const isSavePending = selectedSaveFeedback?.status === "pending" && selectedSaveFeedback.action === "save";
   const isApprovePending = selectedSaveFeedback?.status === "pending" && selectedSaveFeedback.action === "approve";
   const isSaveActionPending = selectedSaveFeedback?.status === "pending";
-  const canEditSelectedRegion = selectedRegion?.editable !== false && !isSaveActionPending;
+  const isRetranslatePending = selectedRetranslateFeedback?.status === "pending";
+  const canEditSelectedRegion = selectedRegion?.editable !== false && !isSaveActionPending && !isRetranslatePending;
   const textColor = colorValue(styleDraft, ["textColor", "text_color", "color"], DEFAULT_TEXT_COLOR);
   const backgroundColor = colorValue(styleDraft, ["backgroundColor", "background_color", "fillColor", "fill"], DEFAULT_FILL_COLOR);
   const fillOpacity = fillOpacityFromStyle(styleDraft);
   const fillOpacityLabel = fillOpacityPercent(fillOpacity);
   const fontSize = Math.max(8, Math.min(72, Math.round(numberValue(styleDraft, "fontSize", 24))));
+  const detectedSourceText = selectedRegion?.detected_text?.trim() ?? "";
+  const targetDraftText = draft.trim();
+  const retranslateSource: RegionRetranslateSource | null = detectedSourceText ? "detected_text" : targetDraftText ? "target_draft" : null;
+  const retranslateSourceText = detectedSourceText || targetDraftText;
+  const retranslateInputHint =
+    retranslateSource === "detected_text"
+      ? "Input: OCR source text"
+      : retranslateSource === "target_draft"
+        ? "Input: current target draft"
+        : "Add OCR source text or a target draft before retranslating.";
+  const retranslateDisabledReason =
+    selectedRegion?.editable === false
+      ? "Approved regions cannot be retranslated."
+      : isSaveActionPending
+        ? "Finish saving before retranslating."
+        : isRetranslatePending
+          ? "Translation is in progress."
+          : retranslateSource
+            ? undefined
+            : "Add OCR source text or a target draft before retranslating.";
+  const canRetranslateSelectedRegion = selectedRegion?.editable !== false && !isSaveActionPending && !isRetranslatePending && Boolean(retranslateSource);
+  const retranslateTitle = retranslateDisabledReason ?? "Translate the source text for this region again";
 
   function updateStyle(patch: StyleDraft) {
     if (!selectedRegion || !canEditSelectedRegion) {
@@ -720,21 +752,49 @@ export function RegionPanel({
               }`}
             />
           </div>
-          <div className="mb-3 flex items-center justify-between gap-3">
-            <div>
-              <p className="text-xs font-bold uppercase text-text-muted">Source</p>
-              <p className="mt-1 break-words text-sm text-text-main">{selectedRegion.detected_text || "No OCR text"}</p>
+          <div className="mb-3">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-xs font-bold uppercase text-text-muted">Source</p>
+                <p className="mt-1 break-words text-sm text-text-main">{selectedRegion.detected_text || "No OCR text"}</p>
+              </div>
+              <button
+                type="button"
+                aria-label={isRetranslatePending ? "Translating region" : "Retranslate region"}
+                aria-busy={isRetranslatePending}
+                aria-describedby={`${retranslateHintId}${selectedRetranslateFeedback ? ` ${retranslateFeedbackId}` : ""}`}
+                title={retranslateTitle}
+                onClick={() => {
+                  if (!retranslateSource) {
+                    return;
+                  }
+                  onRetranslate(selectedRegion.id, retranslateSourceText, retranslateSource);
+                }}
+                disabled={!canRetranslateSelectedRegion}
+                className="inline-flex min-w-32 items-center justify-center gap-2 rounded-instrument border border-primary/40 px-3 py-2 text-xs font-bold text-primary-soft transition hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <Languages className="h-4 w-4" />
+                {isRetranslatePending ? "Translating" : "Retranslate"}
+              </button>
             </div>
-            <button
-              onClick={() => {
-                dispatchPanel({ type: "setAiStatus", aiStatus: "Queued" });
-                onRetranslate(selectedRegion.id, selectedRegion.detected_text || draft);
-              }}
-              className="inline-flex items-center gap-2 rounded-instrument border border-primary/40 px-3 py-2 text-xs font-bold text-primary-soft transition hover:bg-primary/10"
-            >
-              <BrainCircuit className="h-4 w-4" />
-              {aiStatus}
-            </button>
+            <p id={retranslateHintId} className="mt-2 text-xs font-semibold text-text-muted">
+              {retranslateInputHint}
+            </p>
+            {selectedRetranslateFeedback ? (
+              <p
+                id={retranslateFeedbackId}
+                role={selectedRetranslateFeedback.status === "error" ? "alert" : "status"}
+                className={`mt-2 text-xs font-semibold ${
+                  selectedRetranslateFeedback.status === "error"
+                    ? "text-danger"
+                    : selectedRetranslateFeedback.status === "success"
+                      ? "text-emerald-300"
+                      : "text-secondary"
+                }`}
+              >
+                {selectedRetranslateFeedback.message}
+              </p>
+            ) : null}
           </div>
           <label className="block">
             <span className="flex items-center justify-between gap-2">
