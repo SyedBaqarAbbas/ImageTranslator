@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useReducer, useRef, useState } from "react";
 import type { KeyboardEvent, PointerEvent } from "react";
 
+import { fillColorWithOpacity, fillOpacityFromStyle } from "../lib/renderStyle";
 import type { BoundingBox, TextRegionRead } from "../types/api";
 
 interface DragState {
@@ -66,21 +67,6 @@ function renderStyleNumber(region: TextRegionRead, key: string): number | null {
     return Number.isFinite(parsed) ? parsed : null;
   }
   return null;
-}
-
-function translucentColor(value: string): string {
-  if (/^#[0-9a-f]{6}$/i.test(value)) {
-    return `${value}44`;
-  }
-  if (/^#[0-9a-f]{3}$/i.test(value)) {
-    const expanded = `#${value
-      .slice(1)
-      .split("")
-      .map((character) => `${character}${character}`)
-      .join("")}`;
-    return `${expanded}44`;
-  }
-  return value;
 }
 
 function containerSizeReducer(_current: DisplaySize, next: DisplaySize): DisplaySize {
@@ -265,11 +251,8 @@ function CanvasRegion({
     ["backgroundColor", "background_color", "fillColor", "fill"],
     mode === "translated" ? DEFAULT_FILL_COLOR : undefined,
   );
-  const backgroundColor = fillColor
-    ? mode === "translated"
-      ? fillColor
-      : translucentColor(fillColor)
-    : undefined;
+  const fillOpacity = fillOpacityFromStyle(region.render_style);
+  const backgroundColor = fillColor ? fillColorWithOpacity(fillColor, fillOpacity) : undefined;
 
   return (
     <div

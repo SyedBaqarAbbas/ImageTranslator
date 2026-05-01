@@ -3,6 +3,7 @@ import type { CSSProperties, KeyboardEvent, PointerEvent } from "react";
 import { BrainCircuit, Pipette, Save, Sparkles, Trash2 } from "lucide-react";
 
 import { statusLabel } from "../lib/routing";
+import { fillOpacityFromStyle, fillOpacityPercent } from "../lib/renderStyle";
 import type { TextRegionRead, TextRegionUpdate } from "../types/api";
 import { StatusPill } from "./StatusPill";
 
@@ -351,6 +352,8 @@ export function RegionPanel({
   const canEditSelectedRegion = selectedRegion?.editable !== false && !isSaveActionPending;
   const textColor = colorValue(styleDraft, ["textColor", "text_color", "color"], DEFAULT_TEXT_COLOR);
   const backgroundColor = colorValue(styleDraft, ["backgroundColor", "background_color", "fillColor", "fill"], DEFAULT_FILL_COLOR);
+  const fillOpacity = fillOpacityFromStyle(styleDraft);
+  const fillOpacityLabel = fillOpacityPercent(fillOpacity);
   const fontSize = Math.max(8, Math.min(72, Math.round(numberValue(styleDraft, "fontSize", 24))));
 
   function updateStyle(patch: StyleDraft) {
@@ -799,6 +802,24 @@ export function RegionPanel({
                 </div>
               </label>
             </div>
+            <label className="mt-3 block">
+              <span className="flex items-center justify-between gap-3">
+                <span className="text-xs font-bold uppercase text-text-muted">Fill opacity</span>
+                <span className="text-xs font-bold tabular-nums text-secondary">{fillOpacityLabel}</span>
+              </span>
+              <input
+                type="range"
+                min="0"
+                max="1"
+                step="0.05"
+                value={fillOpacity}
+                onChange={(event) => updateStyle({ fillOpacity: Number(event.target.value) })}
+                disabled={!canEditSelectedRegion}
+                className="mt-2 w-full accent-primary disabled:cursor-not-allowed disabled:opacity-60"
+                aria-label="Fill opacity"
+                aria-valuetext={fillOpacityLabel}
+              />
+            </label>
             <label className="mt-3 block">
               <span className="text-xs font-bold uppercase text-text-muted">Text size</span>
               <input
