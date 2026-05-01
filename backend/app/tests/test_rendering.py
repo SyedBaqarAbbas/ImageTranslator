@@ -48,6 +48,7 @@ async def test_render_page_uses_region_style_colors() -> None:
                 translated_text="Color",
                 render_style={
                     "backgroundColor": "#00ff00",
+                    "fillOpacity": 1,
                     "textColor": "#ff0000",
                     "fontSize": 36,
                     "padding": 2,
@@ -66,3 +67,60 @@ async def test_render_page_uses_region_style_colors() -> None:
         if (pixel := rendered.getpixel((x, y)))[0] > 180 and pixel[1] < 100 and pixel[2] < 100
     ]
     assert red_text_pixels
+
+
+@pytest.mark.asyncio
+async def test_render_page_applies_region_fill_opacity() -> None:
+    image = Image.new("RGB", (240, 160), "white")
+    buffer = io.BytesIO()
+    image.save(buffer, format="PNG")
+
+    engine = PillowRenderEngine()
+    output = await engine.render_page(
+        buffer.getvalue(),
+        [
+            RenderRegion(
+                bounding_box={"x": 20, "y": 20, "width": 170, "height": 90},
+                original_text=None,
+                translated_text="Opacity",
+                render_style={
+                    "backgroundColor": "#000000",
+                    "fillOpacity": 0.5,
+                    "fontSize": 36,
+                    "padding": 2,
+                },
+            )
+        ],
+        ReplacementMode.REPLACE.value,
+    )
+
+    rendered = Image.open(io.BytesIO(output)).convert("RGB")
+    assert all(120 <= channel <= 135 for channel in rendered.getpixel((40, 30)))
+
+
+@pytest.mark.asyncio
+async def test_render_page_defaults_region_fill_opacity() -> None:
+    image = Image.new("RGB", (240, 160), "white")
+    buffer = io.BytesIO()
+    image.save(buffer, format="PNG")
+
+    engine = PillowRenderEngine()
+    output = await engine.render_page(
+        buffer.getvalue(),
+        [
+            RenderRegion(
+                bounding_box={"x": 20, "y": 20, "width": 170, "height": 90},
+                original_text=None,
+                translated_text="Default",
+                render_style={
+                    "backgroundColor": "#000000",
+                    "fontSize": 36,
+                    "padding": 2,
+                },
+            )
+        ],
+        ReplacementMode.REPLACE.value,
+    )
+
+    rendered = Image.open(io.BytesIO(output)).convert("RGB")
+    assert all(180 <= channel <= 190 for channel in rendered.getpixel((40, 30)))

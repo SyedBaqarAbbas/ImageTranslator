@@ -10,6 +10,8 @@ from PIL import Image, ImageColor, ImageDraw, ImageFont
 
 from app.core.enums import ReplacementMode
 
+DEFAULT_FILL_OPACITY = 0.27
+
 
 @dataclass(frozen=True)
 class RenderRegion:
@@ -58,9 +60,8 @@ class PillowRenderEngine:
         elif replacement_mode == ReplacementMode.SUBTITLE.value:
             canvas = _render_subtitles(canvas, regions)
         else:
-            draw = ImageDraw.Draw(canvas)
             for region in regions:
-                _render_region(draw, region, replacement_mode)
+                _render_region(canvas, region, replacement_mode)
 
         output = io.BytesIO()
         canvas.save(output, format="PNG")
@@ -152,8 +153,53 @@ def _style_int(style: dict, key: str, fallback: int | None = None) -> int | None
     return fallback
 
 
+def _style_float(style: dict, key: str, fallback: float) -> float:
+    value = style.get(key)
+    if isinstance(value, bool):
+        return fallback
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str):
+        try:
+            return float(value)
+        except ValueError:
+            return fallback
+    return fallback
+
+
+def _style_opacity(style: dict, key: str, fallback: float = DEFAULT_FILL_OPACITY) -> float:
+    value = _style_float(style, key, fallback)
+    if not math.isfinite(value):
+        return fallback
+    return max(0.0, min(1.0, value))
+
+
+def _draw_rounded_fill(
+    canvas: Image.Image,
+    bbox: tuple[int, int, int, int],
+    fill: tuple[int, int, int],
+    opacity: float,
+) -> None:
+    if opacity <= 0:
+        return
+
+    if opacity >= 1:
+        ImageDraw.Draw(canvas).rounded_rectangle(bbox, radius=8, fill=fill)
+        return
+
+    overlay = Image.new("RGBA", canvas.size, (0, 0, 0, 0))
+    overlay_draw = ImageDraw.Draw(overlay)
+    overlay_draw.rounded_rectangle(
+        bbox,
+        radius=8,
+        fill=(*fill, round(opacity * 255)),
+    )
+    composed = Image.alpha_composite(canvas.convert("RGBA"), overlay).convert("RGB")
+    canvas.paste(composed)
+
+
 def _render_region(
-    draw: ImageDraw.ImageDraw,
+    canvas: Image.Image,
     region: RenderRegion,
     replacement_mode: str,
 ) -> None:
@@ -165,6 +211,7 @@ def _render_region(
         ("backgroundColor", "background_color", "fillColor", "fill"),
         "white",
     )
+    fill_opacity = _style_opacity(style, "fillOpacity")
     outline_color = _style_color(style, ("outlineColor", "outline_color"), "black")
     text_color = _style_color(style, ("textColor", "text_color", "color"), "black")
     preferred_font_size = _style_int(style, "fontSize")
@@ -173,15 +220,17 @@ def _render_region(
         return
 
     if replacement_mode in {ReplacementMode.REPLACE.value, ReplacementMode.BILINGUAL.value}:
-        draw.rounded_rectangle((x1, y1, x2, y2), radius=8, fill=background_color)
+        _draw_rounded_fill(canvas, (x1, y1, x2, y2), background_color, fill_opacity)
     elif replacement_mode == ReplacementMode.OVERLAY.value:
+        _draw_rounded_fill(canvas, (x1, y1, x2, y2), background_color, fill_opacity)
+        draw = ImageDraw.Draw(canvas)
         draw.rounded_rectangle(
             (x1, y1, x2, y2),
             radius=8,
-            fill=background_color,
             outline=outline_color,
         )
 
+    draw = ImageDraw.Draw(canvas)
     max_width = max(8, (x2 - x1) - padding * 2)
     max_height = max(8, (y2 - y1) - padding * 2)
     wrapped, font = _fit_text(draw, text, max_width, max_height, preferred_font_size)
