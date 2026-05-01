@@ -124,8 +124,9 @@ async function clickTopNav(page, label, expectedPath) {
 
   await page.getByRole("button", { name: "Share" }).click();
   await page.screenshot({ path: path.join(screenshotsDir, "navbar-fixes-share-popover.png"), fullPage: true });
-  record("Share button opens share popover", await page.getByText("Share workspace").isVisible().catch(() => false));
-  record("Share popover contains current URL", (await page.locator('input[readonly]').last().inputValue()).includes("/projects"));
+  record("Share button shows coming soon", await page.getByText("Coming Soon").isVisible().catch(() => false));
+  record("Share popover does not show URL input", (await page.locator('input[readonly]').count()) === 0);
+  record("Share popover does not show legacy title", (await page.getByText("Share workspace").count()) === 0);
 
   await page.locator("header").getByRole("button", { name: "New project" }).click();
   await page.waitForLoadState("networkidle");

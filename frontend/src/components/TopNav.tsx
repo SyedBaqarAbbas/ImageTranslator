@@ -2,6 +2,8 @@ import { Bell, CircleHelp, Search, Share2, UploadCloud } from "lucide-react";
 import { FormEvent, useEffect, useState } from "react";
 import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
 
+const SHARE_ENABLED = false;
+
 export function TopNav() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -22,6 +24,10 @@ export function TopNav() {
 
   async function handleShare() {
     setOpenMenu((menu) => (menu === "share" ? null : "share"));
+    if (!SHARE_ENABLED) {
+      return;
+    }
+
     try {
       await navigator.clipboard.writeText(currentUrl);
       setShareStatus("Link copied");
@@ -86,14 +92,37 @@ export function TopNav() {
           >
             <CircleHelp className="h-5 w-5" />
           </button>
-          <button
-            className="hidden items-center gap-2 rounded-instrument border border-ink-border px-3 py-2 text-sm font-semibold text-text-main transition hover:bg-surface-high xl:flex"
-            onClick={handleShare}
-            aria-expanded={openMenu === "share"}
-          >
-            <Share2 className="h-4 w-4" />
-            Share
-          </button>
+          <div className="relative hidden xl:block">
+            <button
+              className="hidden items-center gap-2 rounded-instrument border border-ink-border px-3 py-2 text-sm font-semibold text-text-main transition hover:bg-surface-high xl:flex"
+              onClick={handleShare}
+              aria-expanded={openMenu === "share"}
+            >
+              <Share2 className="h-4 w-4" />
+              Share
+            </button>
+
+            {openMenu === "share" ? (
+              SHARE_ENABLED ? (
+                <div className="absolute left-0 top-[calc(100%+0.5rem)] w-80 rounded-lg border border-ink-border bg-surface p-4 shadow-2xl">
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <p className="font-display text-sm font-bold text-white">Share workspace</p>
+                    <span className="text-xs font-bold text-secondary">{shareStatus}</span>
+                  </div>
+                  <input
+                    readOnly
+                    value={currentUrl}
+                    className="w-full rounded-instrument border border-ink-border bg-background px-3 py-2 text-xs text-text-muted outline-none"
+                    onFocus={(event) => event.target.select()}
+                  />
+                </div>
+              ) : (
+                <div className="absolute left-1/2 top-[calc(100%+0.5rem)] -translate-x-1/2 rounded-lg border border-ink-border bg-surface px-4 py-3 text-center shadow-2xl">
+                  <p className="font-display text-sm font-bold text-white">Coming Soon</p>
+                </div>
+              )
+            ) : null}
+          </div>
           <button
             onClick={() => navigate("/")}
             aria-label="New project"
@@ -115,32 +144,18 @@ export function TopNav() {
 
           {openMenu === "help" ? (
             <div className="absolute right-12 top-12 w-64 rounded-lg border border-ink-border bg-surface p-2 shadow-2xl sm:right-16">
-              <Link className="block rounded-instrument px-3 py-2 text-sm font-semibold text-text-main transition hover:bg-surface-high" to="/support">
-                Support
+              <Link className="block rounded-instrument px-3 py-2 text-sm font-semibold text-text-muted opacity-50 cursor-not-allowed pointer-events-none" to="/support" aria-disabled="true" onClick={(e) => e.preventDefault()}>
+                  Support
               </Link>
               <Link className="block rounded-instrument px-3 py-2 text-sm font-semibold text-text-main transition hover:bg-surface-high" to="/settings">
                 Workspace settings
               </Link>
-              <a className="block rounded-instrument px-3 py-2 text-sm font-semibold text-text-main transition hover:bg-surface-high" href="mailto:support@comicflow.ai">
+              <a className="block rounded-instrument px-3 py-2 text-sm font-semibold text-text-main transition hover:bg-surface-high" href="mailto:baqar2001@hotmail.com">
                 Contact support
               </a>
             </div>
           ) : null}
 
-          {openMenu === "share" ? (
-            <div className="absolute right-0 top-12 w-80 rounded-lg border border-ink-border bg-surface p-4 shadow-2xl">
-              <div className="mb-3 flex items-center justify-between gap-3">
-                <p className="font-display text-sm font-bold text-white">Share workspace</p>
-                <span className="text-xs font-bold text-secondary">{shareStatus}</span>
-              </div>
-              <input
-                readOnly
-                value={currentUrl}
-                className="w-full rounded-instrument border border-ink-border bg-background px-3 py-2 text-xs text-text-muted outline-none"
-                onFocus={(event) => event.target.select()}
-              />
-            </div>
-          ) : null}
         </div>
       </div>
     </header>
