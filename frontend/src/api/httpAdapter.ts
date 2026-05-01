@@ -85,8 +85,9 @@ async function hydrateAsset(assetId: string | null | undefined, existing?: Asset
 }
 
 async function hydratePage(page: PageRead): Promise<PageRead> {
-  const [originalAsset, previewAsset, finalAsset] = await Promise.all([
+  const [originalAsset, cleanedAsset, previewAsset, finalAsset] = await Promise.all([
     hydrateAsset(page.original_asset_id, page.original_asset),
+    hydrateAsset(page.cleaned_asset_id, page.cleaned_asset),
     hydrateAsset(page.preview_asset_id, page.preview_asset),
     hydrateAsset(page.final_asset_id, page.final_asset),
   ]);
@@ -94,6 +95,7 @@ async function hydratePage(page: PageRead): Promise<PageRead> {
   return {
     ...page,
     original_asset: originalAsset,
+    cleaned_asset: cleanedAsset,
     preview_asset: previewAsset,
     final_asset: finalAsset,
   };

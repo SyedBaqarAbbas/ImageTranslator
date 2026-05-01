@@ -19,6 +19,7 @@ type ResizeHandle = "n" | "ne" | "e" | "se" | "s" | "sw" | "w" | "nw";
 const RESIZE_HANDLES: ResizeHandle[] = ["nw", "n", "ne", "e", "se", "s", "sw", "w"];
 const MIN_REGION_SIZE = 24;
 const DEFAULT_TEXT_COLOR = "#0f172a";
+const DEFAULT_FILL_COLOR = "#ffffff";
 
 const handleClassName: Record<ResizeHandle, string> = {
   n: "left-1/2 top-0 -translate-x-1/2 -translate-y-1/2 cursor-ns-resize",
@@ -326,7 +327,16 @@ export function CanvasWorkspace({
           const fontSize = renderStyleNumber(region, "fontSize");
           const scaledFontSize = fontSize && displaySize ? Math.max(7, fontSize * (displaySize.width / canvasWidth)) : null;
           const textColor = renderStyleValue(region, ["textColor", "text_color", "color"], DEFAULT_TEXT_COLOR);
-          const fillColor = renderStyleValue(region, ["backgroundColor", "background_color", "fillColor", "fill"]);
+          const fillColor = renderStyleValue(
+            region,
+            ["backgroundColor", "background_color", "fillColor", "fill"],
+            mode === "translated" ? DEFAULT_FILL_COLOR : undefined,
+          );
+          const backgroundColor = fillColor
+            ? mode === "translated"
+              ? fillColor
+              : translucentColor(fillColor)
+            : undefined;
           return (
             <div
               key={region.id}
@@ -352,7 +362,7 @@ export function CanvasWorkspace({
                 top: `${top}%`,
                 width: `${boxWidth}%`,
                 height: `${boxHeight}%`,
-                backgroundColor: fillColor ? translucentColor(fillColor) : undefined,
+                backgroundColor,
               }}
             >
               {mode === "translated" ? (

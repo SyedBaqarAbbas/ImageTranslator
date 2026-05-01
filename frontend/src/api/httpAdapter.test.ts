@@ -52,6 +52,14 @@ const page = {
   updated_at: "2026-04-27T00:00:00Z",
 };
 
+const cleanedAsset = {
+  ...asset,
+  id: "asset-cleaned-1",
+  kind: "cleaned",
+  key: "projects/project-1/processed/page-cleaned.png",
+  filename: "page-cleaned.png",
+};
+
 describe("httpApi", () => {
   afterEach(() => {
     vi.unstubAllEnvs();
@@ -84,6 +92,34 @@ describe("httpApi", () => {
       "http://api.test/api/v1/projects/project-1/pages/upload",
       expect.objectContaining({ method: "POST" }),
     );
+  });
+
+  it("hydrates cleaned assets for editor-safe page backgrounds", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "http://api.test/api/v1/projects/project-1/pages") {
+        return jsonResponse([{ ...page, cleaned_asset_id: "asset-cleaned-1" }]);
+      }
+      if (url === "http://api.test/api/v1/assets/asset-1") {
+        return jsonResponse(asset);
+      }
+      if (url === "http://api.test/api/v1/assets/asset-1/download") {
+        return jsonResponse({ url: "http://api.test/api/v1/assets/by-key/page.png", expires_in: 900 });
+      }
+      if (url === "http://api.test/api/v1/assets/asset-cleaned-1") {
+        return jsonResponse(cleanedAsset);
+      }
+      if (url === "http://api.test/api/v1/assets/asset-cleaned-1/download") {
+        return jsonResponse({ url: "http://api.test/api/v1/assets/by-key/page-cleaned.png", expires_in: 900 });
+      }
+      return jsonResponse({ error: { message: `Unexpected ${url}` } }, { status: 404 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const httpApi = await loadHttpApi();
+    const pages = await httpApi.listPages("project-1");
+
+    expect(pages[0].cleaned_asset?.url).toBe("http://api.test/api/v1/assets/by-key/page-cleaned.png");
   });
 
   it("uses singular backend export path", async () => {

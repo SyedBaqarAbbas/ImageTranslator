@@ -142,6 +142,7 @@ export interface PageRead extends Timestamped {
   progress: number;
   failure_reason: string | null;
   original_asset?: AssetRead | null;
+  cleaned_asset?: AssetRead | null;
   preview_asset?: AssetRead | null;
   final_asset?: AssetRead | null;
 }

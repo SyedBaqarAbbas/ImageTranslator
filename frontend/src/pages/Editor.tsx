@@ -116,9 +116,25 @@ export function Editor() {
         <div className="flex h-full min-h-0 flex-col">
           <div className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-ink-border bg-surface-low px-3 md:px-5">
             <div className="flex min-w-0 items-center gap-2">
-              <button disabled className="rounded-instrument p-2 text-text-muted opacity-45 transition hover:bg-surface-high hover:text-white disabled:cursor-not-allowed" aria-label="Undo" title="Undo history is not available in this prototype yet">
-                <Undo2 className="h-4 w-4" />
-              </button>
+              <span className="group relative inline-flex">
+                <button
+                  type="button"
+                  aria-disabled="true"
+                  aria-describedby="undo-coming-soon"
+                  onClick={(event) => event.preventDefault()}
+                  className="rounded-instrument p-2 text-text-muted opacity-45 transition hover:bg-surface-high hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-secondary"
+                  aria-label="Undo"
+                >
+                  <Undo2 className="h-4 w-4" />
+                </button>
+                <span
+                  id="undo-coming-soon"
+                  role="tooltip"
+                  className="pointer-events-none absolute left-0 top-full z-50 mt-2 w-48 rounded-instrument border border-ink-border bg-background px-3 py-2 text-xs font-semibold text-text-main opacity-0 shadow-2xl transition group-hover:opacity-100 group-focus-within:opacity-100"
+                >
+                  Coming soon: undo history is not available yet.
+                </span>
+              </span>
               <button
                 type="button"
                 onClick={() => {
@@ -200,7 +216,7 @@ export function Editor() {
             </aside>
 
             <CanvasWorkspace
-              imageUrl={assetUrlForPage(selectedPage, mode === "original" ? "original" : "preview")}
+              imageUrl={assetUrlForPage(selectedPage, mode === "original" ? "original" : "editable")}
               width={selectedPage.width}
               height={selectedPage.height}
               regions={displayRegions}

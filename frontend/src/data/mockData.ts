@@ -43,9 +43,10 @@ export function createAsset(params: {
   };
 }
 
-export function comicPageDataUri(title: string, accent = "#22D3EE"): string {
+export function comicPageDataUri(title: string, accent = "#22D3EE", translatedText = true, marker = ""): string {
   const svg = `
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 1320">
+      ${marker ? `<desc>${marker}</desc>` : ""}
       <rect width="920" height="1320" fill="#f4f0e7"/>
       <rect x="52" y="54" width="816" height="1212" fill="#ffffff" stroke="#171717" stroke-width="12"/>
       <g stroke="#171717" stroke-width="9" fill="none">
@@ -63,13 +64,17 @@ export function comicPageDataUri(title: string, accent = "#22D3EE"): string {
         <ellipse cx="662" cy="374" rx="116" ry="51"/>
         <ellipse cx="278" cy="815" rx="130" ry="53"/>
       </g>
-      <g fill="#111827" font-family="Arial, sans-serif" font-weight="700" text-anchor="middle">
+      ${
+        translatedText
+          ? `<g fill="#111827" font-family="Arial, sans-serif" font-weight="700" text-anchor="middle">
         <text x="228" y="164" font-size="25">Where did</text>
         <text x="228" y="195" font-size="25">the signal go?</text>
         <text x="662" y="369" font-size="26">Keep moving.</text>
         <text x="662" y="402" font-size="21">We are exposed.</text>
         <text x="278" y="812" font-size="28">Not yet!</text>
-      </g>
+      </g>`
+          : ""
+      }
       <g fill="${accent}" opacity=".72">
         <path d="M613 615l172-56-126 130 156 8-221 95 93-108-154-4z"/>
         <path d="M124 1002l169-58-77 102 137-12-243 152 90-122-136 12z"/>
@@ -88,15 +93,42 @@ export interface MockStore {
 }
 
 export function seedMockStore(): MockStore {
-  const cyberImage = comicPageDataUri("CYBER NEON", "#22D3EE");
-  const samuraiImage = comicPageDataUri("SAMURAI ECHOES", "#FFB869");
+  const cyberOriginalImage = comicPageDataUri("CYBER NEON", "#22D3EE", false);
+  const cyberCleanedImage = comicPageDataUri("CYBER NEON", "#22D3EE", false, "cleaned-editor-mask");
+  const cyberPreviewImage = comicPageDataUri("CYBER NEON", "#22D3EE");
+  const samuraiOriginalImage = comicPageDataUri("SAMURAI ECHOES", "#FFB869", false);
+  const samuraiFinalImage = comicPageDataUri("SAMURAI ECHOES", "#FFB869");
+  const cyberOriginalAsset = createAsset({
+    id: "asset-cyber-original",
+    projectId: "project-cyber",
+    pageId: "page-cyber-1",
+    kind: "original",
+    filename: "cyber-neon-original.png",
+    url: cyberOriginalImage,
+  });
   const cyberAsset = createAsset({
     id: "asset-cyber-1",
     projectId: "project-cyber",
     pageId: "page-cyber-1",
     kind: "preview",
     filename: "cyber-neon-preview.png",
-    url: cyberImage,
+    url: cyberPreviewImage,
+  });
+  const cyberCleanedAsset = createAsset({
+    id: "asset-cyber-cleaned",
+    projectId: "project-cyber",
+    pageId: "page-cyber-1",
+    kind: "cleaned",
+    filename: "cyber-neon-cleaned.png",
+    url: cyberCleanedImage,
+  });
+  const samuraiOriginalAsset = createAsset({
+    id: "asset-samurai-original",
+    projectId: "project-samurai",
+    pageId: "page-samurai-1",
+    kind: "original",
+    filename: "samurai-echoes-original.png",
+    url: samuraiOriginalImage,
   });
   const samuraiAsset = createAsset({
     id: "asset-samurai-1",
@@ -104,7 +136,7 @@ export function seedMockStore(): MockStore {
     pageId: "page-samurai-1",
     kind: "final",
     filename: "samurai-echoes-final.png",
-    url: samuraiImage,
+    url: samuraiFinalImage,
   });
 
   const settings: TranslationSettingsRead[] = [
@@ -180,9 +212,9 @@ export function seedMockStore(): MockStore {
       id: "page-cyber-1",
       project_id: "project-cyber",
       page_number: 1,
-      original_asset_id: "asset-cyber-1",
-      processed_asset_id: "asset-cyber-1",
-      cleaned_asset_id: null,
+      original_asset_id: "asset-cyber-original",
+      processed_asset_id: "asset-cyber-original",
+      cleaned_asset_id: "asset-cyber-cleaned",
       preview_asset_id: "asset-cyber-1",
       final_asset_id: null,
       width: 920,
@@ -190,7 +222,8 @@ export function seedMockStore(): MockStore {
       status: "review_required",
       progress: 92,
       failure_reason: null,
-      original_asset: cyberAsset,
+      original_asset: cyberOriginalAsset,
+      cleaned_asset: cyberCleanedAsset,
       preview_asset: cyberAsset,
       final_asset: null,
       created_at: iso(-5990),
@@ -200,8 +233,8 @@ export function seedMockStore(): MockStore {
       id: "page-samurai-1",
       project_id: "project-samurai",
       page_number: 1,
-      original_asset_id: "asset-samurai-1",
-      processed_asset_id: "asset-samurai-1",
+      original_asset_id: "asset-samurai-original",
+      processed_asset_id: "asset-samurai-original",
       cleaned_asset_id: null,
       preview_asset_id: "asset-samurai-1",
       final_asset_id: "asset-samurai-1",
@@ -210,7 +243,8 @@ export function seedMockStore(): MockStore {
       status: "completed",
       progress: 100,
       failure_reason: null,
-      original_asset: samuraiAsset,
+      original_asset: samuraiOriginalAsset,
+      cleaned_asset: null,
       preview_asset: samuraiAsset,
       final_asset: samuraiAsset,
       created_at: iso(-7190),

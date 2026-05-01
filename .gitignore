@@ -8,4 +8,5 @@
 /venv/
 
 # Repository-level generated evidence
-/testing/
+testing/
+tickets/
