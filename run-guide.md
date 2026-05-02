@@ -46,10 +46,10 @@ Expected result from the current local models: `[('ja', 'Hello.'), ('ko', 'Hello
 
 ```bash
 cd backend
-conda run -n imagetranslator pytest -q
+conda run -n imagetranslator pytest -q --cov=app --cov-report=term-missing:skip-covered
 ```
 
-Latest result: `26 passed, 1 warning`.
+Latest result: backend coverage is enforced by `./up-and-test.sh`.
 
 ```bash
 cd backend
@@ -76,10 +76,10 @@ Latest result: passed.
 
 ```bash
 cd frontend
-npm run test
+npm run test:coverage
 ```
 
-Latest result: `6 passed`.
+Latest result: frontend coverage is enforced by `./up-and-test.sh`.
 
 ```bash
 cd frontend
@@ -102,13 +102,27 @@ npm run test:e2e
 
 Latest result: `3 passed`.
 
-## Real UI E2E: Tesseract + OPUS-MT
+## Release Gate
 
-The browser E2E now defaults to the real Korean screenshot:
+The default release gate is hermetic and does not require local OCR/ML assets:
 
 ```bash
-/Users/ekai/Desktop/Screenshot\ 2026-04-29\ at\ 11.42.59 PM.png
+./up-and-test.sh
 ```
+
+It runs backend coverage tests, backend compile, frontend typecheck/lint/coverage/build,
+mock Playwright E2E, button/nav audits, mock full-stack HTTP E2E, and OPUS-MT
+missing-model failure E2E.
+
+Default coverage gates are calibrated to the current MVP baseline:
+
+- Backend: 70% total coverage.
+- Frontend: 70% lines/statements, 60% functions, 60% branches.
+
+## Optional Real UI E2E: Tesseract + OPUS-MT
+
+The real-provider browser E2E is opt-in because it requires local Tesseract,
+OPUS-MT models, and an explicit local test image.
 
 Optional: generate a simple Japanese PNG if you want a synthetic fallback fixture:
 
@@ -152,6 +166,7 @@ curl -sS -I http://127.0.0.1:5173/
 Run the browser E2E script:
 
 ```bash
+export TEST_IMAGE="/path/to/local/test-image.png"
 cp e2e/ui-e2e-opus-mt.js /tmp/playwright-test-image-translator-opus-mt.js
 cd /Users/ekai/.codex/skills/playwright-skill
 node run.js /tmp/playwright-test-image-translator-opus-mt.js

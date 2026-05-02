@@ -29,6 +29,7 @@ dependencies = [
 dev = [
     "pytest>=8.3.2",
     "pytest-asyncio>=0.24.0",
+    "pytest-cov>=6.0.0",
     "aiosqlite>=0.20.0",
     "ruff>=0.6.3",
     "mypy>=1.11.1",
@@ -57,6 +58,17 @@ include = ["app*"]
 asyncio_mode = "auto"
 testpaths = ["app/tests"]
 pythonpath = ["."]
+
+[tool.coverage.run]
+branch = true
+source = ["app"]
+omit = [
+    "app/tests/*",
+]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
 
 [tool.ruff]
 line-length = 100

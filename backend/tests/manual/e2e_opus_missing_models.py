@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import io
 import json
+import os
+import sys
 import time
 from pathlib import Path
 
@@ -11,7 +13,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 ROOT = Path(__file__).resolve().parents[3]
 TESTING_DIR = ROOT / "testing"
-TARGET_URL = "http://127.0.0.1:8001"
+TARGET_URL = sys.argv[1] if len(sys.argv) > 1 else os.environ.get("TARGET_URL", "http://127.0.0.1:8001")
 
 
 def _font() -> ImageFont.FreeTypeFont | ImageFont.ImageFont:

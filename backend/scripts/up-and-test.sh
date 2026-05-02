@@ -3,6 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BACKEND_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+ROOT_DIR="$(cd "${BACKEND_DIR}/.." && pwd)"
 
 CONDA_ENV_NAME="${CONDA_ENV_NAME:-imagetranslator}"
 BACKEND_HOST="${BACKEND_HOST:-127.0.0.1}"
@@ -16,6 +17,11 @@ BACKEND_LOG_FILE="${BACKEND_LOG_FILE:-/tmp/image-translator-backend-up-and-test.
 PYTHONPYCACHEPREFIX="${PYTHONPYCACHEPREFIX:-/tmp/image-translator-pycache}"
 PUBLIC_BASE_URL="${PUBLIC_BASE_URL:-${BACKEND_ORIGIN}}"
 RUN_BACKEND_TESTS="${RUN_BACKEND_TESTS:-1}"
+RUN_BACKEND_COVERAGE="${RUN_BACKEND_COVERAGE:-1}"
+BACKEND_COVERAGE_FAIL_UNDER="${BACKEND_COVERAGE_FAIL_UNDER:-70}"
+BACKEND_COVERAGE_DIR="${BACKEND_COVERAGE_DIR:-${ROOT_DIR}/testing/coverage}"
+BACKEND_COVERAGE_FILE="${BACKEND_COVERAGE_FILE:-${BACKEND_COVERAGE_DIR}/backend.coverage}"
+BACKEND_COVERAGE_XML="${BACKEND_COVERAGE_XML:-${BACKEND_COVERAGE_DIR}/backend-coverage.xml}"
 RUN_BACKEND_COMPILE="${RUN_BACKEND_COMPILE:-1}"
 KEEP_APP_UP="${KEEP_APP_UP:-0}"
 
@@ -84,11 +90,26 @@ run_backend_tests() {
     return
   fi
 
-  log "Running backend pytest"
-  (
-    cd "${BACKEND_DIR}"
-    PYTHONPYCACHEPREFIX="${PYTHONPYCACHEPREFIX}" conda run -n "${CONDA_ENV_NAME}" pytest -q
-  )
+  if [ "${RUN_BACKEND_COVERAGE}" = "1" ]; then
+    mkdir -p "${BACKEND_COVERAGE_DIR}"
+    log "Running backend pytest with coverage"
+    (
+      cd "${BACKEND_DIR}"
+      PYTHONPYCACHEPREFIX="${PYTHONPYCACHEPREFIX}" \
+      COVERAGE_FILE="${BACKEND_COVERAGE_FILE}" \
+      conda run -n "${CONDA_ENV_NAME}" pytest -q \
+        --cov=app \
+        --cov-report=term-missing:skip-covered \
+        --cov-report="xml:${BACKEND_COVERAGE_XML}" \
+        --cov-fail-under="${BACKEND_COVERAGE_FAIL_UNDER}"
+    )
+  else
+    log "Running backend pytest"
+    (
+      cd "${BACKEND_DIR}"
+      PYTHONPYCACHEPREFIX="${PYTHONPYCACHEPREFIX}" conda run -n "${CONDA_ENV_NAME}" pytest -q
+    )
+  fi
 }
 
 run_backend_compile() {
@@ -116,6 +137,7 @@ fi
 
 mkdir -p "${BACKEND_STORAGE_PATH}"
 mkdir -p "${PYTHONPYCACHEPREFIX}"
+mkdir -p "${BACKEND_COVERAGE_DIR}"
 : > "${BACKEND_LOG_FILE}"
 
 log "Starting backend app at ${BACKEND_ORIGIN}"

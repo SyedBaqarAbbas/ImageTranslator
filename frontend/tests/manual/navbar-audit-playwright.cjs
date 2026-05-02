@@ -3,6 +3,7 @@ const path = require("path");
 const { chromium } = require("playwright");
 
 const TARGET_URL = process.env.TARGET_URL || "http://localhost:5173";
+const HEADLESS = process.env.HEADLESS !== "false";
 const REPO_ROOT = path.resolve(__dirname, "../../..");
 const RESULTS_DIR = process.env.RESULTS_DIR || path.join(REPO_ROOT, "testing");
 const ARTIFACT_DIR = path.join(RESULTS_DIR, "artifacts");
@@ -87,7 +88,7 @@ async function runAction(page, group, name, startPath, action) {
 }
 
 (async () => {
-  const browser = await chromium.launch({ headless: false });
+  const browser = await chromium.launch({ headless: HEADLESS });
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
 
   await runAction(page, "top_nav", "Brand link", "/projects", async (page) => {
