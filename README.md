@@ -1,5 +1,9 @@
 # ImageTranslator
 
+[![CI](https://github.com/SyedBaqarAbbas/ImageTranslator/actions/workflows/ci.yml/badge.svg)](https://github.com/SyedBaqarAbbas/ImageTranslator/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/SyedBaqarAbbas/ImageTranslator/actions/workflows/codeql.yml/badge.svg)](https://github.com/SyedBaqarAbbas/ImageTranslator/actions/workflows/codeql.yml)
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
+
 ImageTranslator is a full-stack manga, manhwa, and comic page translation workflow. It lets you upload raw pages, run OCR and translation jobs, review translated text regions, render translated pages, and export the final result.
 
 The current local build is provider-based and uses mock OCR and mock translation by default. That means the full workflow works without external AI keys, but the default processing output is intentionally synthetic until a real provider is enabled or implemented.
@@ -224,7 +228,15 @@ VITE_API_MODE=http VITE_API_BASE_URL=http://localhost:8000/api/v1 npm run dev
 
 The current backend workflow routes use a shared public workspace user, so no login or local storage token is required for local HTTP mode.
 
-## Security
+## Contributing, Support, and Security
+
+- Read [CONTRIBUTING.md](CONTRIBUTING.md) for local setup, branch and commit
+  expectations, PR guidance, provider notes, and required test evidence.
+- Read [SUPPORT.md](SUPPORT.md) for supported help channels, issue guidance,
+  and current prototype limitations.
+- Follow [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) in project spaces.
+- Use the GitHub issue templates for bug reports, feature requests, and
+  documentation or repository tasks.
 
 See [SECURITY.md](SECURITY.md) for supported branches, private vulnerability
 reporting, response timelines, and provider data-handling notes. Report

@@ -1,0 +1,54 @@
+name: Docs or task
+description: Track documentation work, chores, repository hygiene, or small tasks.
+title: "[task] "
+labels:
+  - documentation
+body:
+  - type: textarea
+    id: goal
+    attributes:
+      label: Goal
+      description: What should be changed or documented?
+    validations:
+      required: true
+  - type: dropdown
+    id: type
+    attributes:
+      label: Type
+      options:
+        - Documentation
+        - Repository hygiene
+        - Testing or release gate
+        - Local setup
+        - GitHub or Linear workflow
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: current
+    attributes:
+      label: Current state
+      description: What exists today, and what is missing or confusing?
+  - type: textarea
+    id: desired
+    attributes:
+      label: Desired outcome
+      placeholder: |
+        - Update ...
+        - Add ...
+        - Verify ...
+    validations:
+      required: true
+  - type: textarea
+    id: files
+    attributes:
+      label: Relevant files or links
+      placeholder: |
+        - README.md
+        - RELEASE_TEST_MATRIX.md
+        - frontend/AGENTS.md
+  - type: textarea
+    id: validation
+    attributes:
+      label: Validation
+      placeholder: Documentation-only changes usually need Markdown review; code or workflow changes need relevant tests.

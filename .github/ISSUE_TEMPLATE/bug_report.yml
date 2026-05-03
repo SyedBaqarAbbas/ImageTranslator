@@ -1,0 +1,79 @@
+name: Bug report
+description: Report a reproducible ImageTranslator bug.
+title: "[bug] "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug. Do not include secrets, private media, provider keys, copyrighted pages, or vulnerability details in public issues. Use the security reporting path for vulnerabilities.
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What went wrong?
+      placeholder: The editor fails to save a translated region after...
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Frontend UI
+        - Backend API
+        - Uploads or assets
+        - Processing jobs
+        - OCR or translation providers
+        - Rendering or export
+        - CI or local testing
+        - Documentation
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Use synthetic, public-domain, licensed, or redacted files only.
+      placeholder: |
+        1. Start Docker Compose with ...
+        2. Upload ...
+        3. Click ...
+        4. Observe ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      placeholder: macOS 15, Docker Desktop, Chrome 124, VITE_API_MODE=mock
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or screenshots
+      description: Paste relevant logs or attach screenshots with private data removed.
+      render: shell
+  - type: textarea
+    id: checks
+    attributes:
+      label: Checks already run
+      placeholder: |
+        - docker compose up --build
+        - npm run test:e2e
+        - conda run -n imagetranslator pytest -q ...

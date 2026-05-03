@@ -78,3 +78,11 @@ jobs:
 
       - name: Build frontend
         run: npm run build
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Run frontend Playwright smoke tests
+        env:
+          VITE_API_MODE: mock
+        run: npm run test:e2e
