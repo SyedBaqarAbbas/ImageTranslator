@@ -4,7 +4,10 @@ import io
 import zipfile
 from collections.abc import Callable
 
+import pytest
 from fastapi.testclient import TestClient
+
+from app.core.config import settings
 
 
 def _zip_with_images(png_bytes: bytes) -> bytes:
@@ -109,3 +112,47 @@ def test_asset_and_events_error_contracts(client: TestClient) -> None:
     missing_events_response = client.get("/api/v1/projects/not-a-project/events")
     assert missing_events_response.status_code == 404
     assert missing_events_response.json()["error"]["code"] == "project_not_found"
+
+
+def test_processing_and_export_failure_contracts(
+    client: TestClient,
+    create_project: Callable[..., str],
+    upload_page: Callable[[str], str],
+) -> None:
+    project_id = create_project("Failure Contract Project")
+    upload_page(project_id)
+
+    no_matching_pages = client.post(
+        f"/api/v1/projects/{project_id}/process",
+        json={"force": True, "page_ids": ["not-a-real-page"]},
+    )
+    assert no_matching_pages.status_code == 400
+    assert no_matching_pages.json()["error"]["code"] == "no_pages"
+
+    export_response = client.post(
+        f"/api/v1/projects/{project_id}/export",
+        json={"format": "zip", "include_originals": False},
+    )
+    assert export_response.status_code == 202
+    export = export_response.json()
+    assert export["status"] == "failed"
+    assert "No rendered pages" in export["error_message"]
+
+    download_response = client.get(f"/api/v1/exports/{export['id']}/download")
+    assert download_response.status_code == 409
+    assert download_response.json()["error"]["code"] == "export_not_ready"
+
+
+def test_local_asset_by_key_guards_storage_backend_and_paths(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(settings, "storage_backend", "s3")
+    unavailable = client.get("/api/v1/assets/by-key/projects/example/missing.png")
+    assert unavailable.status_code == 400
+    assert unavailable.json()["error"]["code"] == "not_available"
+
+    monkeypatch.setattr(settings, "storage_backend", "local")
+    missing = client.get("/api/v1/assets/by-key/../outside.png")
+    assert missing.status_code == 404
+    assert missing.json()["error"]["code"] == "asset_not_found"

@@ -13,7 +13,7 @@ export default defineConfig({
       reportsDirectory: "../testing/coverage/frontend",
       reporter: ["text", "json-summary", "lcov"],
       include: ["src/**/*.{ts,tsx}"],
-      exclude: ["src/test/**", "src/vite-env.d.ts", "src/main.tsx"],
+      exclude: ["src/test/**", "src/types/**", "src/vite-env.d.ts", "src/main.tsx"],
       thresholds: {
         lines: 70,
         functions: 60,

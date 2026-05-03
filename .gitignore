@@ -9,6 +9,7 @@
 
 # Repository-level generated evidence
 testing/
+.coverage
 tickets/
 
 # Local prototype persistent data
