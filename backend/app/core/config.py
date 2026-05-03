@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+import json
 from functools import lru_cache
 from pathlib import Path
+from typing import Annotated, Any
 
 from pydantic import Field, field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
+
+MimeTypeList = Annotated[list[str], NoDecode]
 
 
 class Settings(BaseSettings):
@@ -39,10 +43,10 @@ class Settings(BaseSettings):
 
     max_upload_mb: int = 100
     max_project_pages: int = 300
-    allowed_image_types: list[str] = Field(
+    allowed_image_types: MimeTypeList = Field(
         default_factory=lambda: ["image/png", "image/jpeg", "image/webp"]
     )
-    allowed_archive_types: list[str] = Field(
+    allowed_archive_types: MimeTypeList = Field(
         default_factory=lambda: ["application/zip", "application/x-zip-compressed"]
     )
 
@@ -79,9 +83,12 @@ class Settings(BaseSettings):
 
     @field_validator("allowed_image_types", "allowed_archive_types", mode="before")
     @classmethod
-    def split_csv(cls, value: str | list[str]) -> list[str]:
+    def parse_mime_type_list(cls, value: Any) -> Any:
         if isinstance(value, str):
-            return [part.strip() for part in value.split(",") if part.strip()]
+            stripped = value.strip()
+            if stripped.startswith("["):
+                return json.loads(stripped)
+            return [part.strip() for part in stripped.split(",") if part.strip()]
         return value
 
     @property

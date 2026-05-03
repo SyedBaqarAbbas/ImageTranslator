@@ -41,6 +41,31 @@ Open:
 
 The frontend is configured to call `http://localhost:8000/api/v1` in Docker. The backend uses the local defaults in `backend/.env.example`, including local file storage, inline job execution, mock OCR, and mock translation providers, so no Redis, MinIO, or AI provider keys are required for local smoke testing.
 
+### Local Docker Environment Variables
+
+The root `docker-compose.yml` reads `backend/.env.example` directly so a fresh clone can run `docker compose up --build` without creating a local `.env` file first. The compose file also overrides the database URL, storage path, public URL, and eager job setting for the Docker network.
+
+Use `backend/.env.example` as the source of truth for local backend settings. Copy it to `backend/.env` only when running the backend outside the root Docker Compose workflow or when using the backend-only compose file from `backend/`.
+
+List-valued settings accept either comma-separated MIME types or JSON arrays:
+
+```dotenv
+ALLOWED_IMAGE_TYPES=image/png,image/jpeg,image/webp
+ALLOWED_IMAGE_TYPES=["image/png","image/jpeg","image/webp"]
+ALLOWED_ARCHIVE_TYPES=application/zip,application/x-zip-compressed
+ALLOWED_ARCHIVE_TYPES=["application/zip","application/x-zip-compressed"]
+```
+
+For the default local Docker run, leave provider settings as mock:
+
+```dotenv
+OCR_PROVIDER=mock
+TRANSLATION_PROVIDER=mock
+RENDER_ENGINE=pillow
+```
+
+Leave `OPENAI_API_KEY`, `DEEPL_API_KEY`, and `GOOGLE_APPLICATION_CREDENTIALS` blank for the default smoke test. Those values are optional and only needed when a matching real provider implementation is enabled.
+
 ## OCR and Translation Behavior
 
 Processing is started with `POST /api/v1/projects/{project_id}/process` from the Processing screen or API. The backend creates a `ProcessingJob`, executes it inline by default through Celery eager mode, and updates project/page/job progress while it works.

@@ -31,6 +31,37 @@ Then open:
 - API health: `http://localhost:8000/api/v1/health`
 - API docs: `http://localhost:8000/docs`
 
+The repository-root Docker Compose workflow reads `backend/.env.example`
+directly for fresh-clone setup. The backend-only compose file in this directory
+reads `backend/.env`, so run `cp .env.example .env` before using it and keep
+local overrides out of version control.
+
+### Environment Variables
+
+`app/core/config.py` defines backend settings and `backend/.env.example`
+contains valid local defaults for Docker. The default provider settings use
+mock OCR and mock translation, so local Docker startup does not require Redis,
+MinIO, OpenAI, DeepL, Google credentials, or local ML models.
+
+List-valued settings accept comma-separated MIME types or JSON arrays. These
+forms are equivalent:
+
+```dotenv
+ALLOWED_IMAGE_TYPES=image/png,image/jpeg,image/webp
+ALLOWED_IMAGE_TYPES=["image/png","image/jpeg","image/webp"]
+ALLOWED_ARCHIVE_TYPES=application/zip,application/x-zip-compressed
+ALLOWED_ARCHIVE_TYPES=["application/zip","application/x-zip-compressed"]
+```
+
+For local Docker, keep these provider defaults unless you are intentionally
+testing an opt-in provider:
+
+```dotenv
+OCR_PROVIDER=mock
+TRANSLATION_PROVIDER=mock
+RENDER_ENGINE=pillow
+```
+
 ## Common Commands
 
 Start the full local stack:
