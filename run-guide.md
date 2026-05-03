@@ -100,7 +100,7 @@ cd frontend
 npm run test:e2e
 ```
 
-Latest result: `3 passed`.
+Latest result: mock route coverage and workflow smoke tests are enforced by `./up-and-test.sh`.
 
 ## Release Gate
 
@@ -111,8 +111,11 @@ The default release gate is hermetic and does not require local OCR/ML assets:
 ```
 
 It runs backend coverage tests, backend compile, frontend typecheck/lint/coverage/build,
-mock Playwright E2E, button/nav audits, mock full-stack HTTP E2E, and OPUS-MT
-missing-model failure E2E.
+mock Playwright E2E route/workflow tests, strict button expectation audits, nav audits,
+mock full-stack HTTP E2E, and OPUS-MT missing-model failure E2E.
+
+Release coverage expectations are tracked in `RELEASE_TEST_MATRIX.md`. Update that file
+when routes, API groups, workflows, or release-gate responsibilities change.
 
 Default coverage gates are calibrated to the current MVP baseline:
 

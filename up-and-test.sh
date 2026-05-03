@@ -383,6 +383,7 @@ run_real_provider_ui_e2e() {
       TEST_IMAGE="${REAL_E2E_TEST_IMAGE}" \
       SOURCE_LANGUAGE="${REAL_E2E_SOURCE_LANGUAGE}" \
       HEADLESS="${HEADLESS}" \
+      NODE_PATH="${FRONTEND_DIR}/node_modules" \
       node e2e/ui-e2e-opus-mt.js
     ) || status=1
   fi

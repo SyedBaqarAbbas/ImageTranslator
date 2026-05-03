@@ -64,6 +64,7 @@ const aggregate = {
       skippedHidden: current.skippedHidden + page.skippedHidden,
       skippedCurrent: current.skippedCurrent + page.skippedCurrent,
       errors: current.errors + page.errors,
+      expectationFailures: current.expectationFailures + (page.expectationFailures || 0),
     }),
     {
       total: 0,
@@ -73,6 +74,7 @@ const aggregate = {
       skippedHidden: 0,
       skippedCurrent: 0,
       errors: 0,
+      expectationFailures: 0,
     },
   ),
 };
@@ -94,6 +96,7 @@ fs.writeFileSync(
     `- Skipped hidden: ${aggregate.totals.skippedHidden}`,
     `- Skipped current/selected: ${aggregate.totals.skippedCurrent}`,
     `- Errors or browser issues: ${aggregate.totals.errors}`,
+    `- Expectation failures: ${aggregate.totals.expectationFailures}`,
     "",
     "## Pages",
     "",

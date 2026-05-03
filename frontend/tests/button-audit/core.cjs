@@ -11,6 +11,7 @@ const HEADLESS = process.env.HEADLESS !== "false";
 const CLICK_TIMEOUT = Number(process.env.BUTTON_AUDIT_CLICK_TIMEOUT || 5000);
 const POST_CLICK_WAIT_MS = Number(process.env.BUTTON_AUDIT_POST_CLICK_WAIT_MS || 700);
 const FIXTURE_PROJECT_NAME = process.env.BUTTON_AUDIT_PROJECT_NAME || "Button Audit Fixture";
+const FAIL_ON_STALE = process.env.FAIL_ON_STALE === "true";
 
 const BUTTON_SELECTOR = [
   "button",
@@ -288,6 +289,84 @@ function classify(before, after, events, actionError, button) {
   return "no-observable-change";
 }
 
+function labelMatches(button, expectation) {
+  const label = button.label || "";
+  if (expectation.label !== undefined && label !== expectation.label) {
+    return false;
+  }
+  if (expectation.pattern !== undefined && !expectation.pattern.test(label)) {
+    return false;
+  }
+  if (expectation.occurrence !== undefined && button.labelOccurrence !== expectation.occurrence) {
+    return false;
+  }
+  return expectation.label !== undefined || expectation.pattern !== undefined;
+}
+
+function findButtonExpectation(config, button) {
+  return (config.expectedButtons || []).find((expectation) => labelMatches(button, expectation)) || null;
+}
+
+function pathMatches(actualPath, expectation) {
+  if (expectation.expectedPath !== undefined) {
+    return actualPath === expectation.expectedPath;
+  }
+  if (expectation.expectedPathPattern !== undefined) {
+    return expectation.expectedPathPattern.test(actualPath);
+  }
+  return true;
+}
+
+function textContains(after, expectedText) {
+  if (expectedText === undefined) {
+    return true;
+  }
+  return Boolean(after?.textExcerpt?.includes(expectedText));
+}
+
+function expectationFailure(result) {
+  const { expected, button, status, events, after } = result;
+  if (!expected) {
+    return button.visible ? "Visible button is not classified in the page expectation manifest." : null;
+  }
+
+  if (status === "error") {
+    return "Button action errored before the expected outcome could be verified.";
+  }
+
+  switch (expected.kind) {
+    case "disabledExpected":
+      return status === "skipped-disabled" ? null : `Expected disabled button, got ${status}.`;
+    case "currentSelection":
+      return status === "skipped-current" ? null : `Expected current/selected button, got ${status}.`;
+    case "intentionalNoop":
+      return status === "no-observable-change" ? null : `Expected intentional no-op, got ${status}.`;
+    case "opensFileChooser":
+      return events.fileChooser ? null : "Expected file chooser event.";
+    case "downloads":
+      return events.download || textContains(after, expected.expectedText)
+        ? null
+        : "Expected download event or download-ready UI.";
+    case "navigates": {
+      if (!after) {
+        return "Expected navigation, but no post-click snapshot was available.";
+      }
+      return pathMatches(after.pathname, expected)
+        ? null
+        : `Expected navigation to ${expected.expectedPath || expected.expectedPathPattern}, got ${after.pathname}.`;
+    }
+    case "opensPopover":
+      return status === "changed" && textContains(after, expected.expectedText)
+        ? null
+        : `Expected popover/menu text ${expected.expectedText || "(any observable popover)"}.`;
+    case "changesUiState":
+    case "mutatesApi":
+      return status === "changed" ? null : `Expected observable state/API change, got ${status}.`;
+    default:
+      return `Unknown expected button kind: ${expected.kind}`;
+  }
+}
+
 async function auditButton(browser, config, button) {
   const context = await browser.newContext({
     viewport: { width: 1440, height: 1000 },
@@ -382,9 +461,10 @@ async function auditButton(browser, config, button) {
   }
 
   const status = classify(before, after, events, actionError, button);
-  return {
+  const result = {
     page: config.pageName,
     button,
+    expected: findButtonExpectation(config, button),
     status,
     observableChange: status === "changed",
     before,
@@ -395,6 +475,8 @@ async function auditButton(browser, config, button) {
     pageErrors,
     requestFailures,
   };
+  result.expectationFailure = expectationFailure(result);
+  return result;
 }
 
 function buildMarkdown(config, result) {
@@ -406,6 +488,7 @@ function buildMarkdown(config, result) {
       item.pageErrors.length ||
       item.requestFailures.length,
   );
+  const expectationFailures = result.buttons.filter((item) => item.expectationFailure);
 
   return [
     `# Button Audit: ${config.pageName}`,
@@ -423,6 +506,7 @@ function buildMarkdown(config, result) {
     `- Skipped hidden: ${result.summary.skippedHidden}`,
     `- Skipped current/selected: ${result.summary.skippedCurrent}`,
     `- Errors or browser issues: ${result.summary.errors}`,
+    `- Expectation failures: ${result.summary.expectationFailures}`,
     "",
     "## Likely Stale Buttons",
     "",
@@ -442,6 +526,17 @@ function buildMarkdown(config, result) {
           .map(
             (item) =>
               `- #${item.button.index} "${item.button.label}": ${item.actionError || item.consoleMessages[0]?.text || item.pageErrors[0] || JSON.stringify(item.requestFailures[0])}`,
+          )
+          .join("\n")
+      : "None observed.",
+    "",
+    "## Expectation Failures",
+    "",
+    expectationFailures.length
+      ? expectationFailures
+          .map(
+            (item) =>
+              `- #${item.button.index} "${item.button.label}": ${item.expectationFailure}`,
           )
           .join("\n")
       : "None observed.",
@@ -492,6 +587,7 @@ async function auditPage(options) {
           item.pageErrors.length ||
           item.requestFailures.length,
       ).length,
+      expectationFailures: results.filter((item) => item.expectationFailure).length,
     };
     const jsonPath = path.join(outputDir, "button-audit.json");
     const reportPath = path.join(outputDir, "button-audit.md");
@@ -508,7 +604,9 @@ async function auditPage(options) {
     fs.writeFileSync(jsonPath, JSON.stringify(payload, null, 2));
     fs.writeFileSync(reportPath, buildMarkdown(config, payload));
 
-    if (process.env.FAIL_ON_STALE === "true" && summary.noObservableChange > 0) {
+    if (summary.expectationFailures > 0) {
+      process.exitCode = 3;
+    } else if (FAIL_ON_STALE && summary.noObservableChange > 0) {
       process.exitCode = 2;
     }
     return payload;

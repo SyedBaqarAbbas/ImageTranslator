@@ -81,7 +81,16 @@ async function waitForRegions(page, pageId, predicate, timeout = 30000) {
       .locator("textarea")
       .first()
       .fill("Browser E2E using Tesseract OCR and local OPUS-MT.");
-    await page.locator("select").first().selectOption(SOURCE_LANGUAGE);
+    const sourceLanguageSelect = page.locator("select").first();
+    if (await sourceLanguageSelect.isEnabled()) {
+      await sourceLanguageSelect.selectOption(SOURCE_LANGUAGE);
+    } else {
+      const lockedSourceLanguage = await sourceLanguageSelect.inputValue();
+      assert(
+        lockedSourceLanguage === SOURCE_LANGUAGE,
+        `Expected locked source language ${SOURCE_LANGUAGE}, got ${lockedSourceLanguage}`,
+      );
+    }
     await page.getByRole("button", { name: /Start AI Processing/i }).click();
     events.push("Started processing from setup form.");
 
