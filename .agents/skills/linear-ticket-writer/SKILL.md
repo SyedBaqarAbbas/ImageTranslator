@@ -1,6 +1,6 @@
 ---
 name: linear-ticket-writer
-description: Use this skill when creating, drafting, or refining Linear tickets for ImageTranslator work. It produces comprehensive implementation-ready tickets that include product context, code entry points, current and desired behavior, acceptance criteria, validation steps, and enough detail for an unfamiliar Codex CLI agent to complete the work end to end.
+description: Use this skill when creating, drafting, or refining Linear tickets for ImageTranslator work. It produces comprehensive implementation-ready tickets that include product context, code entry points, current and desired behavior, acceptance criteria, required testing coverage, validation steps, and enough detail for an unfamiliar Codex CLI agent to complete the work end to end.
 ---
 
 # Linear Ticket Writer
@@ -17,6 +17,7 @@ Create Linear tickets that an unfamiliar implementation agent can pick up withou
 - Make assumptions explicit. If a product decision is ambiguous, include a recommended default and a "Decision Needed" section.
 - Keep tickets scoped to one deliverable. If the request contains multiple independent problems, create one ticket per problem plus an optional parent/overview issue.
 - Avoid vague acceptance criteria like "works correctly". Every criterion should be observable.
+- Every ticket must include a "Testing Coverage Requirements" section derived from the current root and scoped `AGENTS.md` files plus `RELEASE_TEST_MATRIX.md` when relevant. Do not rely on a generic command list alone.
 
 ## Context To Gather
 
@@ -30,7 +31,12 @@ Before creating a ticket, gather only the context needed for that issue:
    - scripts or config when the ticket is operational
 4. Data contracts and APIs: request/response types, endpoint paths, query keys, mutation behavior.
 5. Verification commands from scoped `AGENTS.md` files.
-6. Risks: stale cache, mock-vs-HTTP differences, migrations, renderer side effects, storage, or unclear UX.
+6. Testing coverage expectations from `AGENTS.md`, scoped `AGENTS.md`, and `RELEASE_TEST_MATRIX.md`:
+   - release-gate impact and whether `./up-and-test.sh` or a focused subset is expected
+   - frontend route coverage, button audit manifest updates, Playwright/E2E needs, and `VITE_API_MODE=mock` vs HTTP/full-stack mode
+   - backend route/service success and meaningful failure coverage, persisted state assertions, provider failures, exports/download bytes, uploads, and compile checks
+   - whether `RELEASE_TEST_MATRIX.md` must be updated because routes, API groups, workflows, or release-gate responsibilities changed
+7. Risks: stale cache, mock-vs-HTTP differences, migrations, renderer side effects, storage, or unclear UX.
 
 Useful commands:
 
@@ -83,6 +89,14 @@ Mention data contracts, state changes, cache invalidation, UI states, backend be
 - Observable criterion 2
 - Observable criterion 3
 
+## Testing Coverage Requirements
+
+- Unit/component/service/API coverage that must be added or updated, including success and meaningful failure cases.
+- Frontend route, browser/E2E, and button audit coverage required by `frontend/AGENTS.md` and `RELEASE_TEST_MATRIX.md`.
+- Backend coverage required by `backend/AGENTS.md`, including persisted state, response contracts, job states, generated assets/downloads, or provider failure reasons when relevant.
+- Provider coverage required by `backend/app/providers/AGENTS.md` and `RELEASE_TEST_MATRIX.md` when OCR, translation, rendering, or provider configuration behavior changes.
+- Release gate impact: whether focused tests are enough during implementation, whether `./up-and-test.sh` should be run before merge, and whether `RELEASE_TEST_MATRIX.md` must change.
+
 ## Verification Plan
 
 Commands and manual steps.
@@ -107,6 +121,7 @@ A good ticket lets the next agent answer these questions without asking the user
 - Which files should the agent inspect first?
 - What data needs to be persisted or invalidated?
 - What should happen in loading, success, empty, and error states?
+- What tests, audits, coverage assertions, and release-matrix updates are required by this repo for this exact change?
 - How can the agent prove the work is done?
 - What should not be changed?
 
@@ -142,17 +157,28 @@ Verification defaults:
 ```bash
 cd frontend
 npm run typecheck
-npm run test
+npm run test:coverage
+npm run lint
 npm run build
+npm run test:e2e
+npm run audit:buttons
 ```
 
 When backend Python changes are expected:
 
 ```bash
 cd backend
-conda run -n imagetranslator pytest -q
+conda run -n imagetranslator pytest -q --cov=app --cov-report=term-missing:skip-covered
 conda run -n imagetranslator python -m compileall app migrations
 ```
+
+Repo release gate:
+
+```bash
+./up-and-test.sh
+```
+
+Use focused tests first while implementing, then require the relevant existing suites based on blast radius. Tickets should call out business assertions, not just coverage percentage: persisted state, API calls, job status, generated assets/downloads, routed navigation, validation errors, and failure messages.
 
 ## Linear Creation Workflow
 
@@ -169,4 +195,3 @@ If a Linear connector/tool is available and the user asks to create the ticket i
 5. Return the Linear issue identifier and URL.
 
 If no Linear tool is available, output the ticket in Markdown with a clear title and body ready to paste into Linear.
-
