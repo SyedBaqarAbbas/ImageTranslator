@@ -46,7 +46,7 @@ jobs:
         run: python -m compileall app migrations
 
   frontend:
-    name: Frontend typecheck, lint, tests, and build
+    name: Frontend typecheck, lint, tests, build, and Playwright
     runs-on: ubuntu-latest
 
     defaults:
