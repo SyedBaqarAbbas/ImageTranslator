@@ -23,7 +23,9 @@ Default gate expectations:
 The GitHub `CI` workflow is the required PR baseline for hosted collaboration:
 
 - `Backend tests and compile`: installs backend dev dependencies, runs pytest with coverage, and compiles `app` and `migrations`.
-- `Frontend typecheck, lint, tests, and build`: installs frontend dependencies with `npm ci`, runs typecheck, lint, Vitest coverage, and production build.
+- `Frontend typecheck, lint, tests, build, and Playwright`: installs frontend
+  dependencies with `npm ci`, runs typecheck, lint, Vitest coverage, production
+  build, installs Chromium, and runs the mock-mode Playwright smoke/route tests.
 
 The GitHub `CodeQL` workflow runs on pull requests, pushes to `main`, a weekly schedule, and manual dispatch. It scans `javascript-typescript` and `python` so code scanning findings appear in the repository Security tab.
 

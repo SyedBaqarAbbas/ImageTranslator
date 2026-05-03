@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/SyedBaqarAbbas/ImageTranslator/security/advisories/new
+    about: Report vulnerabilities privately instead of opening a public issue.
+  - name: Support policy
+    url: https://github.com/SyedBaqarAbbas/ImageTranslator/blob/main/SUPPORT.md
+    about: Check supported help channels and prototype limitations.
+  - name: Contributor guide
+    url: https://github.com/SyedBaqarAbbas/ImageTranslator/blob/main/CONTRIBUTING.md
+    about: Read local setup, provider behavior, branch, commit, PR, and testing expectations.

@@ -1,0 +1,57 @@
+name: Feature request
+description: Suggest a product, workflow, provider, or developer-experience improvement.
+title: "[feature] "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please describe the user problem first. Avoid sharing copyrighted, private, confidential, or sensitive pages unless you are authorized to share them.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What workflow or user need does this address?
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Upload and project setup
+        - Processing jobs
+        - Review or editor workflow
+        - Rendering or export
+        - OCR or translation providers
+        - Local development
+        - CI or release process
+        - Documentation
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: What should ImageTranslator do differently?
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria or test ideas
+      placeholder: |
+        - The user can...
+        - Backend persists...
+        - Frontend shows...
+        - Tests cover...
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
