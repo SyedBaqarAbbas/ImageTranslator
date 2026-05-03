@@ -224,6 +224,24 @@ VITE_API_MODE=http VITE_API_BASE_URL=http://localhost:8000/api/v1 npm run dev
 
 The current backend workflow routes use a shared public workspace user, so no login or local storage token is required for local HTTP mode.
 
+## Security
+
+See [SECURITY.md](SECURITY.md) for supported branches, private vulnerability
+reporting, response timelines, and provider data-handling notes. Report
+vulnerabilities through GitHub private vulnerability reporting instead of public
+issues when exploit details, secrets, or private files are involved.
+
+Do not commit provider keys, model tokens, database URLs, production secrets,
+or local `.env` values. Use environment variables, ignored local files, or a
+deployment secret manager for sensitive configuration.
+
+Do not upload copyrighted, private, confidential, or sensitive manga, comic,
+manhwa, or image pages to hosted deployments unless you are authorized to
+process that content. The default mock providers run locally, optional
+Tesseract and OPUS-MT prototype providers process files on the developer
+machine, and future real providers may send content to third-party APIs once
+enabled.
+
 ## First API Smoke Test
 
 Create a project:
