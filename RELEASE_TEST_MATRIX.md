@@ -18,6 +18,17 @@ Default gate expectations:
 - OPUS-MT missing-model failure E2E.
 - Real-provider UI E2E only when explicitly enabled with `RUN_REAL_PROVIDER_E2E=1 REAL_E2E_TEST_IMAGE=/path/to/image`.
 
+## GitHub Automation
+
+The GitHub `CI` workflow is the required PR baseline for hosted collaboration:
+
+- `Backend tests and compile`: installs backend dev dependencies, runs pytest with coverage, and compiles `app` and `migrations`.
+- `Frontend typecheck, lint, tests, and build`: installs frontend dependencies with `npm ci`, runs typecheck, lint, Vitest coverage, and production build.
+
+The GitHub `CodeQL` workflow runs on pull requests, pushes to `main`, a weekly schedule, and manual dispatch. It scans `javascript-typescript` and `python` so code scanning findings appear in the repository Security tab.
+
+The local `./up-and-test.sh` release gate remains broader than CI and should still be run before release-sensitive merges.
+
 ## Frontend Routes
 
 | Route | Normal render | State coverage target | Browser/E2E target |
