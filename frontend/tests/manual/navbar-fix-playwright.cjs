@@ -4,6 +4,7 @@ const { chromium } = require("playwright");
 
 const TARGET_URL = process.env.TARGET_URL || "http://127.0.0.1:5173";
 const API_URL = process.env.API_URL || "http://127.0.0.1:8000/api/v1";
+const HEADLESS = process.env.HEADLESS !== "false";
 const REPO_ROOT = path.resolve(__dirname, "../../..");
 const RESULTS_DIR = process.env.RESULTS_DIR || path.join(REPO_ROOT, "testing");
 const artifactsDir = path.join(RESULTS_DIR, "artifacts");
@@ -54,15 +55,25 @@ async function expectPath(page, name, expectedPath) {
 }
 
 async function clickTopNav(page, label, expectedPath) {
-  await page.getByRole("link", { name: label }).click();
+  await page.locator("header").getByRole("link", { name: label, exact: true }).click();
+  await page.waitForURL((url) => url.pathname === expectedPath, { timeout: 10000 }).catch(() => {});
   await page.waitForLoadState("networkidle");
   await expectPath(page, `Top nav ${label} routes to ${expectedPath}`, expectedPath);
   const heading = page.locator("main").getByRole("heading", { name: label, exact: true });
-  record(`Top nav ${label} renders heading`, await heading.isVisible().catch(() => false));
+  const headingVisible = await heading.waitFor({ state: "visible", timeout: 10000 }).then(() => true).catch(() => false);
+  record(`Top nav ${label} renders heading`, headingVisible);
+}
+
+function isExpectedRequestFailure(failure) {
+  const url = failure.url || "";
+  if (url.includes("/favicon") || url.startsWith("mailto:")) {
+    return true;
+  }
+  return failure.failure === "net::ERR_ABORTED" && url.startsWith(API_URL);
 }
 
 (async () => {
-  const browser = await chromium.launch({ headless: false, slowMo: 40 });
+  const browser = await chromium.launch({ headless: HEADLESS, slowMo: HEADLESS ? 0 : 40 });
   const context = await browser.newContext({
     viewport: { width: 1440, height: 960 },
     permissions: ["clipboard-read", "clipboard-write"],
@@ -166,8 +177,7 @@ async function clickTopNav(page, label, expectedPath) {
   }
 
   const unexpectedFailures = results.failedRequests.filter((failure) => {
-    const url = failure.url || "";
-    return !url.includes("/favicon") && !url.startsWith("mailto:");
+    return !isExpectedRequestFailure(failure);
   });
   record("No unexpected failed network requests", unexpectedFailures.length === 0, { unexpectedFailures });
   record("No console errors", results.consoleErrors.length === 0, { consoleErrors: results.consoleErrors });

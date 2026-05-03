@@ -57,4 +57,25 @@ describe("waitForSuccessfulRetranslateJob", () => {
       }),
     ).rejects.toThrow("Provider unavailable.");
   });
+
+  it("returns immediately for already successful jobs", async () => {
+    const getProcessingJob = vi.fn<(jobId: string) => Promise<ProcessingJobRead>>();
+
+    await expect(
+      waitForSuccessfulRetranslateJob(processingJob("succeeded"), {
+        getProcessingJob,
+      }),
+    ).resolves.toMatchObject({ status: "succeeded" });
+    expect(getProcessingJob).not.toHaveBeenCalled();
+  });
+
+  it("falls back to a status-specific error message for cancelled jobs", async () => {
+    const getProcessingJob = vi.fn<(jobId: string) => Promise<ProcessingJobRead>>();
+
+    await expect(
+      waitForSuccessfulRetranslateJob(processingJob("cancelled"), {
+        getProcessingJob,
+      }),
+    ).rejects.toThrow("Translation job cancelled.");
+  });
 });

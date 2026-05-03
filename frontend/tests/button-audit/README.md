@@ -1,8 +1,22 @@
 # Button Audit Scripts
 
-These scripts click every visible enabled button on a page from a fresh browser context and record whether anything observable happened.
+These scripts click every visible button on a page from a fresh browser context and verify the button against a page-level expectation manifest.
 
 Observable changes include URL changes, page text changes, DOM/button-state changes, file chooser events, downloads, dialogs, popups, console warnings/errors, page errors, and failed requests.
+
+Each page script in `tests/button-audit/pages/` must classify every visible button as one of:
+
+- `navigates`
+- `opensPopover`
+- `changesUiState`
+- `mutatesApi`
+- `opensFileChooser`
+- `downloads`
+- `disabledExpected`
+- `currentSelection`
+- `intentionalNoop`
+
+The audit fails when a visible button is unclassified, errors, emits unexpected failed requests, or does not produce its expected outcome. Add or update the page manifest whenever adding, removing, or changing a button.
 
 Run the frontend in mock mode first:
 

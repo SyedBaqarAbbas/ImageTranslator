@@ -43,11 +43,20 @@ python -m pip install -e ".[dev,local-ml]"
 Run from `backend/`:
 
 ```bash
-conda run -n imagetranslator pytest -q
+conda run -n imagetranslator pytest -q --cov=app --cov-report=term-missing:skip-covered
 conda run -n imagetranslator python -m compileall app migrations
 ```
 
 For Python changes, run focused tests first, then the full backend tests when touching services, schemas, models, providers, or routes.
+
+## Backend Testing Conventions
+
+- Prefer shared fixtures from `app/tests/conftest.py` for API tests so SQLite, storage, provider settings, and eager jobs are isolated per test.
+- Route tests must cover success and at least one meaningful failure path for new endpoints.
+- Service tests must assert persisted state transitions for projects, pages, regions, processing jobs, export jobs, and assets.
+- Upload tests should include multiple files, ZIP archives, unsupported file types, corrupt images, and empty upload behavior when those paths are touched.
+- Export tests should validate PDF, full ZIP, image ZIP, include-originals behavior, no-page/no-rendered-page failures, and actual downloaded bytes.
+- Provider and processing failure tests must assert project/page/job failure state and user-facing failure reason.
 
 Full-project `ruff check app` currently reports a legacy lint backlog. For normal changes, run:
 

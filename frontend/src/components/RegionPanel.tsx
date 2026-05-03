@@ -276,6 +276,7 @@ export function RegionPanel({
   const resizeDragRef = useRef<PanelResizeDrag | null>(null);
   const heightResizeDragRef = useRef<PanelHeightResizeDrag | null>(null);
   const selectedRegionResizeDragRef = useRef<SelectedRegionResizeDrag | null>(null);
+  const selectedRegionResetKeyRef = useRef<string | null>(null);
   const panelRef = useRef<HTMLElement | null>(null);
   const [preferredPanelWidth, setPreferredPanelWidth] = useState(storedRegionPanelWidth);
   const [panelMaxWidth, setPanelMaxWidth] = useState(maxRegionPanelWidth);
@@ -290,6 +291,11 @@ export function RegionPanel({
   const panelHeight = clampRegionPanelHeight(preferredPanelHeight, panelMaxHeight);
 
   useEffect(() => {
+    const resetKey = selectedRegion ? `${selectedRegion.id}:${selectedRegion.updated_at}` : "none";
+    if (selectedRegionResetKeyRef.current === resetKey) {
+      return;
+    }
+    selectedRegionResetKeyRef.current = resetKey;
     dispatchPanel({ type: "reset", region: selectedRegion });
   }, [selectedRegion]);
 

@@ -5,6 +5,7 @@ const { chromium } = require("playwright");
 
 const TARGET_URL = process.env.TARGET_URL || "http://127.0.0.1:5173";
 const API_URL = process.env.API_URL || "http://127.0.0.1:8000/api/v1";
+const HEADLESS = process.env.HEADLESS !== "false";
 const REPO_ROOT = path.resolve(__dirname, "../../..");
 const RESULTS_DIR = process.env.RESULTS_DIR || path.join(REPO_ROOT, "testing");
 const SCREENSHOT_DIR = path.join(RESULTS_DIR, "screenshots");
@@ -89,7 +90,7 @@ async function screenshot(page, name) {
 }
 
 (async () => {
-  const browser = await chromium.launch({ headless: false });
+  const browser = await chromium.launch({ headless: HEADLESS });
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
   const request = page.request;
 
@@ -178,7 +179,7 @@ async function screenshot(page, name) {
 
     await page.goto(`${TARGET_URL}/projects/${projectId}/export`, { waitUntil: "domcontentloaded" });
     await page.getByRole("heading", { name: "Export Project" }).waitFor();
-    await page.getByRole("button", { name: /^PDF$/i }).click();
+    await page.getByRole("button", { name: /PDF.*One PDF built from rendered pages/i }).click();
     await page.locator("input").first().fill(`${projectName}-pdf`);
     await page.getByRole("button", { name: /Export Project/i }).click();
     try {
@@ -196,7 +197,7 @@ async function screenshot(page, name) {
 
     await page.goto(`${TARGET_URL}/projects`, { waitUntil: "domcontentloaded" });
     await page.getByRole("heading", { name: "Projects" }).waitFor();
-    await page.locator("input[placeholder='Search projects...']").fill(projectName);
+    await page.locator("main input[placeholder='Search projects...']").fill(projectName);
     await page.getByText(projectName).waitFor();
     record("Dashboard lists and filters the created project", "pass", {
       screenshot: await screenshot(page, "08-dashboard-search.png"),

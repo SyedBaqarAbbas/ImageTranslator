@@ -10,7 +10,9 @@ FRONTEND_ORIGIN="http://${FRONTEND_HOST}:${FRONTEND_PORT}"
 VITE_API_MODE="${VITE_API_MODE:-mock}"
 VITE_API_BASE_URL="${VITE_API_BASE_URL:-http://127.0.0.1:8000/api/v1}"
 RUN_FRONTEND_BUILD="${RUN_FRONTEND_BUILD:-1}"
-RUN_BUTTON_AUDIT="${RUN_BUTTON_AUDIT:-0}"
+RUN_FRONTEND_COVERAGE="${RUN_FRONTEND_COVERAGE:-1}"
+RUN_BUTTON_AUDIT="${RUN_BUTTON_AUDIT:-1}"
+RUN_NAVBAR_AUDIT="${RUN_NAVBAR_AUDIT:-1}"
 KEEP_APP_UP="${KEEP_APP_UP:-0}"
 
 FRONTEND_PID=""
@@ -61,8 +63,13 @@ run_frontend_checks() {
   log "Running frontend lint"
   (cd "${FRONTEND_DIR}" && npm run lint)
 
-  log "Running frontend unit tests"
-  (cd "${FRONTEND_DIR}" && npm run test)
+  if [ "${RUN_FRONTEND_COVERAGE}" = "1" ]; then
+    log "Running frontend unit tests with coverage"
+    (cd "${FRONTEND_DIR}" && npm run test:coverage)
+  else
+    log "Running frontend unit tests"
+    (cd "${FRONTEND_DIR}" && npm run test)
+  fi
 
   if [ "${RUN_FRONTEND_BUILD}" = "1" ]; then
     log "Building frontend"
@@ -83,6 +90,14 @@ run_frontend_checks() {
     (
       cd "${FRONTEND_DIR}"
       TARGET_URL="${FRONTEND_ORIGIN}" npm run audit:buttons
+    )
+  fi
+
+  if [ "${RUN_NAVBAR_AUDIT}" = "1" ]; then
+    log "Running manual navbar audit"
+    (
+      cd "${FRONTEND_DIR}"
+      TARGET_URL="${FRONTEND_ORIGIN}" node tests/manual/navbar-audit-playwright.cjs
     )
   fi
 }

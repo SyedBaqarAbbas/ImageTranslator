@@ -53,6 +53,12 @@ Documentation-only changes usually do not need tests, but inspect Markdown struc
 - Treat testing as the final validation step after implementation is complete: run focused tests first, then relevant existing suites based on the blast radius.
 - Run e2e/browser tests when changes affect navigation, routed workflows, upload, processing, editor, review, export, or other cross-screen UI behavior.
 - If a change touches shared contracts or infrastructure, run the existing frontend/backend tests needed to prove no regressions were introduced.
+- Keep `./up-and-test.sh` as the release gate. It must start the required local app environments and run backend coverage, frontend coverage, Playwright smoke/route tests, button/nav audits, mock full-stack E2E, and provider failure checks.
+- Do not rely on coverage percentage alone. Tests must assert business outcomes: persisted state, API calls, job status, generated assets/downloads, routed navigation, validation errors, and failure messages.
+- Every visible frontend button must be covered by the button audit expectation manifest. Classify each button as navigation, popover/menu, UI state change, API mutation, file chooser, download, disabled/current, or intentional no-op.
+- Every routed page in `frontend/src/App.tsx` must have tests for its normal render path. Data-driven routes should also cover loading, empty, error, and not-found states when the page supports those states.
+- When adding or changing backend routes, add both success and meaningful failure tests. Validate response contracts and state transitions, not just status codes.
+- Update `RELEASE_TEST_MATRIX.md` whenever routes, API groups, workflows, or release-gate test responsibilities change.
 
 ## Git and Workspace Hygiene
 
@@ -60,6 +66,7 @@ Documentation-only changes usually do not need tests, but inspect Markdown struc
 - Run `git status --short` before staging or committing.
 - Stage only files relevant to the task. Do not use `git add .` unless required.
 - Commit messages must follow `[prefix] <message>`, e.g. `[fix] handle empty OCR results`.
+- Whenever making a change to AI workflows (AGENTS.md or SKILL.md), use the prefix [ai-ops] in your git commits.
 - `testing/` contains generated evidence and is ignored by git. Do not force-add it.
 - Do not commit `.gitignore` unless asked or required.
 - Do not commit secrets, `.env` files, local DBs, model files, uploaded assets, rendered outputs, or build artifacts.
@@ -70,6 +77,7 @@ Documentation-only changes usually do not need tests, but inspect Markdown struc
 - Create a branch containing the Linear ticket ID/name.
 - Base it on latest `main` unless told otherwise.
 - Commit with a meaningful `[prefix] <message>`.
+- Whenever making a change to AI workflows (AGENTS.md or SKILL.md), use the prefix [ai-ops] in your git commits.
 - Push the branch.
 - Create a normal open PR against `main`, not a draft PR, unless the user explicitly asks for a draft. Always use gh outside of sandbox for this (gh inside the sandbox does not have access to keyring).
 - If you are blocked because of any issue, post a comment on the ticket in Linear through MCP in 2 stages: first, summarizing the issue in one-line for a general idea and second, explaining it comprehensively for a detailed specific idea.

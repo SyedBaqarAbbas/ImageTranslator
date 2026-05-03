@@ -77,7 +77,7 @@ export function WorkspaceShell({ children, fullHeight = false }: { children: Rea
           </nav>
 
           <div className="border-t border-ink-border px-5 pt-4 text-text-muted">
-            <NavLink className="flex items-center gap-4 overflow-hidden py-2 text-sm transition hover:text-white" to="/support">
+            <NavLink className="pointer-events-none flex cursor-not-allowed items-center gap-4 overflow-hidden py-2 text-sm text-text-muted opacity-50" to="/support" aria-disabled="true" tabIndex={-1}>
               <Contact className="h-5 w-5 shrink-0" />
               <span className="w-0 overflow-hidden whitespace-nowrap opacity-0 transition-all [aside:hover_&]:w-auto [aside:hover_&]:opacity-100">Support</span>
             </NavLink>

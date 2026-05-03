@@ -5,10 +5,9 @@ const path = require("path");
 const TARGET_URL = process.env.TARGET_URL || "http://127.0.0.1:5173";
 const API_BASE = process.env.API_BASE || "http://127.0.0.1:8000/api/v1";
 const REPO_ROOT = process.env.REPO_ROOT || path.resolve(__dirname, "..");
-const TEST_IMAGE =
-  process.env.TEST_IMAGE ||
-  "/Users/ekai/Desktop/Screenshot 2026-04-29 at 11.42.59 PM.png";
+const TEST_IMAGE = process.env.TEST_IMAGE;
 const SOURCE_LANGUAGE = process.env.SOURCE_LANGUAGE || "ko";
+const HEADLESS = process.env.HEADLESS !== "false";
 const EVIDENCE_DIR = path.join(REPO_ROOT, "testing", "ui-e2e-opus-mt");
 const REPORT_PATH = path.join(EVIDENCE_DIR, "report.md");
 
@@ -44,13 +43,16 @@ async function waitForRegions(page, pageId, predicate, timeout = 30000) {
 }
 
 (async () => {
+  assert(TEST_IMAGE, "Set TEST_IMAGE to a local manga/comic image before running real-provider E2E.");
+  assert(fs.existsSync(TEST_IMAGE), `TEST_IMAGE does not exist: ${TEST_IMAGE}`);
+
   fs.mkdirSync(EVIDENCE_DIR, { recursive: true });
 
   const events = [];
   const consoleErrors = [];
   const pageErrors = [];
   const screenshots = [];
-  const browser = await chromium.launch({ headless: false, slowMo: 75 });
+  const browser = await chromium.launch({ headless: HEADLESS, slowMo: HEADLESS ? 0 : 75 });
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
   page.setDefaultTimeout(120000);
   page.on("console", (message) => {
@@ -79,7 +81,16 @@ async function waitForRegions(page, pageId, predicate, timeout = 30000) {
       .locator("textarea")
       .first()
       .fill("Browser E2E using Tesseract OCR and local OPUS-MT.");
-    await page.locator("select").first().selectOption(SOURCE_LANGUAGE);
+    const sourceLanguageSelect = page.locator("select").first();
+    if (await sourceLanguageSelect.isEnabled()) {
+      await sourceLanguageSelect.selectOption(SOURCE_LANGUAGE);
+    } else {
+      const lockedSourceLanguage = await sourceLanguageSelect.inputValue();
+      assert(
+        lockedSourceLanguage === SOURCE_LANGUAGE,
+        `Expected locked source language ${SOURCE_LANGUAGE}, got ${lockedSourceLanguage}`,
+      );
+    }
     await page.getByRole("button", { name: /Start AI Processing/i }).click();
     events.push("Started processing from setup form.");
 
