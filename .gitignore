@@ -14,3 +14,6 @@ tickets/
 
 # Local prototype persistent data
 /.local-data/
+
+# Local IDE settings
+.vscode
