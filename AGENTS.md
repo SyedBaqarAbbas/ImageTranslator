@@ -87,4 +87,4 @@ Documentation-only changes usually do not need tests, but inspect Markdown struc
 - Docker may not be running locally; backend SQLite local mode is documented in `backend/AGENTS.md`.
 - System Python may not have backend dependencies; use the `imagetranslator` conda env for backend work.
 - Browser automation may require elevated permissions on macOS when Playwright launches Chromium or when a skill runner writes temporary execution files.
-- OpenAI/DeepL translation providers are stubs. Enabling those env vars without implementation will break processing jobs.
+- Unsupported translation provider values can break processing jobs. Use the documented providers in `backend/.env.example` and `backend/README.md`.

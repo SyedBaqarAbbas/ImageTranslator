@@ -22,7 +22,6 @@ Provider-specific guidance. Also follow `backend/AGENTS.md` and the root `AGENTS
 - OPUS-MT model directories live under `backend/models/opus-mt/` by default, are ignored by git, and must be prepared outside backend startup/request handling.
 - Use `backend/scripts/setup_opus_mt_models.sh` to install conversion-only dependencies and prepare local OPUS-MT model folders.
 - The Tesseract/OPUS-MT local prototype path must not add PyTorch.
-- `TRANSLATION_PROVIDER=openai` and `TRANSLATION_PROVIDER=deepl` currently select stubs that raise `NotImplementedError`; do not claim real OpenAI/DeepL translation works until those providers are implemented.
 
 ## Local EasyOCR Mode
 

@@ -41,7 +41,7 @@ local overrides out of version control.
 `app/core/config.py` defines backend settings and `backend/.env.example`
 contains valid local defaults for Docker. The default provider settings use
 mock OCR and mock translation, so local Docker startup does not require Redis,
-MinIO, OpenAI, DeepL, Google credentials, or local ML models.
+MinIO, external provider API keys, or local ML models.
 
 List-valued settings accept comma-separated MIME types or JSON arrays. These
 forms are equivalent:
@@ -190,7 +190,7 @@ The backend separates fast request/response operations from slow AI and image wo
 - `Celery eager mode`: simple inline job execution for the starter app.
 - `Local filesystem storage`: original, intermediate, preview, final, and export files.
 - `Pillow + OpenCV-ready structure`: MVP rendering now, richer preprocessing/inpainting later.
-- Provider abstractions: mock providers for local dev, an EasyOCR starter provider, an opt-in Tesseract/OPUS-MT local prototype path, and placeholders for OpenAI/DeepL translation providers.
+- Provider abstractions: mock providers for local dev, an EasyOCR starter provider, and an opt-in Tesseract/OPUS-MT local prototype path.
 
 ## End-to-End Backend Flow
 
@@ -302,8 +302,6 @@ Provider selection is controlled by environment variables in `app/core/config.py
 - `OCR_PROVIDER=tesseract` uses `TesseractOCRProvider`. It requires the native `tesseract` binary and language data installed separately, applies optional lightweight Pillow preprocessing, calls Tesseract with `image_to_data`, groups word rows into line-level `OCRRegion` rows, and keeps `polygon=None`.
 - `TRANSLATION_PROVIDER=mock` is the default. `MockTranslationProvider.translate_many()` returns one result per source string using the format `[target_language] source text` with confidence `0.99`.
 - `TRANSLATION_PROVIDER=opus_mt` uses `OpusMTTranslationProvider`. It requires pre-converted local CTranslate2 OPUS-MT model directories and supports Korean/Japanese to English with int8 CPU inference.
-- `TRANSLATION_PROVIDER=openai` selects `OpenAITranslationProvider`, but that provider currently raises `NotImplementedError`.
-- `TRANSLATION_PROVIDER=deepl` selects `DeepLTranslationProvider`, but that provider currently raises `NotImplementedError`.
 - `RENDER_ENGINE=pillow` is the only implemented renderer. It uses Pillow to white-fill detected boxes, wrap translated text, fit font size to each box, and render replacement, overlay, bilingual, side-panel, or subtitle output.
 
 ### Local Tesseract OCR Prototype
@@ -454,7 +452,7 @@ Each OCR result becomes a `TextRegion` row with:
 
 ### Real Provider Work Still Needed
 
-The EasyOCR path can be enabled once optional OCR dependencies are installed and `OCR_PROVIDER=easyocr` is set. The Tesseract/OPUS-MT path is a lightweight local prototype for Korean/Japanese to English. Real hosted machine translation is not yet wired: the OpenAI and DeepL provider classes are stubs. A production provider implementation should add API clients, batching limits, retries, timeout handling, structured provider errors, and tests that assert result ordering matches the input text list.
+The EasyOCR path can be enabled once optional OCR dependencies are installed and `OCR_PROVIDER=easyocr` is set. The Tesseract/OPUS-MT path is a lightweight local prototype for Korean/Japanese to English. Additional hosted translation integrations are intentionally out of scope in the current codebase.
 
 ## Background Jobs
 
@@ -542,7 +540,7 @@ Phase 3: Export and product polish
 Phase 4: Production integrations
 
 - EasyOCR/PaddleOCR/Google Vision adapters.
-- OpenAI/DeepL/Google Translate adapters.
+- Additional hosted translation adapters.
 - OpenCV preprocessing and inpainting for better artwork preservation.
 - Rate limits, quotas, billing, collaboration, version history, audit logs, and human review workflows.
 

@@ -1,189 +1,256 @@
-# Full Local Verification Commands
+# Run Guide
 
-Run from `/Users/ekai/Documents/personal/personal_projects/ImageTranslator` unless a command changes directory.
+This guide covers two setup paths:
 
-## One-Command Local Startup
+1. Docker Compose (fastest way to run the full app)
+2. `start-local-prototype.sh` (local backend/frontend process with configurable env vars)
+
+Run commands from the repo root unless a step says otherwise.
+
+## Option A: Docker Compose Setup
+
+Use this path when you want a quick full-stack run with minimal host setup.
+
+### Prerequisites
+
+1. Install Docker Desktop (or Docker Engine + Docker Compose plugin).
+2. Confirm Docker is running:
+
+```bash
+docker --version
+```
+
+```bash
+docker compose version
+```
+
+### Step-by-step
+
+1. Start services:
+
+```bash
+docker compose up --build
+```
+
+2. Open the app and API:
+   - Frontend: `http://localhost:5173`
+   - API health: `http://localhost:8000/api/v1/health`
+   - API docs: `http://localhost:8000/docs`
+
+3. Stop services:
+
+```bash
+docker compose down
+```
+
+4. Optional cleanup (remove DB and frontend dependency volumes):
+
+```bash
+docker compose down -v
+```
+
+### Docker environment variables used
+
+`docker-compose.yml` loads `backend/.env.example` and sets these overrides:
+
+| Service | Variable | Value |
+| --- | --- | --- |
+| backend (`api`/`migrate`) | `DATABASE_URL` | `postgresql+asyncpg://app:app@postgres:5432/image_translator` |
+| backend (`api`/`migrate`) | `CELERY_TASK_ALWAYS_EAGER` | `true` |
+| backend (`api`/`migrate`) | `LOCAL_STORAGE_PATH` | `/app/data/storage` |
+| backend (`api`/`migrate`) | `PUBLIC_BASE_URL` | `http://localhost:8000` |
+| frontend | `VITE_API_MODE` | `http` |
+| frontend | `VITE_API_BASE_URL` | `http://localhost:8000/api/v1` |
+| frontend | `CHOKIDAR_USEPOLLING` | `true` |
+| postgres | `POSTGRES_USER` | `app` |
+| postgres | `POSTGRES_PASSWORD` | `app` |
+| postgres | `POSTGRES_DB` | `image_translator` |
+
+Provider defaults for this Docker path come from `backend/.env.example`:
+
+- `OCR_PROVIDER=mock`
+- `TRANSLATION_PROVIDER=mock`
+- `RENDER_ENGINE=pillow`
+
+No provider API keys are required for the default local Docker run.
+
+### Exit mock mode in Docker (run real local models)
+
+Use this when you want real local OCR + translation (`tesseract` + `opus_mt`) instead of mock providers.
+
+1. Prepare OPUS-MT models on host:
+
+```bash
+cd backend
+./scripts/setup_opus_mt_models.sh
+cd ..
+```
+
+Note: model preparation uses the `imagetranslator` conda env. If not created yet, run Option B prerequisite step 3 first.
+
+2. Create a Docker override file at repo root named `docker-compose.real-models.yml`:
+
+```yaml
+services:
+  api:
+    environment:
+      OCR_PROVIDER: tesseract
+      TRANSLATION_PROVIDER: opus_mt
+      OPUS_MT_MODEL_ROOT: /app/models/opus-mt
+      TESSERACT_DEFAULT_LANGUAGE: kor
+      TESSERACT_PSM: "6"
+      TESSERACT_OEM: "1"
+```
+
+3. Start with the override:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.real-models.yml up --build
+```
+
+4. Verify providers in the running container:
+
+```bash
+docker compose exec api python -c "from app.core.config import settings; print('OCR_PROVIDER=', settings.ocr_provider); print('TRANSLATION_PROVIDER=', settings.translation_provider); print('OPUS_MT_MODEL_ROOT=', settings.opus_mt_model_root)"
+```
+
+5. Return to mock mode by starting Docker without the override file:
+
+```bash
+docker compose up --build
+```
+
+## Option B: start-local-prototype.sh Setup
+
+Use this path when you want to run backend + frontend directly on host with a local SQLite database and configurable OCR/translation provider behavior.
+
+### Prerequisites
+
+1. Install Node.js + npm.
+2. Install Conda (Anaconda or Miniconda).
+3. Create backend env and install dependencies:
+
+```bash
+cd backend
+conda create -n imagetranslator python=3.11 -y
+conda run -n imagetranslator python -m pip install -e ".[dev,ocr]"
+conda run -n imagetranslator python -m pip install -e ".[dev,local-ml]"
+cd ..
+```
+
+4. Install frontend dependencies:
+
+```bash
+cd frontend
+npm install
+cd ..
+```
+
+5. If using default providers (`tesseract` + `opus_mt`), install Tesseract (macOS):
+
+```bash
+brew install tesseract tesseract-lang
+```
+
+6. If using default translation provider (`opus_mt`), prepare models once:
+
+```bash
+cd backend
+./scripts/setup_opus_mt_models.sh
+cd ..
+```
+
+### Step-by-step
+
+1. Start both servers:
 
 ```bash
 ./start-local-prototype.sh
 ```
 
-This starts the backend and frontend together with the local prototype defaults:
+2. Open:
+   - Frontend: `http://127.0.0.1:5173`
+   - Backend health: `http://127.0.0.1:8000/api/v1/health`
 
-- Backend: `http://127.0.0.1:8000`
-- Frontend: `http://127.0.0.1:5173`
-- OCR: `OCR_PROVIDER=tesseract`
-- Translation: `TRANSLATION_PROVIDER=opus_mt`
-- Models: `backend/models/opus-mt`
+3. Stop both with `Ctrl-C`.
 
-Stop both servers with `Ctrl-C`.
+### Script environment variables and defaults
 
-Useful overrides:
+`start-local-prototype.sh` reads these env vars:
+
+| Variable | Default |
+| --- | --- |
+| `CONDA_ENV_NAME` | `imagetranslator` |
+| `BACKEND_HOST` | `127.0.0.1` |
+| `BACKEND_PORT` | `8000` |
+| `FRONTEND_HOST` | `127.0.0.1` |
+| `FRONTEND_PORT` | `5173` |
+| `AUTO_CREATE_TABLES` | `true` |
+| `LOCAL_PROTOTYPE_DATA_DIR` | `<repo>/.local-data` |
+| `DATABASE_URL` | `sqlite+aiosqlite:///<repo>/.local-data/image-translator-local-prototype.db` |
+| `LOCAL_STORAGE_PATH` | `<repo>/.local-data/storage` |
+| `PUBLIC_BASE_URL` | `http://$BACKEND_HOST:$BACKEND_PORT` |
+| `OCR_PROVIDER` | `tesseract` |
+| `TRANSLATION_PROVIDER` | `opus_mt` |
+| `TESSERACT_DEFAULT_LANGUAGE` | `kor` |
+| `TESSERACT_PSM` | `6` |
+| `TESSERACT_OEM` | `1` |
+| `OPUS_MT_MODEL_ROOT` | `<repo>/backend/models/opus-mt` |
+| `VITE_API_MODE` | `http` |
+| `VITE_API_BASE_URL` | `http://$BACKEND_HOST:$BACKEND_PORT/api/v1` |
+
+### Useful start-local-prototype overrides
+
+Run in mock mode (no Tesseract/OPUS-MT requirement):
 
 ```bash
 OCR_PROVIDER=mock TRANSLATION_PROVIDER=mock ./start-local-prototype.sh
 ```
 
+Exit mock mode and run real models explicitly:
+
+```bash
+OCR_PROVIDER=tesseract TRANSLATION_PROVIDER=opus_mt OPUS_MT_MODEL_ROOT="$(pwd)/backend/models/opus-mt" ./start-local-prototype.sh
+```
+
+Optional language controls for real models:
+
+```bash
+TESSERACT_DEFAULT_LANGUAGE=kor TESSERACT_AUTO_LANGUAGE=kor+jpn OPUS_MT_DEFAULT_SOURCE_LANGUAGE=kor ./start-local-prototype.sh
+```
+
+Use custom ports:
+
 ```bash
 BACKEND_PORT=8010 FRONTEND_PORT=5174 ./start-local-prototype.sh
 ```
 
-## Backend Checks
+Use a custom data directory:
 
 ```bash
-cd backend
-conda run -n imagetranslator python scripts/prepare_opus_mt_models.py --check-only
+LOCAL_PROTOTYPE_DATA_DIR=/tmp/image-translator-local ./start-local-prototype.sh
 ```
 
-Expected result: `ja-en` and `ko-en` both report `ready`.
+## Optional Validation Commands
 
-```bash
-cd backend
-conda run -n imagetranslator python -c "import asyncio; from app.providers.translation import OpusMTTranslationProvider; results = asyncio.run(OpusMTTranslationProvider().translate_many(['こんにちは', '안녕하세요'], source_language='auto', target_language='en')); print([(r.detected_language, r.translated_text) for r in results])"
-```
-
-Expected result from the current local models: `[('ja', 'Hello.'), ('ko', 'Hello.')]`.
+Backend tests:
 
 ```bash
 cd backend
 conda run -n imagetranslator pytest -q --cov=app --cov-report=term-missing:skip-covered
 ```
 
-Latest result: backend coverage is enforced by `./up-and-test.sh`.
-
-```bash
-cd backend
-conda run -n imagetranslator ruff check app/core/config.py app/providers/ocr.py app/tests/test_local_ml_providers.py scripts/prepare_opus_mt_models.py
-```
-
-Latest result: passed.
-
-```bash
-cd backend
-conda run -n imagetranslator python -m compileall app migrations scripts
-```
-
-Latest result: passed.
-
-## Frontend Checks
+Frontend checks:
 
 ```bash
 cd frontend
 npm run typecheck
-```
-
-Latest result: passed.
-
-```bash
-cd frontend
+npm run lint
 npm run test:coverage
 ```
 
-Latest result: frontend coverage is enforced by `./up-and-test.sh`.
-
-```bash
-cd frontend
-npm run lint
-```
-
-Latest result: passed.
-
-```bash
-cd frontend
-npm run build
-```
-
-Latest result: passed.
-
-```bash
-cd frontend
-npm run test:e2e
-```
-
-Latest result: mock route coverage and workflow smoke tests are enforced by `./up-and-test.sh`.
-
-## Release Gate
-
-The default release gate is hermetic and does not require local OCR/ML assets:
+Full release gate:
 
 ```bash
 ./up-and-test.sh
 ```
-
-It runs backend coverage tests, backend compile, frontend typecheck/lint/coverage/build,
-mock Playwright E2E route/workflow tests, strict button expectation audits, nav audits,
-mock full-stack HTTP E2E, and OPUS-MT missing-model failure E2E.
-
-Release coverage expectations are tracked in `RELEASE_TEST_MATRIX.md`. Update that file
-when routes, API groups, workflows, or release-gate responsibilities change.
-
-Default coverage gates are calibrated to the current MVP baseline:
-
-- Backend: 70% total coverage.
-- Frontend: 70% lines/statements, 60% functions, 60% branches.
-
-## Optional Real UI E2E: Tesseract + OPUS-MT
-
-The real-provider browser E2E is opt-in because it requires local Tesseract,
-OPUS-MT models, and an explicit local test image.
-
-Optional: generate a simple Japanese PNG if you want a synthetic fallback fixture:
-
-```bash
-cd backend
-conda run -n imagetranslator python -c "from PIL import Image, ImageDraw, ImageFont; img=Image.new('RGB',(900,620),'white'); draw=ImageDraw.Draw(img); font=ImageFont.truetype('/System/Library/Fonts/Hiragino Sans GB.ttc',96); draw.rounded_rectangle((120,150,780,430), radius=50, outline='black', width=8, fill='white'); draw.text((230,245),'こんにちは', font=font, fill='black'); img.save('/private/tmp/image-translator-ui-e2e-ja.png')"
-```
-
-Optional Korean OCR sanity check on the real screenshot:
-
-```bash
-tesseract "/Users/ekai/Desktop/Screenshot 2026-04-29 at 11.42.59 PM.png" stdout -l kor --psm 6
-```
-
-Expected result includes `저 사람이`, `소냐를 마지막으로`, and `봤대!`.
-
-Start the backend in one terminal:
-
-```bash
-cd backend
-AUTO_CREATE_TABLES=true DATABASE_URL=sqlite+aiosqlite:////tmp/image-translator-ui-e2e.db LOCAL_STORAGE_PATH=/tmp/image-translator-ui-e2e-storage PUBLIC_BASE_URL=http://127.0.0.1:8000 OCR_PROVIDER=tesseract TRANSLATION_PROVIDER=opus_mt TESSERACT_DEFAULT_LANGUAGE=kor TESSERACT_PSM=6 OPUS_MT_MODEL_ROOT=/Users/ekai/Documents/personal/personal_projects/ImageTranslator/backend/models/opus-mt conda run -n imagetranslator python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
-```
-
-Start the frontend in a second terminal:
-
-```bash
-cd frontend
-VITE_API_MODE=http VITE_API_BASE_URL=http://127.0.0.1:8000/api/v1 npm run dev -- --host 127.0.0.1 --port 5173
-```
-
-Confirm both servers are reachable:
-
-```bash
-curl -sS http://127.0.0.1:8000/api/v1/health
-```
-
-```bash
-curl -sS -I http://127.0.0.1:5173/
-```
-
-Run the browser E2E script:
-
-```bash
-export TEST_IMAGE="/path/to/local/test-image.png"
-cp e2e/ui-e2e-opus-mt.js /tmp/playwright-test-image-translator-opus-mt.js
-cd /Users/ekai/.codex/skills/playwright-skill
-node run.js /tmp/playwright-test-image-translator-opus-mt.js
-```
-
-Latest result: pass. Report and screenshots are written under `testing/ui-e2e-opus-mt/`.
-
-Stop the backend and frontend with `Ctrl-C` in their terminals.
-
-## Setup Commands If Models Are Missing
-
-```bash
-cd backend
-./scripts/setup_opus_mt_models.sh
-```
-
-This downloads/converts OPUS-MT model files into `backend/models/opus-mt/`. Those files are intentionally ignored by git.

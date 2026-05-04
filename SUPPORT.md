@@ -39,7 +39,6 @@ files are needed.
   deterministic local development, not production translation quality.
 - Tesseract, EasyOCR, and OPUS-MT paths are optional prototype integrations with
   extra local dependencies and model setup.
-- OpenAI and DeepL translation providers are stubs until implemented.
 - The local workflow uses a shared public workspace user and does not provide
   production auth or multi-workspace permissions.
 - Hosted deployments should not be used with copyrighted, private,

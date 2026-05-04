@@ -67,9 +67,6 @@ VITE_API_MODE=http VITE_API_BASE_URL=http://localhost:8000/api/v1 npm run dev
   developer machine.
 - `OCR_PROVIDER=easyocr` is available when optional OCR dependencies are
   installed and may download EasyOCR model files on first real use.
-- `TRANSLATION_PROVIDER=openai` and `TRANSLATION_PROVIDER=deepl` currently
-  select provider stubs that raise `NotImplementedError`; do not enable them
-  unless the provider implementation is part of the change.
 
 Do not upload copyrighted, private, confidential, or sensitive manga/comic pages
 to hosted deployments unless you are authorized to process that content. Future
