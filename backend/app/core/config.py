@@ -27,9 +27,6 @@ class Settings(BaseSettings):
     celery_result_backend: str = "cache+memory://"
     celery_task_always_eager: bool = True
 
-    secret_key: str = "change-me-in-production"
-    access_token_expire_minutes: int = 60 * 24 * 7
-    jwt_algorithm: str = "HS256"
     public_user_email: str = "public@imagetranslator.local"
     public_user_display_name: str = "Public Workspace"
 

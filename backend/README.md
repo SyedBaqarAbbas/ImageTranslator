@@ -215,7 +215,7 @@ Text region statuses: `detected`, `ocr_low_confidence`, `ocr_complete`, `transla
 
 ## Core Models
 
-- `User`: account identity, password hash, active/admin flags.
+- `User`: shared public workspace identity and ownership anchor.
 - `Project`: owner, language settings, tone, replacement mode, reading direction, status.
 - `TranslationSettings`: mutable provider/rendering preferences for a project.
 - `Page`: page number, source/intermediate/rendered asset links, dimensions, status/progress.
@@ -228,12 +228,10 @@ Important indexes are defined for user/project lists, page ordering, region orde
 
 ## API Design
 
-Workflow endpoints use the shared public workspace user and do not require an Authorization header. Auth endpoints still exist for future account-based flows.
+Workflow endpoints use the shared public workspace user and do not require an Authorization header.
 
-### Auth / Users
+### Users
 
-- `POST /api/v1/auth/register`: create user. Body: `email`, `password`, `display_name`. Returns JWT and user. Codes: `201`, `409`, `422`.
-- `POST /api/v1/auth/login`: login with email/password. Returns JWT and user. Codes: `200`, `401`, `422`.
 - `GET /api/v1/me`: shared public workspace user. Codes: `200`.
 
 ### Projects
