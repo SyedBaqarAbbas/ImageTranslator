@@ -56,8 +56,7 @@ The local `./up-and-test.sh` release gate remains broader than CI and should sti
 
 | API group | Required success coverage | Required failure coverage |
 | --- | --- | --- |
-| Health/runtime/users | Health, runtime language, public user | Runtime provider config edge cases |
-| Auth | Register/login compatibility | Duplicate email, invalid credentials, disabled user |
+| Health/runtime/users | Health, runtime language, public user | Runtime provider config edge cases, auth routes not exposed |
 | Projects/settings | Create/list/detail/update/delete/settings | Validation, missing project, deleted project |
 | Pages/upload | Multi-image upload, ZIP upload, page detail/list | Empty upload, unsupported type, corrupt image, too many pages, missing page |
 | Processing/jobs | Project process, page reprocess, rerender, job list/detail | No pages, OCR no text, provider failure, missing job |

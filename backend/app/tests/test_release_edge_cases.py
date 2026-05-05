@@ -73,35 +73,22 @@ def test_upload_rejects_empty_unsupported_and_corrupt_inputs(
     assert corrupt_response.json()["error"]["code"] == "invalid_image"
 
 
-def test_auth_register_login_and_failure_contracts(client: TestClient) -> None:
-    payload = {
-        "email": "release-user@example.com",
-        "password": "correct-horse-battery-staple",
-        "display_name": "Release User",
-    }
-
-    register_response = client.post("/api/v1/auth/register", json=payload)
-    assert register_response.status_code == 201
-    assert register_response.json()["user"]["email"] == payload["email"]
-    assert register_response.json()["access_token"]
-
-    duplicate_response = client.post("/api/v1/auth/register", json=payload)
-    assert duplicate_response.status_code == 409
-    assert duplicate_response.json()["error"]["code"] == "email_taken"
+def test_auth_routes_are_not_exposed(client: TestClient) -> None:
+    register_response = client.post(
+        "/api/v1/auth/register",
+        json={
+            "email": "release-user@example.com",
+            "password": "correct-horse-battery-staple",
+            "display_name": "Release User",
+        },
+    )
+    assert register_response.status_code == 404
 
     login_response = client.post(
         "/api/v1/auth/login",
-        json={"email": payload["email"], "password": payload["password"]},
+        json={"email": "release-user@example.com", "password": "correct-horse-battery-staple"},
     )
-    assert login_response.status_code == 200
-    assert login_response.json()["user"]["display_name"] == "Release User"
-
-    invalid_response = client.post(
-        "/api/v1/auth/login",
-        json={"email": payload["email"], "password": "wrong-password"},
-    )
-    assert invalid_response.status_code == 401
-    assert invalid_response.json()["error"]["code"] == "invalid_credentials"
+    assert login_response.status_code == 404
 
 
 def test_asset_and_events_error_contracts(client: TestClient) -> None:

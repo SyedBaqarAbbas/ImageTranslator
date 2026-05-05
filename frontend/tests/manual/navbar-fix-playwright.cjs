@@ -157,19 +157,25 @@ function isExpectedRequestFailure(failure) {
   }
 
   const sidebarRoutes = [
-    ["Batch OCR", "/batch-ocr"],
-    ["Typefaces", "/typefaces"],
-    ["Archive", "/archive"],
-    ["Account", "/account"],
-    ["Support", "/support"],
+    ["Batch OCR", "/batch-ocr", false],
+    ["Typefaces", "/typefaces", false],
+    ["Archive", "/archive", false],
+    ["Account", "/account", false],
+    ["Support", "/support", true],
   ];
 
-  for (const [label, expectedPath] of sidebarRoutes) {
+  for (const [label, expectedPath, disabledExpected] of sidebarRoutes) {
     await page.goto(`${TARGET_URL}/projects`);
     await page.waitForLoadState("networkidle");
     const link = page.locator(`aside a[href="${expectedPath}"]`).first();
     record(`Sidebar ${label} link exists`, (await link.count()) > 0);
     if ((await link.count()) > 0) {
+      if (disabledExpected) {
+        const ariaDisabled = await link.getAttribute("aria-disabled");
+        const tabIndex = await link.getAttribute("tabindex");
+        record(`Sidebar ${label} link is disabled for prototype`, ariaDisabled === "true" && tabIndex === "-1");
+        continue;
+      }
       await link.click();
       await page.waitForLoadState("networkidle");
       await expectPath(page, `Sidebar ${label} routes to ${expectedPath}`, expectedPath);

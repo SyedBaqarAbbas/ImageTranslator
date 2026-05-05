@@ -13,7 +13,7 @@ from starlette.datastructures import Headers
 
 import app.services.export_service as export_service_module
 import app.services.processing_service as processing_service_module
-from app.api.deps import get_current_user, get_public_user
+from app.api.deps import PUBLIC_USER_PASSWORD_PLACEHOLDER, get_public_user
 from app.api.routes.events import project_events
 from app.core.config import settings
 from app.core.enums import (
@@ -27,7 +27,6 @@ from app.core.enums import (
     ReplacementMode,
 )
 from app.core.errors import AppError
-from app.core.security import create_access_token, hash_password
 from app.db.base import Base
 from app.models import (
     ExportJob,
@@ -46,7 +45,6 @@ from app.schemas.project import ProjectCreate, ProjectUpdate
 from app.schemas.region import RetranslateRequest, TextRegionUpdate
 from app.schemas.settings import TranslationSettingsUpdate
 from app.services.asset_service import AssetService
-from app.services.auth_service import AuthService
 from app.services.export_service import ExportService, execute_export_job
 from app.services.page_service import PageService
 from app.services.processing_service import (
@@ -111,7 +109,7 @@ def _upload_file(filename: str, data: bytes, content_type: str) -> UploadFile:
 async def _user(session: AsyncSession, *, active: bool = True) -> User:
     user = User(
         email=f"user-{id(session)}-{str(active).lower()}@example.com",
-        password_hash=hash_password("correct-password"),
+        password_hash="unused-password-hash",
         display_name="Service User",
         is_active=active,
     )
@@ -122,7 +120,11 @@ async def _user(session: AsyncSession, *, active: bool = True) -> User:
 
 
 class FakeOCRProvider:
-    async def detect_and_read(self, image_bytes: bytes, source_language: str = "auto") -> list[OCRRegion]:
+    async def detect_and_read(
+        self,
+        image_bytes: bytes,
+        source_language: str = "auto",
+    ) -> list[OCRRegion]:
         assert image_bytes
         return [
             OCRRegion(
@@ -232,36 +234,21 @@ async def _processed_project_fixture(
     await session.refresh(page)
     regions = list(
         await session.scalars(
-            select(TextRegion).where(TextRegion.page_id == page.id).order_by(TextRegion.region_index)
+            select(TextRegion)
+            .where(TextRegion.page_id == page.id)
+            .order_by(TextRegion.region_index)
         )
     )
     return user, project, page, regions
 
 
 @pytest.mark.asyncio
-async def test_auth_deps_and_public_user_edges(db_session: AsyncSession) -> None:
-    active_user = await _user(db_session)
-    inactive_user = await _user(db_session, active=False)
-
-    token_user = await get_current_user(create_access_token(active_user.id), db_session)
-    assert token_user.id == active_user.id
-
-    with pytest.raises(AppError) as invalid_token:
-        await get_current_user("not-a-token", db_session)
-    assert invalid_token.value.code == "not_authenticated"
-
-    with pytest.raises(AppError) as inactive_token:
-        await get_current_user(create_access_token(inactive_user.id), db_session)
-    assert inactive_token.value.code == "not_authenticated"
-
-    with pytest.raises(AppError) as disabled_login:
-        await AuthService(db_session).login(inactive_user.email, "correct-password")
-    assert disabled_login.value.code == "user_disabled"
-
+async def test_public_user_edges(db_session: AsyncSession) -> None:
     public_user = await get_public_user(db_session)
     same_public_user = await get_public_user(db_session)
     assert public_user.id == same_public_user.id
     assert public_user.email == settings.public_user_email.lower()
+    assert public_user.password_hash == PUBLIC_USER_PASSWORD_PLACEHOLDER
 
 
 @pytest.mark.asyncio
@@ -282,7 +269,10 @@ async def test_project_upload_page_asset_and_region_service_edges(
     updated = await project_service.update_project(
         user.id,
         project.id,
-        ProjectUpdate(replacement_mode=ReplacementMode.OVERLAY, reading_direction=ReadingDirection.LTR),
+        ProjectUpdate(
+            replacement_mode=ReplacementMode.OVERLAY,
+            reading_direction=ReadingDirection.LTR,
+        ),
     )
     assert updated.replacement_mode == ReplacementMode.OVERLAY.value
     assert updated.reading_direction == ReadingDirection.LTR.value
@@ -659,7 +649,10 @@ async def test_processing_project_page_and_rerender_failure_branches(
         await _process_project(db_session, no_match_job)
     assert no_pages.value.code == "no_pages"
 
-    missing_project_job = ProcessingJob(project_id="missing-project", job_type=JobType.PROCESS_PROJECT.value)
+    missing_project_job = ProcessingJob(
+        project_id="missing-project",
+        job_type=JobType.PROCESS_PROJECT.value,
+    )
     db_session.add(missing_project_job)
     await db_session.commit()
     with pytest.raises(AppError) as missing_project:
@@ -811,7 +804,9 @@ async def test_export_service_direct_success_and_failure_edges(
 
 
 @pytest.mark.asyncio
-async def test_project_events_streams_project_job_and_export_state(db_session: AsyncSession) -> None:
+async def test_project_events_streams_project_job_and_export_state(
+    db_session: AsyncSession,
+) -> None:
     user = await _user(db_session)
     project = Project(
         user_id=user.id,
