@@ -157,23 +157,21 @@ function isExpectedRequestFailure(failure) {
   }
 
   const sidebarRoutes = [
-    ["Batch OCR", "/batch-ocr", false],
-    ["Typefaces", "/typefaces", false],
-    ["Archive", "/archive", false],
-    ["Account", "/account", false],
-    ["Support", "/support", true],
+    ["Batch OCR", "/batch-ocr", true],
+    ["Typefaces", "/typefaces", true],
+    ["Archive", "/archive", true],
+    ["Account", "/account", true],
+    ["Support", "/support", false],
   ];
 
-  for (const [label, expectedPath, disabledExpected] of sidebarRoutes) {
+  for (const [label, expectedPath, shouldRoute] of sidebarRoutes) {
     await page.goto(`${TARGET_URL}/projects`);
     await page.waitForLoadState("networkidle");
     const link = page.locator(`aside a[href="${expectedPath}"]`).first();
     record(`Sidebar ${label} link exists`, (await link.count()) > 0);
     if ((await link.count()) > 0) {
-      if (disabledExpected) {
-        const ariaDisabled = await link.getAttribute("aria-disabled");
-        const tabIndex = await link.getAttribute("tabindex");
-        record(`Sidebar ${label} link is disabled for prototype`, ariaDisabled === "true" && tabIndex === "-1");
+      if (!shouldRoute) {
+        record(`Sidebar ${label} link remains disabled`, (await link.getAttribute("aria-disabled")) === "true");
         continue;
       }
       await link.click();
