@@ -4,10 +4,17 @@ import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
 
 const SHARE_ENABLED = false;
 type TopNavMenu = "notifications" | "help" | "share";
+type RouterLocation = ReturnType<typeof useLocation>;
 
 export function TopNav() {
-  const navigate = useNavigate();
   const location = useLocation();
+  const routeKey = `${location.pathname}?${location.search}`;
+
+  return <TopNavContent key={routeKey} location={location} />;
+}
+
+function TopNavContent({ location }: { location: RouterLocation }) {
+  const navigate = useNavigate();
   const [search, setSearch] = useState("");
   const [openMenu, setOpenMenu] = useState<TopNavMenu | null>(null);
   const [shareStatus, setShareStatus] = useState("Copy link");
@@ -18,10 +25,6 @@ export function TopNav() {
   const helpPopoverRef = useRef<HTMLDivElement>(null);
   const sharePopoverRef = useRef<HTMLDivElement>(null);
   const currentUrl = `${window.location.origin}${location.pathname}${location.search}`;
-
-  useEffect(() => {
-    setOpenMenu(null);
-  }, [location.pathname, location.search]);
 
   useEffect(() => {
     if (openMenu === null) {
