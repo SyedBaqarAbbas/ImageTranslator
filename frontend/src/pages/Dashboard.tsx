@@ -1,6 +1,6 @@
 import { Filter, Plus, Search } from "lucide-react";
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 
 import { api, queryKeys } from "../api";
@@ -17,7 +17,7 @@ export function Dashboard() {
   const [filter, setFilter] = useState<"all" | "active" | "completed">("all");
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [sortMode, setSortMode] = useState<"recent" | "name">("recent");
-  const [search, setSearch] = useState(searchParams.get("search") ?? "");
+  const search = searchParams.get("search") ?? "";
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const projectsQuery = useQuery({ queryKey: queryKeys.projects, queryFn: api.listProjects });
   const projects = useMemo(() => projectsQuery.data ?? [], [projectsQuery.data]);
@@ -36,12 +36,7 @@ export function Dashboard() {
     },
   });
 
-  useEffect(() => {
-    setSearch(searchParams.get("search") ?? "");
-  }, [searchParams]);
-
   function handleSearchChange(value: string) {
-    setSearch(value);
     const nextParams = new URLSearchParams(searchParams);
     if (value.trim()) {
       nextParams.set("search", value);
