@@ -49,6 +49,12 @@ docker compose down
 docker compose down -v
 ```
 
+The Docker Compose database image is `postgres:18-alpine`. If you previously
+ran the app with a PostgreSQL 16 compose volume, use `docker compose down -v`
+for disposable local data before starting PostgreSQL 18. Use dump/restore for
+anything you need to keep; the local Compose workflow does not run an in-place
+major-version database upgrade.
+
 ### Docker environment variables used
 
 `docker-compose.yml` loads `backend/.env.example` and sets these overrides:
@@ -62,6 +68,7 @@ docker compose down -v
 | frontend | `VITE_API_MODE` | `http` |
 | frontend | `VITE_API_BASE_URL` | `http://localhost:8000/api/v1` |
 | frontend | `CHOKIDAR_USEPOLLING` | `true` |
+| postgres | image | `postgres:18-alpine` |
 | postgres | `POSTGRES_USER` | `app` |
 | postgres | `POSTGRES_PASSWORD` | `app` |
 | postgres | `POSTGRES_DB` | `image_translator` |

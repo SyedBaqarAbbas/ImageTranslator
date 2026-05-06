@@ -16,6 +16,8 @@ Default gate expectations:
 - Frontend typecheck, lint, Vitest coverage, build, Playwright smoke/route tests, button audit, and navbar audit.
 - Mock full-stack HTTP E2E.
 - OPUS-MT missing-model failure E2E.
+- Docker Compose uses `postgres:18-alpine`; major Postgres image changes must
+  be validated from a clean compose volume and include local-volume caveats.
 - Real-provider UI E2E only when explicitly enabled with `RUN_REAL_PROVIDER_E2E=1 REAL_E2E_TEST_IMAGE=/path/to/image`.
 
 ## GitHub Automation
