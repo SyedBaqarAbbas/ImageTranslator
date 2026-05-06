@@ -36,6 +36,13 @@ directly for fresh-clone setup. The backend-only compose file in this directory
 reads `backend/.env`, so run `cp .env.example .env` before using it and keep
 local overrides out of version control.
 
+The Docker Compose database image is `postgres:18-alpine`. PostgreSQL 18 stores
+data in a version-specific subdirectory under `/var/lib/postgresql`, so local
+volumes created for the older `postgres:16-alpine` mount are not migrated in
+place. For disposable local data, run `docker compose down -v` before starting
+the PostgreSQL 18 stack. Preserve important local data with a dump/restore flow
+instead of reusing the old volume directly.
+
 ### Environment Variables
 
 `app/core/config.py` defines backend settings and `backend/.env.example`
