@@ -54,6 +54,11 @@ updates:
       day: "monday"
       time: "11:00"
       timezone: "Etc/UTC"
+    ignore:
+      # Keep the local frontend compose service on the current Node LTS major.
+      - dependency-name: "node"
+        update-types:
+          - "version-update:semver-major"
     labels:
       - "dependencies"
       - "docker"
