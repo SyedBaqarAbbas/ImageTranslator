@@ -133,7 +133,7 @@ Use this path when you want to run backend + frontend directly on host with a lo
 
 ### Prerequisites
 
-1. Install Node.js + npm.
+1. Install Node.js 24 LTS + npm.
 2. Install Conda (Anaconda or Miniconda).
 3. Create backend env and install dependencies:
 

@@ -16,6 +16,8 @@ Default gate expectations:
 - Frontend typecheck, lint, Vitest coverage, build, Playwright smoke/route tests, button audit, and navbar audit.
 - Mock full-stack HTTP E2E.
 - OPUS-MT missing-model failure E2E.
+- Frontend Docker Compose and hosted CI run on Node 24 LTS; major Node
+  runtime changes need an explicit dependency-policy review before merging.
 - Docker Compose uses `postgres:18-alpine`; major Postgres image changes must
   be validated from a clean compose volume and include local-volume caveats.
 - Real-provider UI E2E only when explicitly enabled with `RUN_REAL_PROVIDER_E2E=1 REAL_E2E_TEST_IMAGE=/path/to/image`.
@@ -26,8 +28,9 @@ The GitHub `CI` workflow is the required PR baseline for hosted collaboration:
 
 - `Backend tests and compile`: installs backend dev dependencies, runs pytest with coverage, and compiles `app` and `migrations`.
 - `Frontend typecheck, lint, tests, build, and Playwright`: installs frontend
-  dependencies with `npm ci`, runs typecheck, lint, Vitest coverage, production
-  build, installs Chromium, and runs the mock-mode Playwright smoke/route tests.
+  dependencies with `npm ci` on Node 24 LTS, runs typecheck, lint, Vitest
+  coverage, production build, installs Chromium, and runs the mock-mode
+  Playwright smoke/route tests.
 
 The GitHub `CodeQL` workflow runs on pull requests, pushes to `main`, a weekly schedule, and manual dispatch. It scans `javascript-typescript` and `python` so code scanning findings appear in the repository Security tab.
 
