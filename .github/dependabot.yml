@@ -43,6 +43,10 @@ updates:
       day: "monday"
       time: "10:30"
       timezone: "Etc/UTC"
+    ignore:
+      # Keep the backend Docker image on the documented Python 3.11 runtime line.
+      - dependency-name: "python"
+        versions: [">= 3.12"]
     labels:
       - "dependencies"
       - "docker"
