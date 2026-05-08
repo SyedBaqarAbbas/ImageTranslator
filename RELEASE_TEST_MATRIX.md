@@ -24,17 +24,38 @@ Default gate expectations:
 
 ## GitHub Automation
 
-The GitHub `CI` workflow is the required PR baseline for hosted collaboration:
+The GitHub `CI` workflow is the required PR baseline for hosted collaboration.
+It always runs a lightweight `Detect app changes` job first, then selects app
+jobs by changed path:
 
-- `Backend tests and compile`: installs backend dev dependencies, runs pytest with coverage, and compiles `app` and `migrations`.
-- `Frontend typecheck, lint, tests, build, and Playwright`: installs frontend
-  dependencies with `npm ci` on Node 24 LTS, runs typecheck, lint, Vitest
-  coverage, production build, installs Chromium, and runs the mock-mode
-  Playwright smoke/route tests.
+- `Backend tests and compile`: runs for backend-impacting changes such as
+  `backend/**` code/config/test files, shared root E2E files, root Docker/local
+  launcher files, root `up-and-test.sh`, and workflow files. When selected, it
+  installs backend dev dependencies, runs pytest with coverage, and compiles
+  `app` and `migrations`.
+- `Frontend typecheck, lint, tests, build, and Playwright`: runs for
+  frontend-impacting changes such as `frontend/**` code/config/test files,
+  shared root E2E files, root Docker/local launcher files, root `up-and-test.sh`,
+  and workflow files. When selected, it installs frontend dependencies with
+  `npm ci` on Node 24 LTS, runs typecheck, lint, Vitest coverage, production
+  build, installs Chromium, and runs the mock-mode Playwright smoke/route tests.
+- Docs-only, issue-template-only, PR-template-only, governance-only, and
+  AI-instruction-only changes skip the expensive app jobs and complete through
+  the lightweight `No app checks required` job.
+- Manual `workflow_dispatch` runs select both backend and frontend app jobs
+  regardless of changed paths.
 
-The GitHub `CodeQL` workflow runs on pull requests, pushes to `main`, a weekly schedule, and manual dispatch. It scans `javascript-typescript` and `python` so code scanning findings appear in the repository Security tab.
+The GitHub `CodeQL` workflow runs on pull requests, pushes to `main`, a weekly
+schedule, and manual dispatch. Pull request and push runs are path-aware:
+backend/Python-impacting changes select `Analyze (python)`, frontend/root E2E
+JavaScript or TypeScript changes select `Analyze (javascript-typescript)`, and
+workflow changes select both languages. Docs-only and governance-only changes
+complete through `No CodeQL analysis required` without running language scans.
+Scheduled and manual CodeQL runs still analyze both configured languages so
+security coverage remains available in the repository Security tab.
 
-The local `./up-and-test.sh` release gate remains broader than CI and should still be run before release-sensitive merges.
+The local `./up-and-test.sh` release gate remains broader than hosted CI and
+should still be run before release-sensitive merges.
 
 ## Frontend Routes
 
