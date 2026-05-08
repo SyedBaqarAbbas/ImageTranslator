@@ -10,12 +10,20 @@ ImageTranslator is a full-stack manga/comic translation workflow. You can upload
 
 Pick one setup path:
 
-1. Docker (fastest start)
+1. Docker (full app with Docker-managed services)
 2. `start-local-prototype.sh` (host-run backend/frontend with local data + provider controls)
 
 For step-by-step commands and environment variable details, use [run-guide.md](run-guide.md).
 
 ### Option 1: Docker
+
+If OPUS-MT models are not prepared yet, do that once first:
+
+```bash
+cd backend
+./scripts/setup_opus_mt_models.sh
+cd ..
+```
 
 ```bash
 docker compose up --build
@@ -48,22 +56,25 @@ Stop with `Ctrl-C`.
 
 ## Local Defaults
 
-- Docker path defaults to `OCR_PROVIDER=mock` and `TRANSLATION_PROVIDER=mock`.
-- Script path defaults to `OCR_PROVIDER=tesseract` and `TRANSLATION_PROVIDER=opus_mt`.
+- Both the Docker and script paths default to `OCR_PROVIDER=tesseract` and `TRANSLATION_PROVIDER=opus_mt`.
 - No external provider API keys are needed for default local runs.
 
-## Run Real Models (Exit Mock Mode)
+## Real Local Models
 
-If you are currently in mock mode, switch to local real models with:
+The default backend path uses local Tesseract OCR and local OPUS-MT translation. Tesseract is installed inside the Docker backend image. OPUS-MT model files are ignored by git, so prepare them once before processing pages with the default translation provider:
 
 ```bash
 cd backend
 ./scripts/setup_opus_mt_models.sh
 cd ..
-OCR_PROVIDER=tesseract TRANSLATION_PROVIDER=opus_mt OPUS_MT_MODEL_ROOT="$(pwd)/backend/models/opus-mt" ./start-local-prototype.sh
 ```
 
-For Docker, use the real-model override flow in [run-guide.md](run-guide.md) (`docker-compose.real-models.yml` + `docker compose -f ... up`).
+For deterministic mock runs, override both backend providers:
+
+```bash
+OCR_PROVIDER=mock TRANSLATION_PROVIDER=mock docker compose up --build
+OCR_PROVIDER=mock TRANSLATION_PROVIDER=mock ./start-local-prototype.sh
+```
 
 ## Project Layout
 

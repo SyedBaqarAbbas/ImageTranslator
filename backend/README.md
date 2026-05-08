@@ -1,8 +1,8 @@
 # Image Translator Backend
 
-FastAPI backend for AI-powered comic, manga, and manhwa page translation.
+FastAPI backend for comic, manga, and manhwa page translation.
 
-The backend is built around provider interfaces for OCR, translation, and rendering. Local development defaults to mock OCR and mock translation so the upload, processing, review, rendering, and export workflow can run without external AI provider keys.
+The backend is built around provider interfaces for OCR, translation, and rendering. The Docker and local prototype paths default to local Tesseract OCR plus local OPUS-MT translation, so the upload, processing, review, rendering, and export workflow can run without external AI provider keys.
 
 ## Quick Start
 
@@ -11,14 +11,19 @@ Use Docker Compose for normal local development. It starts the API and PostgreSQ
 Prerequisites:
 
 - Docker Desktop or Docker Engine with Compose.
-- Python 3.11 only if you want to run commands outside Docker.
+- Conda with the `imagetranslator` Python 3.11 environment for OPUS-MT model
+  conversion, unless model folders already exist under `models/opus-mt/`.
 
 From this `backend/` directory:
 
 ```bash
 cp .env.example .env
+./scripts/setup_opus_mt_models.sh
 docker compose up --build
 ```
+
+For a route/API smoke run that does not need real OCR or translation, set
+`OCR_PROVIDER=mock` and `TRANSLATION_PROVIDER=mock` before starting Compose.
 
 In a second terminal, apply the database migration:
 
@@ -46,9 +51,11 @@ instead of reusing the old volume directly.
 ### Environment Variables
 
 `app/core/config.py` defines backend settings and `backend/.env.example`
-contains valid local defaults for Docker. The default provider settings use
-mock OCR and mock translation, so local Docker startup does not require Redis,
-MinIO, external provider API keys, or local ML models.
+contains valid local defaults for Docker. The Docker provider settings use
+Tesseract OCR and OPUS-MT translation. Local Docker startup does not require
+Redis, MinIO, or external provider API keys; processing with the default
+translation provider requires prepared OPUS-MT model folders under
+`backend/models/opus-mt/`.
 
 List-valued settings accept comma-separated MIME types or JSON arrays. These
 forms are equivalent:
@@ -60,13 +67,13 @@ ALLOWED_ARCHIVE_TYPES=application/zip,application/x-zip-compressed
 ALLOWED_ARCHIVE_TYPES=["application/zip","application/x-zip-compressed"]
 ```
 
-For local Docker, keep these provider defaults unless you are intentionally
-testing an opt-in provider:
+For local Docker, these are the default provider settings:
 
 ```dotenv
-OCR_PROVIDER=mock
-TRANSLATION_PROVIDER=mock
+OCR_PROVIDER=tesseract
+TRANSLATION_PROVIDER=opus_mt
 RENDER_ENGINE=pillow
+OPUS_MT_MODEL_ROOT=/app/models/opus-mt
 ```
 
 ## Common Commands
@@ -151,7 +158,7 @@ Poll the job:
 curl http://localhost:8000/api/v1/jobs/<JOB_ID>
 ```
 
-The default `.env.example` uses mock OCR and mock translation, so processing works locally without external AI provider keys. Mock OCR creates a synthetic text region, and mock translation prefixes detected text with the selected target language.
+The default `.env.example` uses Tesseract OCR and OPUS-MT translation, so processing works locally without external AI provider keys after OPUS-MT models have been prepared. For deterministic provider behavior in tests or quick smoke runs, set `OCR_PROVIDER=mock` and `TRANSLATION_PROVIDER=mock`.
 
 ## Running Without Docker
 
@@ -197,7 +204,7 @@ The backend separates fast request/response operations from slow AI and image wo
 - `Celery eager mode`: simple inline job execution for the starter app.
 - `Local filesystem storage`: original, intermediate, preview, final, and export files.
 - `Pillow + OpenCV-ready structure`: MVP rendering now, richer preprocessing/inpainting later.
-- Provider abstractions: mock providers for local dev, an EasyOCR starter provider, and an opt-in Tesseract/OPUS-MT local prototype path.
+- Provider abstractions: default local Tesseract/OPUS-MT providers, mock providers for deterministic tests, and an optional EasyOCR starter provider.
 
 ## End-to-End Backend Flow
 
@@ -302,16 +309,16 @@ Low OCR confidence regions become `ocr_low_confidence` and should be highlighted
 
 Provider selection is controlled by environment variables in `app/core/config.py`:
 
-- `OCR_PROVIDER=mock` is the default. `MockOCRProvider` opens the image with Pillow, calculates one bounding box near the top of the page, and returns one `OCRRegion` with text `Sample detected text`, confidence `0.95`, and type `speech`.
+- `OCR_PROVIDER=mock` selects the deterministic test provider. `MockOCRProvider` opens the image with Pillow, calculates one bounding box near the top of the page, and returns one `OCRRegion` with text `Sample detected text`, confidence `0.95`, and type `speech`.
 - `OCR_PROVIDER=easyocr` uses `EasyOCRProvider`. It imports `easyocr`, builds a CPU reader for the requested source language plus English, runs `reader.readtext()` in a background thread, and maps EasyOCR polygons into `OCRRegion` rows.
-- `OCR_PROVIDER=tesseract` uses `TesseractOCRProvider`. It requires the native `tesseract` binary and language data installed separately, applies optional lightweight Pillow preprocessing, calls Tesseract with `image_to_data`, groups word rows into line-level `OCRRegion` rows, and keeps `polygon=None`.
-- `TRANSLATION_PROVIDER=mock` is the default. `MockTranslationProvider.translate_many()` returns one result per source string using the format `[target_language] source text` with confidence `0.99`.
-- `TRANSLATION_PROVIDER=opus_mt` uses `OpusMTTranslationProvider`. It requires pre-converted local CTranslate2 OPUS-MT model directories and supports Korean/Japanese to English with int8 CPU inference.
+- `OCR_PROVIDER=tesseract` is the Docker and local prototype default. It uses `TesseractOCRProvider`, requires the native `tesseract` binary and language data, applies optional lightweight Pillow preprocessing, calls Tesseract with `image_to_data`, groups word rows into line-level `OCRRegion` rows, and keeps `polygon=None`.
+- `TRANSLATION_PROVIDER=mock` selects the deterministic test provider. `MockTranslationProvider.translate_many()` returns one result per source string using the format `[target_language] source text` with confidence `0.99`.
+- `TRANSLATION_PROVIDER=opus_mt` is the Docker and local prototype default. It uses `OpusMTTranslationProvider`, requires pre-converted local CTranslate2 OPUS-MT model directories, and supports Korean/Japanese to English with int8 CPU inference.
 - `RENDER_ENGINE=pillow` is the only implemented renderer. It uses Pillow to white-fill detected boxes, wrap translated text, fit font size to each box, and render replacement, overlay, bilingual, side-panel, or subtitle output.
 
 ### Local Tesseract OCR Prototype
 
-This path is for fast, low-memory local experimentation. It is not enabled by default.
+This path is for fast, low-memory local experimentation and is the default OCR provider for Docker and `start-local-prototype.sh`.
 
 Install Python dependencies with the `local-ml` extra:
 
@@ -359,7 +366,7 @@ TESSERACT_OEM=1
 
 ### Local OPUS-MT CTranslate2 Prototype
 
-This path is also opt-in and CPU-only. It does not download models during request processing. The backend expects already-converted int8 CTranslate2 model directories on local disk:
+This path is CPU-only and is the default translation provider for Docker and `start-local-prototype.sh`. It does not download models during request processing. The backend expects already-converted int8 CTranslate2 model directories on local disk:
 
 ```text
 backend/models/opus-mt/

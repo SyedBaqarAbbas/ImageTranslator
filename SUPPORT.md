@@ -1,8 +1,8 @@
 # Support
 
 ImageTranslator is currently a prototype. Support is best-effort and focused on
-local development, reproducible bugs, documentation gaps, and the current
-mock-provider workflow.
+local development, reproducible bugs, documentation gaps, the current local
+real-provider workflow, and deterministic mock-mode testing.
 
 ## Before Asking for Help
 
@@ -35,10 +35,10 @@ files are needed.
 
 ## Prototype Limitations
 
-- The default OCR and translation providers are mocks. They are designed for
-  deterministic local development, not production translation quality.
-- Tesseract, EasyOCR, and OPUS-MT paths are optional prototype integrations with
-  extra local dependencies and model setup.
+- The default Docker and local prototype providers are Tesseract and OPUS-MT.
+  They are local prototype integrations, not production translation quality.
+- Mock providers are available for deterministic local development and tests.
+- EasyOCR is an optional prototype integration with extra local dependencies.
 - The local workflow uses a shared public workspace user and does not provide
   production auth or multi-workspace permissions.
 - Hosted deployments should not be used with copyrighted, private,

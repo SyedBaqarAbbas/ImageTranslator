@@ -57,13 +57,13 @@ Do not upload copyrighted, private, confidential, or sensitive manga, comic,
 manhwa, or image pages to hosted ImageTranslator deployments unless you are
 authorized to process that content.
 
-The default local workflow uses mock OCR and translation providers. Optional
-local prototype providers such as Tesseract and OPUS-MT process files on the
-developer machine. Real OCR, translation, or rendering providers may send image
-content, extracted text, prompts, metadata, or generated outputs to third-party
-APIs once those providers are enabled or implemented. Treat provider keys,
-model tokens, database URLs, uploaded assets, rendered outputs, and production
-configuration as sensitive.
+The default local workflow uses Tesseract OCR and OPUS-MT translation providers
+that process files on the developer machine. Mock providers remain available for
+deterministic tests. Future hosted OCR, translation, or rendering providers may
+send image content, extracted text, prompts, metadata, or generated outputs to
+third-party APIs once those providers are enabled or implemented. Treat provider
+keys, model tokens, database URLs, uploaded assets, rendered outputs, and
+production configuration as sensitive.
 
 Use synthetic, licensed, public-domain, or redacted images when reporting
 security issues or sharing reproduction material.

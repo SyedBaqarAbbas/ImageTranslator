@@ -3,6 +3,10 @@ x-backend-env: &backend-env
   CELERY_TASK_ALWAYS_EAGER: "true"
   LOCAL_STORAGE_PATH: /app/data/storage
   PUBLIC_BASE_URL: http://localhost:8000
+  OCR_PROVIDER: ${OCR_PROVIDER:-tesseract}
+  TRANSLATION_PROVIDER: ${TRANSLATION_PROVIDER:-opus_mt}
+  OPUS_MT_MODEL_ROOT: ${OPUS_MT_MODEL_ROOT:-/app/models/opus-mt}
+  RENDER_ENGINE: ${RENDER_ENGINE:-pillow}
 
 x-backend-service: &backend-service
   image: image-translator-backend:local

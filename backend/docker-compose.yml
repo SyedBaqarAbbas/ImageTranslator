@@ -7,6 +7,10 @@ services:
       DATABASE_URL: postgresql+asyncpg://app:app@postgres:5432/image_translator
       CELERY_TASK_ALWAYS_EAGER: "true"
       LOCAL_STORAGE_PATH: /app/data/storage
+      OCR_PROVIDER: ${OCR_PROVIDER:-tesseract}
+      TRANSLATION_PROVIDER: ${TRANSLATION_PROVIDER:-opus_mt}
+      OPUS_MT_MODEL_ROOT: ${OPUS_MT_MODEL_ROOT:-/app/models/opus-mt}
+      RENDER_ENGINE: ${RENDER_ENGINE:-pillow}
     ports:
       - "8000:8000"
     volumes:

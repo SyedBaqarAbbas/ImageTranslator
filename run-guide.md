@@ -2,14 +2,14 @@
 
 This guide covers two setup paths:
 
-1. Docker Compose (fastest way to run the full app)
+1. Docker Compose (full app with Docker-managed services)
 2. `start-local-prototype.sh` (local backend/frontend process with configurable env vars)
 
 Run commands from the repo root unless a step says otherwise.
 
 ## Option A: Docker Compose Setup
 
-Use this path when you want a quick full-stack run with minimal host setup.
+Use this path when you want a full-stack run with Docker-managed services and local real OCR/translation providers by default.
 
 ### Prerequisites
 
@@ -23,6 +23,16 @@ docker --version
 ```bash
 docker compose version
 ```
+
+3. Prepare OPUS-MT model folders once before processing pages with the default `opus_mt` provider:
+
+```bash
+cd backend
+./scripts/setup_opus_mt_models.sh
+cd ..
+```
+
+The model setup script uses the `imagetranslator` conda environment for conversion. If the env does not exist yet, create it with Option B prerequisite step 3 first. You can start Docker before models are prepared, but processing/retranslation with the default provider will fail until `backend/models/opus-mt/ko-en` and `backend/models/opus-mt/ja-en` exist.
 
 ### Step-by-step
 
@@ -65,6 +75,10 @@ major-version database upgrade.
 | backend (`api`/`migrate`) | `CELERY_TASK_ALWAYS_EAGER` | `true` |
 | backend (`api`/`migrate`) | `LOCAL_STORAGE_PATH` | `/app/data/storage` |
 | backend (`api`/`migrate`) | `PUBLIC_BASE_URL` | `http://localhost:8000` |
+| backend (`api`/`migrate`) | `OCR_PROVIDER` | `tesseract` |
+| backend (`api`/`migrate`) | `TRANSLATION_PROVIDER` | `opus_mt` |
+| backend (`api`/`migrate`) | `OPUS_MT_MODEL_ROOT` | `/app/models/opus-mt` |
+| backend (`api`/`migrate`) | `RENDER_ENGINE` | `pillow` |
 | frontend | `VITE_API_MODE` | `http` |
 | frontend | `VITE_API_BASE_URL` | `http://localhost:8000/api/v1` |
 | frontend | `CHOKIDAR_USEPOLLING` | `true` |
@@ -73,55 +87,30 @@ major-version database upgrade.
 | postgres | `POSTGRES_PASSWORD` | `app` |
 | postgres | `POSTGRES_DB` | `image_translator` |
 
-Provider defaults for this Docker path come from `backend/.env.example`:
+Provider defaults for this Docker path are set in `docker-compose.yml`; the provider names match `backend/.env.example` and Compose sets the container model path:
 
-- `OCR_PROVIDER=mock`
-- `TRANSLATION_PROVIDER=mock`
+- `OCR_PROVIDER=tesseract`
+- `TRANSLATION_PROVIDER=opus_mt`
+- `OPUS_MT_MODEL_ROOT=/app/models/opus-mt`
 - `RENDER_ENGINE=pillow`
 
 No provider API keys are required for the default local Docker run.
 
-### Exit mock mode in Docker (run real local models)
+### Run Docker in mock mode
 
-Use this when you want real local OCR + translation (`tesseract` + `opus_mt`) instead of mock providers.
-
-1. Prepare OPUS-MT models on host:
+Use this when you want deterministic mock OCR + mock translation instead of local real providers:
 
 ```bash
-cd backend
-./scripts/setup_opus_mt_models.sh
-cd ..
+OCR_PROVIDER=mock TRANSLATION_PROVIDER=mock docker compose up --build
 ```
 
-Note: model preparation uses the `imagetranslator` conda env. If not created yet, run Option B prerequisite step 3 first.
-
-2. Create a Docker override file at repo root named `docker-compose.real-models.yml`:
-
-```yaml
-services:
-  api:
-    environment:
-      OCR_PROVIDER: tesseract
-      TRANSLATION_PROVIDER: opus_mt
-      OPUS_MT_MODEL_ROOT: /app/models/opus-mt
-      TESSERACT_DEFAULT_LANGUAGE: kor
-      TESSERACT_PSM: "6"
-      TESSERACT_OEM: "1"
-```
-
-3. Start with the override:
-
-```bash
-docker compose -f docker-compose.yml -f docker-compose.real-models.yml up --build
-```
-
-4. Verify providers in the running container:
+Verify providers in the running container:
 
 ```bash
 docker compose exec api python -c "from app.core.config import settings; print('OCR_PROVIDER=', settings.ocr_provider); print('TRANSLATION_PROVIDER=', settings.translation_provider); print('OPUS_MT_MODEL_ROOT=', settings.opus_mt_model_root)"
 ```
 
-5. Return to mock mode by starting Docker without the override file:
+Return to the default real local providers by starting Docker without those shell overrides:
 
 ```bash
 docker compose up --build
@@ -214,7 +203,7 @@ Run in mock mode (no Tesseract/OPUS-MT requirement):
 OCR_PROVIDER=mock TRANSLATION_PROVIDER=mock ./start-local-prototype.sh
 ```
 
-Exit mock mode and run real models explicitly:
+Run real models explicitly (same providers as the defaults):
 
 ```bash
 OCR_PROVIDER=tesseract TRANSLATION_PROVIDER=opus_mt OPUS_MT_MODEL_ROOT="$(pwd)/backend/models/opus-mt" ./start-local-prototype.sh

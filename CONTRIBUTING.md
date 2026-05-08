@@ -2,7 +2,7 @@
 
 Thanks for taking the time to contribute. ImageTranslator is a public prototype
 for manga, manhwa, and comic page translation workflows, so changes should keep
-the local mock-first workflow stable and easy to verify.
+the local real-provider workflow and deterministic mock test path stable.
 
 ## Before You Start
 
@@ -21,16 +21,20 @@ the local mock-first workflow stable and easy to verify.
 
 ## Local Setup
 
-The fastest full-stack setup is Docker Compose from the repository root:
+The default full-stack setup is Docker Compose from the repository root:
 
 ```bash
+cd backend
+./scripts/setup_opus_mt_models.sh
+cd ..
 docker compose up --build
 ```
 
 This starts the frontend at `http://localhost:5173`, the API at
-`http://localhost:8000`, PostgreSQL, and one-shot migrations. The local defaults
-use mock OCR and mock translation providers, so external AI keys are not
-required for basic development or smoke testing.
+`http://localhost:8000`, PostgreSQL, and one-shot migrations. The local Docker
+defaults use Tesseract OCR and OPUS-MT translation, so external AI keys are not
+required. Prepare OPUS-MT model folders with `backend/scripts/setup_opus_mt_models.sh`
+before processing pages with the default translation provider.
 
 Backend-only setup uses Python 3.11. The maintainer workflow uses the
 `imagetranslator` conda environment:
@@ -60,11 +64,11 @@ VITE_API_MODE=http VITE_API_BASE_URL=http://localhost:8000/api/v1 npm run dev
 
 ## Provider Behavior
 
-- `OCR_PROVIDER=mock` and `TRANSLATION_PROVIDER=mock` are the default local
-  providers and are the expected path for fast deterministic tests.
-- `OCR_PROVIDER=tesseract` and `TRANSLATION_PROVIDER=opus_mt` are opt-in local
-  prototype providers. They require native/model setup and process files on the
-  developer machine.
+- `OCR_PROVIDER=tesseract` and `TRANSLATION_PROVIDER=opus_mt` are the default
+  Docker and local prototype providers. They require native/model setup and
+  process files on the developer machine.
+- `OCR_PROVIDER=mock` and `TRANSLATION_PROVIDER=mock` are available for fast
+  deterministic tests and smoke runs.
 - `OCR_PROVIDER=easyocr` is available when optional OCR dependencies are
   installed and may download EasyOCR model files on first real use.
 
