@@ -12,20 +12,55 @@ on:
 permissions:
   actions: read
   contents: read
+  pull-requests: read
   security-events: write
 
 jobs:
-  analyze:
-    name: Analyze (${{ matrix.language }})
+  changes:
+    name: Detect CodeQL languages
+    runs-on: ubuntu-latest
+    outputs:
+      javascript_typescript: ${{ github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || steps.filter.outputs.javascript_typescript == 'true' }}
+      python: ${{ github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || steps.filter.outputs.python == 'true' }}
+
+    steps:
+      - name: Check out repository
+        if: github.event_name == 'push'
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Detect changed paths
+        id: filter
+        if: github.event_name == 'pull_request' || github.event_name == 'push'
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            javascript_typescript:
+              - 'frontend/**'
+              - '!frontend/*.md'
+              - '!frontend/**/*.md'
+              - 'e2e/**'
+              - '!e2e/*.md'
+              - '!e2e/**/*.md'
+              - '.github/workflows/**'
+            python:
+              - 'backend/**'
+              - '!backend/*.md'
+              - '!backend/**/*.md'
+              - '.github/workflows/**'
+
+      - name: Summarize selected languages
+        run: |
+          echo "JavaScript/TypeScript analysis: ${{ github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || steps.filter.outputs.javascript_typescript == 'true' }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "Python analysis: ${{ github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || steps.filter.outputs.python == 'true' }}" >> "$GITHUB_STEP_SUMMARY"
+
+  analyze-javascript-typescript:
+    name: Analyze (javascript-typescript)
     runs-on: ubuntu-latest
     timeout-minutes: 20
-
-    strategy:
-      fail-fast: false
-      matrix:
-        language:
-          - javascript-typescript
-          - python
+    needs: changes
+    if: needs.changes.outputs.javascript_typescript == 'true'
 
     steps:
       - name: Check out repository
@@ -34,9 +69,42 @@ jobs:
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v4
         with:
-          languages: ${{ matrix.language }}
+          languages: javascript-typescript
 
       - name: Perform CodeQL analysis
         uses: github/codeql-action/analyze@v4
         with:
-          category: "/language:${{ matrix.language }}"
+          category: "/language:javascript-typescript"
+
+  analyze-python:
+    name: Analyze (python)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: changes
+    if: needs.changes.outputs.python == 'true'
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v4
+        with:
+          languages: python
+
+      - name: Perform CodeQL analysis
+        uses: github/codeql-action/analyze@v4
+        with:
+          category: "/language:python"
+
+  no-codeql-analysis:
+    name: No CodeQL analysis required
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.javascript_typescript != 'true' && needs.changes.outputs.python != 'true'
+
+    steps:
+      - name: Explain skipped CodeQL analysis
+        run: |
+          echo "No CodeQL language analysis is required for this change set." >> "$GITHUB_STEP_SUMMARY"
+          echo "Scheduled and manual CodeQL runs still analyze both configured languages." >> "$GITHUB_STEP_SUMMARY"
