@@ -102,6 +102,7 @@ This runs backend/frontend coverage checks, Playwright route/workflow tests, but
 ## More Docs
 
 - Documentation site source: [docs/](docs/)
+- Public MVP release notes: <https://syedbaqarabbas.github.io/ImageTranslator/release-notes/>
 - Setup details: [run-guide.md](run-guide.md)
 - Contributing: [CONTRIBUTING.md](CONTRIBUTING.md)
 - Support: [SUPPORT.md](SUPPORT.md)

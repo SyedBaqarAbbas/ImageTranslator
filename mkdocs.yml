@@ -36,6 +36,7 @@ markdown_extensions:
 
 nav:
   - Home: index.md
+  - Release Notes: release-notes.md
   - User Guide:
       - Getting Started: getting-started.md
       - Using the App: using-the-app.md
