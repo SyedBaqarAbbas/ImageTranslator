@@ -6,6 +6,11 @@
 
 ImageTranslator is a full-stack manga/comic translation workflow. You can upload pages, run OCR + translation, review/edit text regions, render outputs, and export results.
 
+## Documentation
+
+- Published docs: <https://syedbaqarabbas.github.io/ImageTranslator/>
+- In-repo docs entrypoint: [docs/index.md](docs/index.md)
+
 ## Quick Start
 
 Pick one setup path:
@@ -96,6 +101,7 @@ This runs backend/frontend coverage checks, Playwright route/workflow tests, but
 
 ## More Docs
 
+- Documentation site source: [docs/](docs/)
 - Setup details: [run-guide.md](run-guide.md)
 - Contributing: [CONTRIBUTING.md](CONTRIBUTING.md)
 - Support: [SUPPORT.md](SUPPORT.md)

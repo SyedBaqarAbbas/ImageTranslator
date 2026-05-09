@@ -54,6 +54,11 @@ complete through `No CodeQL analysis required` without running language scans.
 Scheduled and manual CodeQL runs still analyze both configured languages so
 security coverage remains available in the repository Security tab.
 
+The GitHub `Docs` workflow builds the MkDocs Material documentation site for
+changes under `docs/**`, `mkdocs.yml`, or `.github/workflows/docs.yml`. Pull
+requests run `mkdocs build --strict`; pushes to `main` also upload the generated
+`site/` artifact and deploy it through GitHub Pages Actions.
+
 The local `./up-and-test.sh` release gate remains broader than hosted CI and
 should still be run before release-sensitive merges.
 
