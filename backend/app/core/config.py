@@ -8,7 +8,7 @@ from typing import Annotated, Any
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
-MimeTypeList = Annotated[list[str], NoDecode]
+StringList = Annotated[list[str], NoDecode]
 
 
 class Settings(BaseSettings):
@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     debug: bool = False
     api_v1_prefix: str = "/api/v1"
     public_base_url: str = "http://localhost:8000"
+    cors_allowed_origins: StringList = Field(default_factory=list)
 
     database_url: str = "sqlite+aiosqlite:///./image_translator.db"
     auto_create_tables: bool = False
@@ -40,10 +41,10 @@ class Settings(BaseSettings):
 
     max_upload_mb: int = 100
     max_project_pages: int = 300
-    allowed_image_types: MimeTypeList = Field(
+    allowed_image_types: StringList = Field(
         default_factory=lambda: ["image/png", "image/jpeg", "image/webp"]
     )
-    allowed_archive_types: MimeTypeList = Field(
+    allowed_archive_types: StringList = Field(
         default_factory=lambda: ["application/zip", "application/x-zip-compressed"]
     )
 
@@ -78,11 +79,18 @@ class Settings(BaseSettings):
 
     log_level: str = "INFO"
 
-    @field_validator("allowed_image_types", "allowed_archive_types", mode="before")
+    @field_validator(
+        "allowed_image_types",
+        "allowed_archive_types",
+        "cors_allowed_origins",
+        mode="before",
+    )
     @classmethod
-    def parse_mime_type_list(cls, value: Any) -> Any:
+    def parse_string_list(cls, value: Any) -> Any:
         if isinstance(value, str):
             stripped = value.strip()
+            if not stripped:
+                return []
             if stripped.startswith("["):
                 return json.loads(stripped)
             return [part.strip() for part in stripped.split(",") if part.strip()]

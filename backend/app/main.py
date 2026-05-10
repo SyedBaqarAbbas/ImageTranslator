@@ -29,9 +29,16 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+
+def _cors_allowed_origins() -> list[str]:
+    if settings.cors_allowed_origins:
+        return settings.cors_allowed_origins
+    return ["*"]
+
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"] if settings.environment == "local" else [],
+    allow_origins=_cors_allowed_origins(),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -55,4 +62,3 @@ async def request_logging_middleware(request: Request, call_next):
 
 register_error_handlers(app)
 app.include_router(api_router, prefix=settings.api_v1_prefix)
-
