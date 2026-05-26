@@ -3,7 +3,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { PageRead, ProcessingJobRead, ProjectDetail, TextRegionRead, TextRegionUpdate } from "../types/api";
+import type { PageRead, ProcessingJobRead, ProjectDetail, TextRegionCreate, TextRegionRead, TextRegionUpdate } from "../types/api";
 import { Editor } from "./Editor";
 
 const mocks = vi.hoisted(() => ({
@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
     getProject: vi.fn(),
     listPages: vi.fn(),
     listRegions: vi.fn(),
+    createRegion: vi.fn(),
     updateRegion: vi.fn(),
     deleteRegion: vi.fn(),
     retranslateRegion: vi.fn(),
@@ -162,6 +163,7 @@ const job: ProcessingJobRead = {
 const originalSetPointerCapture = HTMLElement.prototype.setPointerCapture;
 const originalReleasePointerCapture = HTMLElement.prototype.releasePointerCapture;
 const originalHasPointerCapture = HTMLElement.prototype.hasPointerCapture;
+let currentRegions: TextRegionRead[];
 
 class ResizeObserverStub {
   observe() {}
@@ -221,21 +223,51 @@ describe("Editor", () => {
     HTMLElement.prototype.setPointerCapture = vi.fn();
     HTMLElement.prototype.releasePointerCapture = vi.fn();
     HTMLElement.prototype.hasPointerCapture = vi.fn(() => true);
+    currentRegions = [region];
 
     mocks.api.listProjects.mockResolvedValue([project]);
     mocks.api.getProject.mockResolvedValue(project);
     mocks.api.listPages.mockResolvedValue([page]);
-    mocks.api.listRegions.mockResolvedValue([region]);
-    mocks.api.updateRegion.mockImplementation((regionId: string, payload: TextRegionUpdate) =>
-      Promise.resolve({
+    mocks.api.listRegions.mockImplementation(() => Promise.resolve(currentRegions));
+    mocks.api.createRegion.mockImplementation((pageId: string, payload: TextRegionCreate) => {
+      const createdRegion: TextRegionRead = {
         ...region,
+        id: "region-editor-2",
+        page_id: pageId,
+        region_index: currentRegions.length + 1,
+        region_type: payload.region_type ?? "unknown",
+        bounding_box: payload.bounding_box,
+        detected_text: payload.detected_text ?? null,
+        translated_text: payload.translated_text ?? null,
+        user_text: payload.user_text ?? null,
+        ocr_confidence: null,
+        translation_confidence: null,
+        render_style: payload.render_style ?? null,
+        status: payload.user_text?.trim() ? "user_edited" : "detected",
+        created_at: now,
+        updated_at: now,
+      };
+      currentRegions = [...currentRegions, createdRegion];
+      return Promise.resolve(createdRegion);
+    });
+    mocks.api.updateRegion.mockImplementation((regionId: string, payload: TextRegionUpdate) => {
+      const existingRegion = currentRegions.find((item) => item.id === regionId) ?? region;
+      const updatedRegion: TextRegionRead = {
+        ...existingRegion,
         id: regionId,
-        user_text: payload.user_text ?? region.user_text,
-        render_style: payload.render_style ?? region.render_style,
-        editable: payload.editable ?? region.editable,
-        bounding_box: payload.bounding_box ?? region.bounding_box,
-      }),
-    );
+        user_text: payload.user_text ?? existingRegion.user_text,
+        render_style: payload.render_style ?? existingRegion.render_style,
+        editable: payload.editable ?? existingRegion.editable,
+        bounding_box: payload.bounding_box ?? existingRegion.bounding_box,
+        status:
+          payload.user_text !== undefined || payload.translated_text !== undefined || payload.bounding_box !== undefined || payload.render_style !== undefined
+            ? "user_edited"
+            : existingRegion.status,
+        updated_at: now,
+      };
+      currentRegions = currentRegions.map((item) => (item.id === regionId ? updatedRegion : item));
+      return Promise.resolve(updatedRegion);
+    });
     mocks.api.deleteRegion.mockResolvedValue({ ...job, job_type: "rerender_page" });
     mocks.api.retranslateRegion.mockResolvedValue(job);
     mocks.api.getProcessingJob.mockResolvedValue(job);
@@ -304,6 +336,53 @@ describe("Editor", () => {
         region.id,
         expect.objectContaining({
           editable: false,
+          auto_rerender: true,
+        }),
+      );
+    });
+  });
+
+  it("creates a manual text box from canvas add mode and selects it", async () => {
+    renderEditor();
+    await screen.findByText(project.name);
+
+    const addTextBox = screen.getByRole("button", { name: /add text box/i });
+    fireEvent.click(addTextBox);
+    expect(addTextBox).toHaveAttribute("aria-pressed", "true");
+
+    const canvasFrame = screen.getByTestId("canvas-frame");
+    firePointerEvent(canvasFrame, "pointerdown", { pointerId: 1, button: 0, clientX: 100, clientY: 120 });
+    firePointerEvent(canvasFrame, "pointermove", { pointerId: 1, clientX: 300, clientY: 260 });
+    firePointerEvent(canvasFrame, "pointerup", { pointerId: 1, clientX: 300, clientY: 260 });
+
+    await waitFor(() => {
+      expect(mocks.api.createRegion).toHaveBeenCalledWith(
+        page.id,
+        expect.objectContaining({
+          region_type: "unknown",
+          bounding_box: expect.objectContaining({
+            x: expect.any(Number),
+            y: expect.any(Number),
+            width: expect.any(Number),
+            height: expect.any(Number),
+          }),
+        }),
+      );
+    });
+    expect(await screen.findByText(/#2 Unknown/)).toBeInTheDocument();
+    expect(addTextBox).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getByText(/Text box added/)).toBeInTheDocument();
+
+    const targetDraft = screen.getByLabelText(/target/i);
+    expect(targetDraft).toHaveValue("");
+    fireEvent.change(targetDraft, { target: { value: "Manual caption" } });
+    fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
+
+    await waitFor(() => {
+      expect(mocks.api.updateRegion).toHaveBeenCalledWith(
+        "region-editor-2",
+        expect.objectContaining({
+          user_text: "Manual caption",
           auto_rerender: true,
         }),
       );

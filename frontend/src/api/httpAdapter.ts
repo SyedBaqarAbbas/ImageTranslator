@@ -12,6 +12,7 @@ import type {
   ProjectUpdate,
   RetranslateRequest,
   RuntimeLanguageRead,
+  TextRegionCreate,
   TextRegionRead,
   TextRegionUpdate,
   TranslationSettingsRead,
@@ -173,6 +174,13 @@ export const httpApi: ApiAdapter = {
 
   listRegions(pageId: string): Promise<TextRegionRead[]> {
     return request<TextRegionRead[]>(`/pages/${pageId}/regions`);
+  },
+
+  createRegion(pageId: string, payload: TextRegionCreate): Promise<TextRegionRead> {
+    return request<TextRegionRead>(`/pages/${pageId}/regions`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
   },
 
   updateRegion(regionId: string, payload: TextRegionUpdate): Promise<TextRegionRead> {

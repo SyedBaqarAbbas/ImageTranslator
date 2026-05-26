@@ -329,6 +329,8 @@ describe("RegionPanel", () => {
     expect(button).toBeDisabled();
     expect(button.getAttribute("title")).toMatch(/Add OCR source text/);
     expect(screen.getByText("Add OCR source text or a target draft before retranslating.")).toBeInTheDocument();
+    expect(screen.getByText("Untranslated")).toBeInTheDocument();
+    expect(screen.getByLabelText(/target/i)).toHaveAttribute("placeholder", "Enter target text");
 
     fireEvent.click(button);
 

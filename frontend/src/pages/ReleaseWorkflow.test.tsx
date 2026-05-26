@@ -29,6 +29,7 @@ const mocks = vi.hoisted(() => ({
     listPages: vi.fn(),
     getPage: vi.fn(),
     listRegions: vi.fn(),
+    createRegion: vi.fn(),
     updateRegion: vi.fn(),
     deleteRegion: vi.fn(),
     retranslateRegion: vi.fn(),

@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 from fastapi import status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.enums import TextRegionStatus
 from app.core.errors import AppError
 from app.models import Page, Project, TextRegion
-from app.schemas.region import TextRegionUpdate
+from app.schemas.region import TextRegionCreate, TextRegionUpdate
 
 
 class RegionService:
@@ -25,6 +25,43 @@ class RegionService:
             .order_by(TextRegion.region_index)
         )
         return list(result)
+
+    async def create_region(
+        self,
+        user_id: str,
+        page_id: str,
+        payload: TextRegionCreate,
+    ) -> TextRegion:
+        await self._assert_page_access(user_id, page_id)
+        next_region_index = (
+            await self.session.scalar(
+                select(func.coalesce(func.max(TextRegion.region_index), 0) + 1).where(
+                    TextRegion.page_id == page_id
+                )
+            )
+        ) or 1
+        user_text = payload.user_text
+        status_value = (
+            TextRegionStatus.USER_EDITED.value
+            if user_text and user_text.strip()
+            else TextRegionStatus.DETECTED.value
+        )
+        region = TextRegion(
+            page_id=page_id,
+            region_index=next_region_index,
+            region_type=payload.region_type.value,
+            bounding_box=payload.bounding_box.model_dump(),
+            detected_text=payload.detected_text,
+            translated_text=payload.translated_text,
+            user_text=user_text,
+            render_style=payload.render_style,
+            editable=payload.editable,
+            status=status_value,
+        )
+        self.session.add(region)
+        await self.session.commit()
+        await self.session.refresh(region)
+        return region
 
     async def update_region(
         self,

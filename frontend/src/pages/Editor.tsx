@@ -1,4 +1,4 @@
-import { Columns2, Download, Minus, Plus, RotateCcw, Save, Undo2 } from "lucide-react";
+import { Columns2, Download, Minus, Plus, RotateCcw, Save, SquarePlus, Undo2 } from "lucide-react";
 import { useEffect, useMemo, useReducer } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
@@ -18,12 +18,14 @@ import {
 import type { BoundingBox, TextRegionRead, TextRegionUpdate } from "../types/api";
 
 type EditorMode = "original" | "translated";
+type EditorTool = "select" | "addText";
 type EditorSaveAction = RegionSaveAction | "workspace";
 
 interface EditorState {
   selectedPageId?: string;
   selectedRegionId?: string;
   mode: EditorMode;
+  tool: EditorTool;
   comparison: boolean;
   comparisonSplit: number;
   zoom: number;
@@ -48,6 +50,7 @@ const ZOOM_STEP = 0.15;
 
 const initialEditorState: EditorState = {
   mode: "translated",
+  tool: "select",
   comparison: false,
   comparisonSplit: 50,
   zoom: 1,
@@ -131,6 +134,11 @@ interface SaveRegionVariables {
   action: EditorSaveAction;
 }
 
+interface CreateRegionVariables {
+  pageId: string;
+  boundingBox: BoundingBox;
+}
+
 interface RetranslateRegionVariables {
   regionId: string;
   sourceText: string;
@@ -141,7 +149,19 @@ export function Editor() {
   const { projectId = "" } = useParams();
   const queryClient = useQueryClient();
   const [
-    { selectedPageId, selectedRegionId, mode, comparison, comparisonSplit, zoom, workspaceStatus, styleDrafts, regionSaveFeedback, regionRetranslateFeedback },
+    {
+      selectedPageId,
+      selectedRegionId,
+      mode,
+      tool,
+      comparison,
+      comparisonSplit,
+      zoom,
+      workspaceStatus,
+      styleDrafts,
+      regionSaveFeedback,
+      regionRetranslateFeedback,
+    },
     dispatchEditor,
   ] = useReducer(editorReducer, initialEditorState);
   const zoomLabel = `${Math.round(zoom * 100)}%`;
@@ -271,6 +291,44 @@ export function Editor() {
     },
   });
 
+  const createRegionMutation = useMutation({
+    mutationFn: ({ pageId, boundingBox }: CreateRegionVariables) =>
+      api.createRegion(pageId, {
+        region_type: "unknown",
+        bounding_box: boundingBox,
+      }),
+    onMutate: () => {
+      dispatchEditor({ type: "patch", patch: { workspaceStatus: "Adding text box..." } });
+    },
+    onSuccess: async (createdRegion) => {
+      queryClient.setQueryData<TextRegionRead[]>(queryKeys.regions(createdRegion.page_id), (current) => {
+        const existing = current?.filter((region) => region.id !== createdRegion.id) ?? [];
+        return [...existing, createdRegion].sort((a, b) => a.region_index - b.region_index);
+      });
+      dispatchEditor({
+        type: "patch",
+        patch: {
+          selectedRegionId: createdRegion.id,
+          tool: "select",
+          workspaceStatus: "Text box added",
+        },
+      });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.regions(createdRegion.page_id) }),
+        projectId ? queryClient.invalidateQueries({ queryKey: queryKeys.pages(projectId) }) : Promise.resolve(),
+      ]);
+    },
+    onError: (error) => {
+      dispatchEditor({
+        type: "patch",
+        patch: {
+          tool: "select",
+          workspaceStatus: `Add text box failed: ${errorMessage(error, "The request failed.")}`,
+        },
+      });
+    },
+  });
+
   const deleteMutation = useMutation({
     mutationFn: (regionId: string) => api.deleteRegion(regionId),
     onSuccess: async () => {
@@ -369,13 +427,38 @@ export function Editor() {
               <button
                 type="button"
                 onClick={() => {
-                  dispatchEditor({ type: "patch", patch: { mode: "translated", comparison: false, zoom: 1, workspaceStatus: "View reset" } });
+                  dispatchEditor({ type: "patch", patch: { mode: "translated", tool: "select", comparison: false, zoom: 1, workspaceStatus: "View reset" } });
                 }}
                 className="rounded-instrument p-2 text-text-muted transition hover:bg-surface-high hover:text-white"
                 aria-label="Reset view"
                 title="Reset view"
               >
                 <RotateCcw className="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                disabled={!selectedPage || createRegionMutation.isPending}
+                aria-pressed={tool === "addText"}
+                aria-busy={createRegionMutation.isPending}
+                onClick={() => {
+                  const nextTool = tool === "addText" ? "select" : "addText";
+                  dispatchEditor({
+                    type: "patch",
+                    patch: {
+                      tool: nextTool,
+                      mode: "translated",
+                      comparison: false,
+                      workspaceStatus: nextTool === "addText" ? "Drag on the image to add a text box" : "Select mode",
+                    },
+                  });
+                }}
+                className={`rounded-instrument p-2 transition hover:bg-surface-high hover:text-white disabled:cursor-not-allowed disabled:opacity-50 ${
+                  tool === "addText" ? "bg-secondary/10 text-secondary" : "text-text-muted"
+                }`}
+                aria-label="Add text box"
+                title="Add text box"
+              >
+                <SquarePlus className="h-4 w-4" />
               </button>
               <span className="hidden h-5 w-px bg-ink-border sm:block" />
               <h1 className="truncate font-display text-base font-bold text-white">{projectQuery.data.name}</h1>
@@ -455,9 +538,16 @@ export function Editor() {
               selectedRegionId={selectedRegionId}
               onSelectRegion={(regionId) => dispatchEditor({ type: "patch", patch: { selectedRegionId: regionId } })}
               onMoveRegion={(regionId, boundingBox) => moveMutation.mutate({ regionId, boundingBox })}
+              onCreateRegion={(boundingBox) => {
+                if (selectedPage) {
+                  createRegionMutation.mutate({ pageId: selectedPage.id, boundingBox });
+                }
+              }}
               mode={mode}
               zoom={zoom}
               comparison={comparison}
+              tool={tool}
+              isCreatingRegion={createRegionMutation.isPending}
             />
 
             <RegionPanel

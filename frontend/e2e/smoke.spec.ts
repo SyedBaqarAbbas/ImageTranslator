@@ -47,6 +47,32 @@ test("editor renders the canvas and translation cards", async ({ page }) => {
   await expect(page.getByTitle("Region 1")).toBeVisible();
 });
 
+test("editor adds a manual text box in mock mode", async ({ page }) => {
+  await page.goto("/projects/project-cyber/editor");
+  await expect(page.getByText("2 detected regions")).toBeVisible();
+
+  await page.getByRole("button", { name: "Add text box" }).click();
+  const canvas = page.getByTestId("canvas-frame");
+  const canvasBox = await canvas.boundingBox();
+  expect(canvasBox).not.toBeNull();
+  if (!canvasBox) throw new Error("Canvas frame was not available.");
+
+  await page.mouse.move(canvasBox.x + canvasBox.width * 0.2, canvasBox.y + canvasBox.height * 0.2);
+  await page.mouse.down();
+  await page.mouse.move(canvasBox.x + canvasBox.width * 0.42, canvasBox.y + canvasBox.height * 0.34, { steps: 6 });
+  await page.mouse.up();
+
+  await expect(page.getByText("3 detected regions")).toBeVisible();
+  await expect(page.getByTitle("Region 3")).toBeVisible();
+  await expect(page.getByText("#3 Unknown")).toBeVisible();
+
+  await page.getByLabel("Target").fill("Manual sign text");
+  await page.getByRole("button", { name: /^Save$/ }).click();
+
+  await expect(page.getByRole("status").filter({ hasText: "Saved" })).toBeVisible();
+  await expect(page.getByTitle("Region 3").getByText("Manual sign text")).toBeVisible();
+});
+
 test("editor moves and resizes translated overlay without baked duplicate text or static cleanup mask", async ({ page }) => {
   await page.goto("/projects/project-cyber/editor");
   await expectCleanEditorBackground(page);

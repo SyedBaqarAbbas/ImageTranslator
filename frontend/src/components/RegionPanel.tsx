@@ -813,6 +813,7 @@ export function RegionPanel({
             </span>
             <textarea
               value={draft}
+              placeholder="Enter target text"
               onChange={(event) => {
                 dispatchPanel({ type: "setDraft", draft: event.target.value });
                 onDraftChange?.(selectedRegion.id);

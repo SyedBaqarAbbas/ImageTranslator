@@ -299,3 +299,63 @@ def test_delete_region_removes_region_and_rerenders_page(client: TestClient) -> 
     assert client.get(f"/api/v1/pages/{page_id}/regions").json() == []
     page = client.get(f"/api/v1/pages/{page_id}").json()
     assert page["preview_asset_id"]
+
+
+def test_create_region_adds_manual_text_box_and_rerenders_page(client: TestClient) -> None:
+    project_id = _create_project(client, "Manual Region Project")
+    page_id = _upload_page(client, project_id)
+    _process_project(client, project_id)
+    existing_regions = client.get(f"/api/v1/pages/{page_id}/regions").json()
+    assert len(existing_regions) == 1
+
+    create_response = client.post(
+        f"/api/v1/pages/{page_id}/regions",
+        json={
+            "region_type": "caption",
+            "bounding_box": {"x": 3, "y": 4, "width": 8, "height": 9},
+            "user_text": "Manual note",
+            "render_style": {"fontSize": 18, "backgroundColor": "#ffffff"},
+            "auto_rerender": True,
+        },
+    )
+
+    assert create_response.status_code == 201
+    created = create_response.json()
+    assert created["page_id"] == page_id
+    assert created["region_index"] == existing_regions[0]["region_index"] + 1
+    assert created["region_type"] == "caption"
+    assert created["bounding_box"] == {"x": 3, "y": 4, "width": 8, "height": 9}
+    assert created["detected_text"] is None
+    assert created["user_text"] == "Manual note"
+    assert created["render_style"] == {"fontSize": 18, "backgroundColor": "#ffffff"}
+    assert created["editable"] is True
+    assert created["status"] == "user_edited"
+
+    page = client.get(f"/api/v1/pages/{page_id}").json()
+    assert page["preview_asset_id"]
+    assert page["final_asset_id"]
+
+    blank_response = client.post(
+        f"/api/v1/pages/{page_id}/regions",
+        json={"bounding_box": {"x": 4, "y": 5, "width": 6, "height": 7}},
+    )
+    assert blank_response.status_code == 201
+    blank_region = blank_response.json()
+    assert blank_region["region_index"] == created["region_index"] + 1
+    assert blank_region["region_type"] == "unknown"
+    assert blank_region["user_text"] is None
+    assert blank_region["status"] == "detected"
+
+    region_ids = [region["id"] for region in client.get(f"/api/v1/pages/{page_id}/regions").json()]
+    assert created["id"] in region_ids
+    assert blank_region["id"] in region_ids
+
+
+def test_create_region_requires_page_access(client: TestClient) -> None:
+    response = client.post(
+        "/api/v1/pages/missing-page/regions",
+        json={"bounding_box": {"x": 1, "y": 2, "width": 3, "height": 4}},
+    )
+
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "page_not_found"

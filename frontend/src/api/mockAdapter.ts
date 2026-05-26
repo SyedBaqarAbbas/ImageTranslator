@@ -18,6 +18,7 @@ import type {
   ProjectUpdate,
   RetranslateRequest,
   RuntimeLanguageRead,
+  TextRegionCreate,
   TextRegionRead,
   TextRegionUpdate,
   TranslationSettingsRead,
@@ -63,6 +64,14 @@ function findRegion(regionId: string): TextRegionRead {
     throw new Error("Text region not found.");
   }
   return region;
+}
+
+function findPage(pageId: string): PageRead {
+  const page = store.pages.find((item) => item.id === pageId);
+  if (!page) {
+    throw new Error("Page not found.");
+  }
+  return page;
 }
 
 function findJob(jobId: string): ProcessingJobRead {
@@ -366,6 +375,45 @@ export const mockApi: ApiAdapter = {
 
   async listRegions(pageId: string): Promise<TextRegionRead[]> {
     return delay(store.regions.filter((region) => region.page_id === pageId).sort((a, b) => a.region_index - b.region_index));
+  },
+
+  async createRegion(pageId: string, payload: TextRegionCreate): Promise<TextRegionRead> {
+    const page = findPage(pageId);
+    const now = iso();
+    const pageRegions = store.regions.filter((region) => region.page_id === pageId);
+    const nextRegionIndex = Math.max(0, ...pageRegions.map((region) => region.region_index)) + 1;
+    const region: TextRegionRead = {
+      id: id("region"),
+      page_id: pageId,
+      region_index: nextRegionIndex,
+      region_type: payload.region_type ?? "unknown",
+      bounding_box: payload.bounding_box,
+      polygon: null,
+      detected_text: payload.detected_text ?? null,
+      detected_language: null,
+      translated_text: payload.translated_text ?? null,
+      user_text: payload.user_text ?? null,
+      ocr_confidence: null,
+      translation_confidence: null,
+      render_style: payload.render_style ?? null,
+      editable: payload.editable ?? true,
+      status: payload.user_text?.trim() ? "user_edited" : "detected",
+      failure_reason: null,
+      created_at: now,
+      updated_at: now,
+    };
+    store.regions.push(region);
+    if (payload.auto_rerender) {
+      const pageAsset = page.original_asset ?? page.preview_asset ?? page.final_asset;
+      if (pageAsset) {
+        page.preview_asset = { ...pageAsset, kind: "preview" };
+        page.preview_asset_id = page.preview_asset.id;
+        page.final_asset = { ...pageAsset, kind: "final" };
+        page.final_asset_id = page.final_asset.id;
+      }
+      page.updated_at = now;
+    }
+    return delay(region);
   },
 
   async updateRegion(regionId: string, payload: TextRegionUpdate): Promise<TextRegionRead> {
