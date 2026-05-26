@@ -93,6 +93,19 @@ async def retranslate_region(
 
 
 @router.post(
+    "/regions/{region_id}/ocr",
+    response_model=ProcessingJobRead,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def ocr_region(
+    region_id: str,
+    current_user: User = PUBLIC_USER_DEP,
+    session: AsyncSession = SESSION_DEP,
+) -> ProcessingJobRead:
+    return await ProcessingService(session).create_ocr_region_job(current_user.id, region_id)
+
+
+@router.post(
     "/regions/{region_id}/rerender",
     response_model=ProcessingJobRead,
     status_code=status.HTTP_202_ACCEPTED,

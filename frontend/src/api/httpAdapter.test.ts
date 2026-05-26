@@ -435,6 +435,9 @@ describe("httpApi", () => {
       if (url === "http://api.test/api/v1/regions/region-1") {
         return jsonResponse(region);
       }
+      if (url === "http://api.test/api/v1/regions/region-1/ocr") {
+        return jsonResponse({ ...job, job_type: "ocr_region" }, { status: 202 });
+      }
       if (url === "http://api.test/api/v1/regions/region-1/retranslate") {
         return jsonResponse(job, { status: 202 });
       }
@@ -475,6 +478,7 @@ describe("httpApi", () => {
       }),
     ).resolves.toMatchObject({ id: "region-2", user_text: "Manual" });
     await expect(httpApi.updateRegion("region-1", { user_text: "Human" })).resolves.toMatchObject({ id: "region-1" });
+    await expect(httpApi.ocrRegion("region-1")).resolves.toMatchObject({ id: "job-1", job_type: "ocr_region" });
     await expect(httpApi.retranslateRegion("region-1", { source_text: "source" })).resolves.toMatchObject({ id: "job-1" });
     await expect(httpApi.processProject("project-1", { page_ids: ["page-1"], force: true })).resolves.toMatchObject({ id: "job-1" });
     await expect(httpApi.getProcessingJobs("project-1")).resolves.toHaveLength(1);
@@ -499,6 +503,12 @@ describe("httpApi", () => {
       expect.objectContaining({
         method: "POST",
         body: "{\"region_type\":\"unknown\",\"bounding_box\":{\"x\":4,\"y\":5,\"width\":60,\"height\":40},\"user_text\":\"Manual\"}",
+      }),
+    );
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://api.test/api/v1/regions/region-1/ocr",
+      expect.objectContaining({
+        method: "POST",
       }),
     );
     expect(fetchMock).toHaveBeenCalledWith(

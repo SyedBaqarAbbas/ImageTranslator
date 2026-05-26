@@ -81,7 +81,7 @@ should still be run before release-sensitive merges.
 | `/support` | Support tests | Empty validation, drafted request | Button audit |
 | `/projects/:id/processing` | Processing tests | Running, success, failed, cancel/rerun | Full-stack workflow |
 | `/projects/:id/review` | Review tests | No regions, approve, API error | Full-stack workflow |
-| `/projects/:id/editor` | Editor tests | Missing project/page, add text box, save, retranslate, reject, drag/resize | Editor E2E |
+| `/projects/:id/editor` | Editor tests | Missing project/page, add text box, manual OCR region create/OCR, save, translate, reject, drag/resize | Editor E2E |
 | `/projects/:id/export` | Export tests | PDF/ZIP/images, no pages, failed export | Full-stack export workflow |
 | `*` | Redirect test | Unknown routes redirect to `/projects` | Route coverage |
 
@@ -93,7 +93,7 @@ should still be run before release-sensitive merges.
 | Projects/settings | Create/list/detail/update/delete/settings | Validation, missing project, deleted project |
 | Pages/upload | Multi-image upload, ZIP upload, page detail/list | Empty upload, unsupported type, corrupt image, too many pages, missing page |
 | Processing/jobs | Project process, page reprocess, rerender, job list/detail | No pages, OCR no text, provider failure, missing job |
-| Regions | List/create/update/delete/rerender/retranslate | Missing region/page, translation failure, rerender failure |
+| Regions | List/create/update/delete/region OCR/rerender/retranslate | Missing region/page, OCR no text, translation failure, rerender failure |
 | Exports/assets | PDF, full ZIP, image ZIP, include originals, downloads | No pages, no rendered pages, missing export/asset/key |
 | Events | Project event stream first payload | Missing project |
 

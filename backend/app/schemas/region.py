@@ -44,6 +44,7 @@ class TextRegionCreate(BaseModel):
 
 
 class TextRegionUpdate(BaseModel):
+    detected_text: str | None = Field(default=None, max_length=5000)
     translated_text: str | None = Field(default=None, max_length=5000)
     user_text: str | None = Field(default=None, max_length=5000)
     region_type: RegionType | None = None

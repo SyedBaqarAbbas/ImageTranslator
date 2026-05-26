@@ -88,6 +88,34 @@ def test_pages_jobs_regions_and_rerender_release_flow(
     region = regions_response.json()[0]
     region_id = region["id"]
 
+    create_region_response = client.post(
+        f"/api/v1/pages/{page_id}/regions",
+        json={"bounding_box": {"x": 4, "y": 4, "width": 28, "height": 18}},
+    )
+    assert create_region_response.status_code == 201
+    manual_region = create_region_response.json()
+    manual_region_id = manual_region["id"]
+    assert manual_region["status"] == "needs_review"
+
+    manual_source_response = client.patch(
+        f"/api/v1/regions/{manual_region_id}",
+        json={"detected_text": "Manual source text"},
+    )
+    assert manual_source_response.status_code == 200
+    assert manual_source_response.json()["detected_text"] == "Manual source text"
+
+    ocr_region_response = client.post(f"/api/v1/regions/{manual_region_id}/ocr")
+    assert ocr_region_response.status_code == 202
+    ocr_region_job = ocr_region_response.json()
+    assert ocr_region_job["status"] == "succeeded"
+    assert ocr_region_job["job_type"] == "ocr_region"
+
+    ocr_region = [
+        item for item in client.get(f"/api/v1/pages/{page_id}/regions").json()
+        if item["id"] == manual_region_id
+    ][0]
+    assert ocr_region["detected_text"] == "Sample detected text"
+
     update_response = client.patch(
         f"/api/v1/regions/{region_id}",
         json={
@@ -132,7 +160,7 @@ def test_pages_jobs_regions_and_rerender_release_flow(
 
     jobs = client.get(f"/api/v1/projects/{project_id}/jobs").json()
     job_types = {job["job_type"] for job in jobs}
-    assert {"process_project", "process_page", "retranslate_region", "rerender_page"} <= job_types
+    assert {"process_project", "process_page", "ocr_region", "retranslate_region", "rerender_page"} <= job_types
 
 
 def test_release_api_error_paths_return_contract_errors(
@@ -162,5 +190,13 @@ def test_release_api_error_paths_return_contract_errors(
 
     assert client.get("/api/v1/pages/not-a-page").status_code == 404
     assert client.get("/api/v1/pages/not-a-page/regions").status_code == 404
+    assert (
+        client.post(
+            "/api/v1/pages/not-a-page/regions",
+            json={"bounding_box": {"x": 1, "y": 1, "width": 10, "height": 10}},
+        ).status_code
+        == 404
+    )
     assert client.get("/api/v1/jobs/not-a-job").status_code == 404
     assert client.patch("/api/v1/regions/not-a-region", json={"user_text": "x"}).status_code == 404
+    assert client.post("/api/v1/regions/not-a-region/ocr").status_code == 404

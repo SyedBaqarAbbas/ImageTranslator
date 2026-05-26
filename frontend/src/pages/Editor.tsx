@@ -1,4 +1,4 @@
-import { Columns2, Download, Minus, Plus, RotateCcw, Save, SquarePlus, Undo2 } from "lucide-react";
+import { Columns2, Download, Minus, Plus, RotateCcw, Save, ScanText, SquarePlus, Undo2 } from "lucide-react";
 import { useEffect, useMemo, useReducer } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
@@ -6,19 +6,22 @@ import { Link, useParams } from "react-router-dom";
 import { api, queryKeys } from "../api";
 import { CanvasWorkspace } from "../components/CanvasWorkspace";
 import { RegionPanel } from "../components/RegionPanel";
-import type { RegionRetranslateFeedback, RegionRetranslateSource, RegionSaveAction, RegionSaveFeedback } from "../components/RegionPanel";
+import type { RegionOcrFeedback, RegionRetranslateFeedback, RegionRetranslateSource, RegionSaveAction, RegionSaveFeedback } from "../components/RegionPanel";
 import { ErrorState, LoadingState } from "../components/States";
 import { WorkspaceShell } from "../components/WorkspaceShell";
 import { assetUrlForPage } from "../lib/assets";
 import {
+  OCR_JOB_TIMEOUT_MESSAGE,
   RETRANSLATE_JOB_TIMEOUT_MESSAGE,
+  isOcrJobPollingTimeoutError,
   isRetranslateJobPollingTimeoutError,
+  waitForSuccessfulOcrJob,
   waitForSuccessfulRetranslateJob,
 } from "../lib/retranslateJob";
 import type { BoundingBox, TextRegionRead, TextRegionUpdate } from "../types/api";
 
 type EditorMode = "original" | "translated";
-type EditorTool = "select" | "addText";
+type EditorTool = "select" | "addText" | "highlight_ocr";
 type EditorSaveAction = RegionSaveAction | "workspace";
 
 interface EditorState {
@@ -32,6 +35,7 @@ interface EditorState {
   workspaceStatus: string;
   styleDrafts: Record<string, Record<string, unknown>>;
   regionSaveFeedback: RegionSaveFeedback | null;
+  regionOcrFeedback: RegionOcrFeedback | null;
   regionRetranslateFeedback: RegionRetranslateFeedback | null;
 }
 
@@ -42,6 +46,7 @@ type EditorAction =
   | { type: "clearStyleDraft"; regionId: string }
   | { type: "markRegionDirty"; regionId: string }
   | { type: "setRegionSaveFeedback"; feedback: RegionSaveFeedback | null }
+  | { type: "setRegionOcrFeedback"; feedback: RegionOcrFeedback | null }
   | { type: "setRegionRetranslateFeedback"; feedback: RegionRetranslateFeedback | null };
 
 const ZOOM_MIN = 0.75;
@@ -57,6 +62,7 @@ const initialEditorState: EditorState = {
   workspaceStatus: "Unsaved",
   styleDrafts: {},
   regionSaveFeedback: null,
+  regionOcrFeedback: null,
   regionRetranslateFeedback: null,
 };
 
@@ -70,6 +76,7 @@ function editorReducer(state: EditorState, action: EditorAction): EditorState {
       ...state,
       workspaceStatus: "Unsaved",
       regionSaveFeedback: state.regionSaveFeedback?.regionId === action.regionId ? null : state.regionSaveFeedback,
+      regionOcrFeedback: state.regionOcrFeedback?.regionId === action.regionId ? null : state.regionOcrFeedback,
       regionRetranslateFeedback:
         state.regionRetranslateFeedback?.regionId === action.regionId ? null : state.regionRetranslateFeedback,
       styleDrafts: { ...state.styleDrafts, [action.regionId]: action.renderStyle },
@@ -87,6 +94,7 @@ function editorReducer(state: EditorState, action: EditorAction): EditorState {
       ...state,
       workspaceStatus: "Unsaved",
       regionSaveFeedback: state.regionSaveFeedback?.regionId === action.regionId ? null : state.regionSaveFeedback,
+      regionOcrFeedback: state.regionOcrFeedback?.regionId === action.regionId ? null : state.regionOcrFeedback,
       regionRetranslateFeedback:
         state.regionRetranslateFeedback?.regionId === action.regionId ? null : state.regionRetranslateFeedback,
     };
@@ -96,12 +104,25 @@ function editorReducer(state: EditorState, action: EditorAction): EditorState {
     return { ...state, regionSaveFeedback: action.feedback };
   }
 
+  if (action.type === "setRegionOcrFeedback") {
+    return {
+      ...state,
+      regionOcrFeedback: action.feedback,
+      regionSaveFeedback:
+        action.feedback && state.regionSaveFeedback?.regionId === action.feedback.regionId ? null : state.regionSaveFeedback,
+      regionRetranslateFeedback:
+        action.feedback && state.regionRetranslateFeedback?.regionId === action.feedback.regionId ? null : state.regionRetranslateFeedback,
+    };
+  }
+
   if (action.type === "setRegionRetranslateFeedback") {
     return {
       ...state,
       regionRetranslateFeedback: action.feedback,
       regionSaveFeedback:
         action.feedback && state.regionSaveFeedback?.regionId === action.feedback.regionId ? null : state.regionSaveFeedback,
+      regionOcrFeedback:
+        action.feedback && state.regionOcrFeedback?.regionId === action.feedback.regionId ? null : state.regionOcrFeedback,
     };
   }
 
@@ -125,7 +146,7 @@ function successMessage(action: EditorSaveAction): string {
 }
 
 function retranslateSourceLabel(source: RegionRetranslateSource): string {
-  return source === "detected_text" ? "OCR source text" : "current target draft";
+  return source === "detected_text" ? "source text" : "current target draft";
 }
 
 interface SaveRegionVariables {
@@ -137,6 +158,7 @@ interface SaveRegionVariables {
 interface CreateRegionVariables {
   pageId: string;
   boundingBox: BoundingBox;
+  tool: Exclude<EditorTool, "select">;
 }
 
 interface RetranslateRegionVariables {
@@ -160,6 +182,7 @@ export function Editor() {
       workspaceStatus,
       styleDrafts,
       regionSaveFeedback,
+      regionOcrFeedback,
       regionRetranslateFeedback,
     },
     dispatchEditor,
@@ -197,6 +220,49 @@ export function Editor() {
       dispatchEditor({ type: "patch", patch: { selectedRegionId: regions[0].id } });
     }
   }, [regions, selectedRegionId]);
+
+  const createRegionMutation = useMutation({
+    mutationFn: ({ pageId, boundingBox, tool: createTool }: CreateRegionVariables) =>
+      api.createRegion(pageId, {
+        bounding_box: boundingBox,
+        region_type: "unknown",
+        render_style: createTool === "highlight_ocr" ? { align: "center", padding: 6 } : undefined,
+      }),
+    onMutate: ({ tool: createTool }) => {
+      dispatchEditor({
+        type: "patch",
+        patch: { workspaceStatus: createTool === "highlight_ocr" ? "Creating OCR region..." : "Adding text box..." },
+      });
+    },
+    onSuccess: async (createdRegion, variables) => {
+      queryClient.setQueryData<TextRegionRead[]>(queryKeys.regions(createdRegion.page_id), (current) => {
+        const existing = current?.filter((region) => region.id !== createdRegion.id) ?? [];
+        return [...existing, createdRegion].sort((a, b) => a.region_index - b.region_index);
+      });
+      dispatchEditor({
+        type: "patch",
+        patch: {
+          selectedRegionId: createdRegion.id,
+          tool: "select",
+          workspaceStatus: variables.tool === "highlight_ocr" ? "OCR region highlighted" : "Text box added",
+        },
+      });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.regions(createdRegion.page_id) }),
+        projectId ? queryClient.invalidateQueries({ queryKey: queryKeys.pages(projectId) }) : Promise.resolve(),
+      ]);
+    },
+    onError: (error, variables) => {
+      const label = variables.tool === "highlight_ocr" ? "Region highlight" : "Add text box";
+      dispatchEditor({
+        type: "patch",
+        patch: {
+          tool: "select",
+          workspaceStatus: `${label} failed: ${errorMessage(error, "The request failed.")}`,
+        },
+      });
+    },
+  });
 
   const saveMutation = useMutation({
     mutationFn: ({ regionId, payload }: SaveRegionVariables) => api.updateRegion(regionId, payload),
@@ -291,44 +357,6 @@ export function Editor() {
     },
   });
 
-  const createRegionMutation = useMutation({
-    mutationFn: ({ pageId, boundingBox }: CreateRegionVariables) =>
-      api.createRegion(pageId, {
-        region_type: "unknown",
-        bounding_box: boundingBox,
-      }),
-    onMutate: () => {
-      dispatchEditor({ type: "patch", patch: { workspaceStatus: "Adding text box..." } });
-    },
-    onSuccess: async (createdRegion) => {
-      queryClient.setQueryData<TextRegionRead[]>(queryKeys.regions(createdRegion.page_id), (current) => {
-        const existing = current?.filter((region) => region.id !== createdRegion.id) ?? [];
-        return [...existing, createdRegion].sort((a, b) => a.region_index - b.region_index);
-      });
-      dispatchEditor({
-        type: "patch",
-        patch: {
-          selectedRegionId: createdRegion.id,
-          tool: "select",
-          workspaceStatus: "Text box added",
-        },
-      });
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: queryKeys.regions(createdRegion.page_id) }),
-        projectId ? queryClient.invalidateQueries({ queryKey: queryKeys.pages(projectId) }) : Promise.resolve(),
-      ]);
-    },
-    onError: (error) => {
-      dispatchEditor({
-        type: "patch",
-        patch: {
-          tool: "select",
-          workspaceStatus: `Add text box failed: ${errorMessage(error, "The request failed.")}`,
-        },
-      });
-    },
-  });
-
   const deleteMutation = useMutation({
     mutationFn: (regionId: string) => api.deleteRegion(regionId),
     onSuccess: async () => {
@@ -337,6 +365,55 @@ export function Editor() {
         selectedPage ? queryClient.invalidateQueries({ queryKey: queryKeys.regions(selectedPage.id) }) : Promise.resolve(),
         projectId ? queryClient.invalidateQueries({ queryKey: queryKeys.pages(projectId) }) : Promise.resolve(),
       ]);
+    },
+  });
+
+  const ocrMutation = useMutation({
+    mutationFn: async (regionId: string) => {
+      const job = await api.ocrRegion(regionId);
+      return waitForSuccessfulOcrJob(job, { getProcessingJob: api.getProcessingJob });
+    },
+    onMutate: (regionId) => {
+      dispatchEditor({
+        type: "setRegionOcrFeedback",
+        feedback: {
+          regionId,
+          status: "pending",
+          message: "Running OCR on highlighted region.",
+        },
+      });
+      dispatchEditor({ type: "patch", patch: { workspaceStatus: "Running OCR..." } });
+    },
+    onSuccess: async (job, regionId) => {
+      const pageId = job.page_id ?? selectedPage?.id;
+      await Promise.all([
+        pageId ? queryClient.invalidateQueries({ queryKey: queryKeys.regions(pageId) }) : Promise.resolve(),
+        projectId ? queryClient.invalidateQueries({ queryKey: queryKeys.jobs(projectId) }) : Promise.resolve(),
+      ]);
+      dispatchEditor({
+        type: "setRegionOcrFeedback",
+        feedback: {
+          regionId,
+          status: "success",
+          message: "OCR text updated.",
+        },
+      });
+      dispatchEditor({ type: "patch", patch: { workspaceStatus: "OCR text updated" } });
+    },
+    onError: async (error, regionId) => {
+      const timedOut = isOcrJobPollingTimeoutError(error);
+      dispatchEditor({
+        type: "setRegionOcrFeedback",
+        feedback: {
+          regionId,
+          status: "error",
+          message: timedOut ? OCR_JOB_TIMEOUT_MESSAGE : `OCR failed: ${errorMessage(error, "The request failed.")}`,
+        },
+      });
+      dispatchEditor({ type: "patch", patch: { workspaceStatus: timedOut ? "OCR still running" : "OCR failed" } });
+      if (timedOut && projectId) {
+        await queryClient.invalidateQueries({ queryKey: queryKeys.jobs(projectId) });
+      }
     },
   });
 
@@ -424,6 +501,29 @@ export function Editor() {
                   Coming soon: undo history is not available yet.
                 </span>
               </span>
+              <button
+                type="button"
+                aria-pressed={tool === "highlight_ocr"}
+                disabled={!selectedPage || createRegionMutation.isPending}
+                onClick={() => {
+                  const nextTool = tool === "highlight_ocr" ? "select" : "highlight_ocr";
+                  dispatchEditor({
+                    type: "patch",
+                    patch: {
+                      tool: nextTool,
+                      comparison: false,
+                      mode: "original",
+                      workspaceStatus: nextTool === "highlight_ocr" ? "Highlight OCR region" : "Select mode",
+                    },
+                  });
+                }}
+                className={`inline-flex items-center gap-2 rounded-instrument px-3 py-2 text-xs font-bold transition hover:bg-surface-high hover:text-white disabled:cursor-not-allowed disabled:opacity-60 ${
+                  tool === "highlight_ocr" ? "bg-tertiary/10 text-tertiary" : "text-text-muted"
+                }`}
+              >
+                <ScanText className="h-4 w-4" />
+                Highlight OCR Region
+              </button>
               <button
                 type="button"
                 onClick={() => {
@@ -540,7 +640,7 @@ export function Editor() {
               onMoveRegion={(regionId, boundingBox) => moveMutation.mutate({ regionId, boundingBox })}
               onCreateRegion={(boundingBox) => {
                 if (selectedPage) {
-                  createRegionMutation.mutate({ pageId: selectedPage.id, boundingBox });
+                  createRegionMutation.mutate({ pageId: selectedPage.id, boundingBox, tool: tool === "highlight_ocr" ? "highlight_ocr" : "addText" });
                 }
               }}
               mode={mode}
@@ -555,6 +655,7 @@ export function Editor() {
               selectedRegionId={selectedRegionId}
               onSelect={(regionId) => dispatchEditor({ type: "patch", patch: { selectedRegionId: regionId } })}
               onSave={(regionId, payload, action) => saveMutation.mutate({ regionId, payload, action })}
+              onRunOcr={(regionId) => ocrMutation.mutate(regionId)}
               onRetranslate={(regionId, sourceText, source) => retranslateMutation.mutate({ regionId, sourceText, source })}
               onDelete={(regionId) => deleteMutation.mutate(regionId)}
               onDraftChange={(regionId) => dispatchEditor({ type: "markRegionDirty", regionId })}
@@ -562,6 +663,7 @@ export function Editor() {
                 dispatchEditor({ type: "setStyleDraft", regionId, renderStyle });
               }}
               saveFeedback={regionSaveFeedback}
+              ocrFeedback={regionOcrFeedback}
               retranslateFeedback={regionRetranslateFeedback}
               isDeleting={deleteMutation.isPending}
             />
