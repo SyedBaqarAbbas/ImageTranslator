@@ -195,8 +195,8 @@ export const httpApi: ApiAdapter = {
     });
   },
 
-  getProcessingJob(jobId: string): Promise<ProcessingJobRead> {
-    return request<ProcessingJobRead>(`/jobs/${jobId}`);
+  getProcessingJob(jobId: string, options?: { signal?: AbortSignal }): Promise<ProcessingJobRead> {
+    return request<ProcessingJobRead>(`/jobs/${jobId}`, { signal: options?.signal });
   },
 
   processProject(projectId: string, payload: ProcessProjectRequest): Promise<ProcessingJobRead> {

@@ -10,7 +10,11 @@ import type { RegionRetranslateFeedback, RegionRetranslateSource, RegionSaveActi
 import { ErrorState, LoadingState } from "../components/States";
 import { WorkspaceShell } from "../components/WorkspaceShell";
 import { assetUrlForPage } from "../lib/assets";
-import { waitForSuccessfulRetranslateJob } from "../lib/retranslateJob";
+import {
+  RETRANSLATE_JOB_TIMEOUT_MESSAGE,
+  isRetranslateJobPollingTimeoutError,
+  waitForSuccessfulRetranslateJob,
+} from "../lib/retranslateJob";
 import type { BoundingBox, TextRegionRead, TextRegionUpdate } from "../types/api";
 
 type EditorMode = "original" | "translated";
@@ -316,16 +320,20 @@ export function Editor() {
       });
       dispatchEditor({ type: "patch", patch: { workspaceStatus: "Translation updated" } });
     },
-    onError: (error, variables) => {
+    onError: async (error, variables) => {
+      const timedOut = isRetranslateJobPollingTimeoutError(error);
       dispatchEditor({
         type: "setRegionRetranslateFeedback",
         feedback: {
           regionId: variables.regionId,
           status: "error",
-          message: `Translation failed: ${errorMessage(error, "The request failed.")}`,
+          message: timedOut ? RETRANSLATE_JOB_TIMEOUT_MESSAGE : `Translation failed: ${errorMessage(error, "The request failed.")}`,
         },
       });
-      dispatchEditor({ type: "patch", patch: { workspaceStatus: "Translation failed" } });
+      dispatchEditor({ type: "patch", patch: { workspaceStatus: timedOut ? "Translation still running" : "Translation failed" } });
+      if (timedOut && projectId) {
+        await queryClient.invalidateQueries({ queryKey: queryKeys.jobs(projectId) });
+      }
     },
   });
 
