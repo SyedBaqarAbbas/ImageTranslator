@@ -75,11 +75,12 @@ Documentation-only changes usually do not need tests, but inspect Markdown struc
 
 - Use a separate git worktree for Linear fixes.
 - Create a branch containing the Linear ticket ID/name.
-- Base it on latest `main` unless told otherwise.
+- Base it on latest `dev` unless told otherwise.
 - Commit with a meaningful `[prefix] <message>`.
 - Whenever making a change to AI workflows (AGENTS.md or SKILL.md), use the prefix [ai-ops] in your git commits.
 - Push the branch.
-- Create a normal open PR against `main`, not a draft PR, unless the user explicitly asks for a draft. Always use gh outside of sandbox for this (gh inside the sandbox does not have access to keyring).
+- Create a normal open PR against `dev`, not `main`, and not a draft PR unless the user explicitly asks for a draft. Always use gh outside of sandbox for this (gh inside the sandbox does not have access to keyring).
+- Do not open implementation PRs directly against `main` unless the user explicitly asks for a hotfix or release PR.
 - If you are blocked because of any issue, post a comment on the ticket in Linear through MCP in 2 stages: first, summarizing the issue in one-line for a general idea and second, explaining it comprehensively for a detailed specific idea.
 
 ## Known Sharp Edges

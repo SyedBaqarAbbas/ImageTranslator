@@ -25,8 +25,9 @@ Default gate expectations:
 ## GitHub Automation
 
 The GitHub `CI` workflow is the required PR baseline for hosted collaboration.
-It always runs a lightweight `Detect app changes` job first, then selects app
-jobs by changed path:
+It runs on pull requests, including PRs retargeted between branches, and on
+pushes to `dev` and `main`. It always runs a lightweight `Detect app changes`
+job first, then selects app jobs by changed path:
 
 - `Backend tests and compile`: runs for backend-impacting changes such as
   `backend/**` code/config/test files, shared root E2E files, root Docker/local
@@ -46,7 +47,7 @@ jobs by changed path:
   regardless of changed paths.
 
 The GitHub `CodeQL` workflow runs on pull requests, pushes to `main`, a weekly
-schedule, and manual dispatch. Pull request and push runs are path-aware:
+schedule, pushes to `dev`, and manual dispatch. Pull request and push runs are path-aware:
 backend/Python-impacting changes select `Analyze (python)`, frontend/root E2E
 JavaScript or TypeScript changes select `Analyze (javascript-typescript)`, and
 workflow changes select both languages. Docs-only and governance-only changes
@@ -56,8 +57,9 @@ security coverage remains available in the repository Security tab.
 
 The GitHub `Docs` workflow builds the MkDocs Material documentation site for
 changes under `docs/**`, `mkdocs.yml`, or `.github/workflows/docs.yml`. Pull
-requests run `mkdocs build --strict`; pushes to `main` also upload the generated
-`site/` artifact and deploy it through GitHub Pages Actions.
+requests and pushes to `dev` run `mkdocs build --strict`; pushes to `main` also
+upload the generated `site/` artifact and deploy it through GitHub Pages
+Actions.
 
 The local `./up-and-test.sh` release gate remains broader than hosted CI and
 should still be run before release-sensitive merges.

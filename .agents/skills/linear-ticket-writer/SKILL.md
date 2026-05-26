@@ -18,6 +18,7 @@ Create Linear tickets that an unfamiliar implementation agent can pick up withou
 - Keep tickets scoped to one deliverable. If the request contains multiple independent problems, create one ticket per problem plus an optional parent/overview issue.
 - Avoid vague acceptance criteria like "works correctly". Every criterion should be observable.
 - Every ticket must include a "Testing Coverage Requirements" section derived from the current root and scoped `AGENTS.md` files plus `RELEASE_TEST_MATRIX.md` when relevant. Do not rely on a generic command list alone.
+- When a ticket includes implementation workflow or PR handoff instructions, tell agents to branch from latest `dev` and open normal PRs against `dev`. Do not instruct agents to target `main` unless the user explicitly asks for a hotfix or release PR.
 
 ## Context To Gather
 
