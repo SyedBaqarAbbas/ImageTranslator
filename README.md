@@ -100,6 +100,15 @@ Use the release gate from repo root:
 
 This runs backend/frontend coverage checks, Playwright route/workflow tests, button audits, and mock full-stack E2E.
 
+## Contributing
+
+Contributions are welcome. Read the [contributing guide](CONTRIBUTING.md) before starting work.
+
+- Join the project workspace on Linear: [Linear invite link](https://linear.app/imagetranslator/join/04b6855f48853e2a06da14596e999f09?s=5)
+- Browse or open GitHub issues: [Issues](https://github.com/SyedBaqarAbbas/ImageTranslator/issues)
+
+Use Linear for planned project work and GitHub Issues for public bug reports or feature suggestions.
+
 ## More Docs
 
 - Documentation site source: [docs/](docs/)
