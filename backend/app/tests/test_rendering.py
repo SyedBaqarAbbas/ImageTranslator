@@ -189,12 +189,16 @@ async def test_translucent_fill_composites_only_region_bounds(
 
     assert image_size not in rgba_allocations
     assert image_size not in composite_sizes
-    assert rgba_allocations == [(100, 80)]
-    assert composite_sizes == [(100, 80)]
+    assert rgba_allocations == [(101, 81)]
+    assert composite_sizes == [(101, 81)]
 
     rendered = Image.open(io.BytesIO(output)).convert("RGB")
     assert all(120 <= channel <= 135 for channel in rendered.getpixel((120, 140)))
+    assert all(120 <= channel <= 135 for channel in rendered.getpixel((200, 160)))
+    assert all(120 <= channel <= 135 for channel in rendered.getpixel((150, 200)))
     assert rendered.getpixel((90, 110)) == (255, 255, 255)
+    assert rendered.getpixel((201, 160)) == (255, 255, 255)
+    assert rendered.getpixel((150, 201)) == (255, 255, 255)
 
 
 @pytest.mark.asyncio
@@ -224,6 +228,8 @@ async def test_translucent_fill_clips_partially_out_of_bounds_region() -> None:
 
     rendered = Image.open(io.BytesIO(output)).convert("RGB")
     assert all(120 <= channel <= 135 for channel in rendered.getpixel((20, 20)))
+    assert all(120 <= channel <= 135 for channel in rendered.getpixel((40, 20)))
+    assert all(120 <= channel <= 135 for channel in rendered.getpixel((20, 32)))
     assert rendered.getpixel((60, 50)) == (255, 255, 255)
 
 

@@ -189,8 +189,8 @@ def _draw_rounded_fill(
 
     left = max(0, bbox[0])
     top = max(0, bbox[1])
-    right = min(canvas.width, bbox[2])
-    bottom = min(canvas.height, bbox[3])
+    right = min(canvas.width, bbox[2] + 1)
+    bottom = min(canvas.height, bbox[3] + 1)
     if right <= left or bottom <= top:
         return
 
