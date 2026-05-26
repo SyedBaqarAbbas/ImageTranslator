@@ -139,6 +139,101 @@ async def test_render_page_defaults_region_fill_opacity() -> None:
 
 
 @pytest.mark.asyncio
+async def test_translucent_fill_composites_only_region_bounds(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    image_size = (2000, 3000)
+    image = Image.new("RGB", image_size, "white")
+    buffer = io.BytesIO()
+    image.save(buffer, format="PNG")
+
+    rgba_allocations: list[tuple[int, int]] = []
+    composite_sizes: list[tuple[int, int]] = []
+    real_image_new = Image.new
+    real_alpha_composite = Image.alpha_composite
+
+    def tracking_image_new(
+        mode: str,
+        size: tuple[int, int],
+        color: object = 0,
+    ) -> Image.Image:
+        if mode == "RGBA":
+            rgba_allocations.append(size)
+        return real_image_new(mode, size, color)
+
+    def tracking_alpha_composite(image_1: Image.Image, image_2: Image.Image) -> Image.Image:
+        composite_sizes.append(image_1.size)
+        return real_alpha_composite(image_1, image_2)
+
+    monkeypatch.setattr(Image, "new", tracking_image_new)
+    monkeypatch.setattr(Image, "alpha_composite", tracking_alpha_composite)
+
+    engine = PillowRenderEngine()
+    output = await engine.render_page(
+        buffer.getvalue(),
+        [
+            RenderRegion(
+                bounding_box={"x": 100, "y": 120, "width": 100, "height": 80},
+                original_text=None,
+                translated_text=" ",
+                render_style={
+                    "backgroundColor": "#000000",
+                    "fillOpacity": 0.5,
+                    "fontSize": 12,
+                    "padding": 2,
+                },
+            )
+        ],
+        ReplacementMode.REPLACE.value,
+    )
+
+    assert image_size not in rgba_allocations
+    assert image_size not in composite_sizes
+    assert rgba_allocations == [(101, 81)]
+    assert composite_sizes == [(101, 81)]
+
+    rendered = Image.open(io.BytesIO(output)).convert("RGB")
+    assert all(120 <= channel <= 135 for channel in rendered.getpixel((120, 140)))
+    assert all(120 <= channel <= 135 for channel in rendered.getpixel((200, 160)))
+    assert all(120 <= channel <= 135 for channel in rendered.getpixel((150, 200)))
+    assert rendered.getpixel((90, 110)) == (255, 255, 255)
+    assert rendered.getpixel((201, 160)) == (255, 255, 255)
+    assert rendered.getpixel((150, 201)) == (255, 255, 255)
+
+
+@pytest.mark.asyncio
+async def test_translucent_fill_clips_partially_out_of_bounds_region() -> None:
+    image = Image.new("RGB", (120, 100), "white")
+    buffer = io.BytesIO()
+    image.save(buffer, format="PNG")
+
+    engine = PillowRenderEngine()
+    output = await engine.render_page(
+        buffer.getvalue(),
+        [
+            RenderRegion(
+                bounding_box={"x": -10, "y": -8, "width": 50, "height": 40},
+                original_text=None,
+                translated_text=" ",
+                render_style={
+                    "background_color": "#000000",
+                    "fillOpacity": 0.5,
+                    "fontSize": 10,
+                    "padding": 2,
+                },
+            )
+        ],
+        ReplacementMode.REPLACE.value,
+    )
+
+    rendered = Image.open(io.BytesIO(output)).convert("RGB")
+    assert all(120 <= channel <= 135 for channel in rendered.getpixel((20, 20)))
+    assert all(120 <= channel <= 135 for channel in rendered.getpixel((40, 20)))
+    assert all(120 <= channel <= 135 for channel in rendered.getpixel((20, 32)))
+    assert rendered.getpixel((60, 50)) == (255, 255, 255)
+
+
+@pytest.mark.asyncio
 async def test_clean_page_whites_out_regions_and_engine_factory() -> None:
     image = Image.new("RGB", (160, 120), "black")
     buffer = io.BytesIO()
@@ -182,10 +277,18 @@ async def test_render_page_covers_overlay_bilingual_side_panel_and_subtitles() -
     )
 
     engine = PillowRenderEngine()
-    overlay = Image.open(io.BytesIO(await engine.render_page(data, [region], ReplacementMode.OVERLAY.value)))
-    bilingual = Image.open(io.BytesIO(await engine.render_page(data, [region], ReplacementMode.BILINGUAL.value)))
-    side_panel = Image.open(io.BytesIO(await engine.render_page(data, [region], ReplacementMode.SIDE_PANEL.value)))
-    subtitles = Image.open(io.BytesIO(await engine.render_page(data, [region], ReplacementMode.SUBTITLE.value)))
+    overlay = Image.open(
+        io.BytesIO(await engine.render_page(data, [region], ReplacementMode.OVERLAY.value))
+    )
+    bilingual = Image.open(
+        io.BytesIO(await engine.render_page(data, [region], ReplacementMode.BILINGUAL.value))
+    )
+    side_panel = Image.open(
+        io.BytesIO(await engine.render_page(data, [region], ReplacementMode.SIDE_PANEL.value))
+    )
+    subtitles = Image.open(
+        io.BytesIO(await engine.render_page(data, [region], ReplacementMode.SUBTITLE.value))
+    )
     empty_subtitles = Image.open(
         io.BytesIO(
             await engine.render_page(
@@ -214,7 +317,11 @@ def test_rendering_helper_edge_cases() -> None:
     assert _wrap_text("first\nsecond", 6) == "first\nsecond"
     assert wrapped
     assert font is not None
-    assert _style_color({"fill": [300, -2, "bad"], "backgroundColor": "invalid"}, ("fill",), "white") == (255, 255, 255)
+    assert _style_color(
+        {"fill": [300, -2, "bad"], "backgroundColor": "invalid"},
+        ("fill",),
+        "white",
+    ) == (255, 255, 255)
     assert _style_color({"fill": (1, 2, 3)}, ("fill",), "white") == (1, 2, 3)
     assert _style_int({"fontSize": 12.8}, "fontSize") == 12
     assert _style_int({"fontSize": "bad"}, "fontSize", 9) == 9
