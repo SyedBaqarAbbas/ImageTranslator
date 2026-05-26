@@ -244,6 +244,7 @@ export function Editor() {
         patch: {
           selectedRegionId: createdRegion.id,
           tool: "select",
+          mode: variables.tool === "highlight_ocr" ? "translated" : mode,
           workspaceStatus: variables.tool === "highlight_ocr" ? "OCR region highlighted" : "Text box added",
         },
       });

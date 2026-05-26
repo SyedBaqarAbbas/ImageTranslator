@@ -423,6 +423,7 @@ describe("Editor", () => {
     await screen.findByText(project.name);
 
     fireEvent.click(screen.getByRole("button", { name: /highlight ocr region/i }));
+    expect(screen.getByRole("button", { name: /^original$/i })).toHaveAttribute("aria-pressed", "true");
     const canvasFrame = screen.getByTestId("canvas-frame");
     firePointerEvent(canvasFrame, "pointerdown", { pointerId: 5, button: 0, clientX: 120, clientY: 120 });
     firePointerEvent(canvasFrame, "pointermove", { pointerId: 5, clientX: 320, clientY: 260 });
@@ -443,6 +444,7 @@ describe("Editor", () => {
       );
     });
     expect(await screen.findByText(/OCR region highlighted/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^translated$/i })).toHaveAttribute("aria-pressed", "true");
   });
 
   it("runs OCR and translates source text with project language context", async () => {
