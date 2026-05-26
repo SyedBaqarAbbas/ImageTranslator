@@ -256,6 +256,45 @@ describe("httpApi", () => {
     expect(fetchMock).toHaveBeenCalledWith("http://api.test/api/v1/jobs/job-1", expect.any(Object));
   });
 
+  it("passes abort signals to processing job requests", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "http://api.test/api/v1/jobs/job-1") {
+        return jsonResponse({
+          id: "job-1",
+          project_id: "project-1",
+          page_id: null,
+          region_id: null,
+          job_type: "process_project",
+          status: "running",
+          progress: 50,
+          stage: "processing",
+          error_code: null,
+          error_message: null,
+          attempts: 1,
+          max_attempts: 3,
+          celery_task_id: null,
+          result: null,
+          started_at: "2026-04-27T00:00:00Z",
+          completed_at: null,
+          created_at: "2026-04-27T00:00:00Z",
+          updated_at: "2026-04-27T00:00:00Z",
+        });
+      }
+      return jsonResponse({ error: { message: `Unexpected ${url}` } }, { status: 404 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const controller = new AbortController();
+
+    const httpApi = await loadHttpApi();
+    await httpApi.getProcessingJob("job-1", { signal: controller.signal });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://api.test/api/v1/jobs/job-1",
+      expect.objectContaining({ signal: controller.signal }),
+    );
+  });
+
   it("uses backend project delete path", async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);

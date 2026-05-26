@@ -436,7 +436,8 @@ export const mockApi: ApiAdapter = {
     return delay(job);
   },
 
-  async getProcessingJob(jobId: string): Promise<ProcessingJobRead> {
+  async getProcessingJob(jobId: string, options?: { signal?: AbortSignal }): Promise<ProcessingJobRead> {
+    void options;
     return delay(findJob(jobId));
   },
 
