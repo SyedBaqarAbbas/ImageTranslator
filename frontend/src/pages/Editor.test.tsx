@@ -7,6 +7,7 @@ import type { PageRead, ProcessingJobRead, ProjectDetail, TextRegionRead, TextRe
 import { Editor } from "./Editor";
 
 const mocks = vi.hoisted(() => ({
+  retranslateTimeoutMessage: "Translation is taking longer than expected. You can retry or refresh the page to check the job later.",
   api: {
     listProjects: vi.fn(),
     getProject: vi.fn(),
@@ -32,6 +33,9 @@ vi.mock("../api", () => ({
 }));
 
 vi.mock("../lib/retranslateJob", () => ({
+  RETRANSLATE_JOB_TIMEOUT_MESSAGE: mocks.retranslateTimeoutMessage,
+  isRetranslateJobPollingTimeoutError: (error: unknown) =>
+    error instanceof Error && error.name === "RetranslateJobPollingTimeoutError",
   waitForSuccessfulRetranslateJob: mocks.waitForSuccessfulRetranslateJob,
 }));
 
@@ -331,6 +335,31 @@ describe("Editor", () => {
       });
     });
     expect(mocks.waitForSuccessfulRetranslateJob).toHaveBeenCalledWith(job, { getProcessingJob: mocks.api.getProcessingJob });
+    expect(await screen.findByRole("status")).toHaveTextContent("Translation updated.");
+  });
+
+  it("recovers region editing and retry after retranslate polling times out", async () => {
+    const timeoutError = new Error(mocks.retranslateTimeoutMessage);
+    timeoutError.name = "RetranslateJobPollingTimeoutError";
+    mocks.waitForSuccessfulRetranslateJob.mockRejectedValueOnce(timeoutError).mockResolvedValueOnce(job);
+
+    renderEditor();
+    await screen.findByText(project.name);
+
+    fireEvent.click(screen.getByRole("button", { name: /retranslate region/i }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(mocks.retranslateTimeoutMessage);
+    expect(screen.queryByText(/Translation failed:/)).not.toBeInTheDocument();
+    expect(screen.getByText(/Translation still running/)).toBeInTheDocument();
+    expect(screen.getByLabelText(/target/i)).not.toBeDisabled();
+
+    const retryButton = screen.getByRole("button", { name: /retranslate region/i });
+    expect(retryButton).not.toBeDisabled();
+    fireEvent.click(retryButton);
+
+    await waitFor(() => {
+      expect(mocks.api.retranslateRegion).toHaveBeenCalledTimes(2);
+    });
     expect(await screen.findByRole("status")).toHaveTextContent("Translation updated.");
   });
 

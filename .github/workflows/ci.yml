@@ -2,9 +2,16 @@ name: CI
 
 on:
   pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - ready_for_review
+      - edited
   push:
     branches:
       - main
+      - dev
   workflow_dispatch:
 
 permissions:
@@ -21,7 +28,7 @@ jobs:
 
     steps:
       - name: Check out repository
-        if: github.event_name == 'push'
+        if: github.event_name != 'workflow_dispatch'
         uses: actions/checkout@v6
         with:
           fetch-depth: 0
@@ -29,31 +36,61 @@ jobs:
       - name: Detect changed paths
         id: filter
         if: github.event_name != 'workflow_dispatch'
-        uses: dorny/paths-filter@v3
-        with:
-          filters: |
-            backend:
-              - 'backend/**'
-              - '!backend/*.md'
-              - '!backend/**/*.md'
-              - 'e2e/**'
-              - '!e2e/*.md'
-              - '!e2e/**/*.md'
-              - 'docker-compose.yml'
-              - 'start-local-prototype.sh'
-              - 'up-and-test.sh'
-              - '.github/workflows/**'
-            frontend:
-              - 'frontend/**'
-              - '!frontend/*.md'
-              - '!frontend/**/*.md'
-              - 'e2e/**'
-              - '!e2e/*.md'
-              - '!e2e/**/*.md'
-              - 'docker-compose.yml'
-              - 'start-local-prototype.sh'
-              - 'up-and-test.sh'
-              - '.github/workflows/**'
+        env:
+          BEFORE_SHA: ${{ github.event.before }}
+          CURRENT_SHA: ${{ github.sha }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          python - <<'PY'
+          from pathlib import PurePosixPath
+          import os
+          import subprocess
+
+          def git_lines(*args: str) -> list[str]:
+              return subprocess.check_output(["git", *args], text=True).splitlines()
+
+          def changed_files() -> list[str]:
+              event_name = os.environ["GITHUB_EVENT_NAME"]
+              if event_name == "pull_request":
+                  base = os.environ["PR_BASE_SHA"]
+                  head = os.environ["PR_HEAD_SHA"]
+                  subprocess.run(["git", "fetch", "--no-tags", "origin", base, head], check=False)
+                  return git_lines("diff", "--name-only", f"{base}...{head}")
+
+              before = os.environ.get("BEFORE_SHA", "")
+              current = os.environ["CURRENT_SHA"]
+              if before and set(before) != {"0"}:
+                  return git_lines("diff", "--name-only", f"{before}..{current}")
+              return git_lines("diff-tree", "--no-commit-id", "--name-only", "-r", current)
+
+          def is_markdown(path: str) -> bool:
+              return PurePosixPath(path).suffix.lower() == ".md"
+
+          def selects_backend(path: str) -> bool:
+              return (
+                  (path.startswith("backend/") and not is_markdown(path))
+                  or (path.startswith("e2e/") and not is_markdown(path))
+                  or path in {"docker-compose.yml", "start-local-prototype.sh", "up-and-test.sh"}
+                  or path.startswith(".github/workflows/")
+              )
+
+          def selects_frontend(path: str) -> bool:
+              return (
+                  (path.startswith("frontend/") and not is_markdown(path))
+                  or (path.startswith("e2e/") and not is_markdown(path))
+                  or path in {"docker-compose.yml", "start-local-prototype.sh", "up-and-test.sh"}
+                  or path.startswith(".github/workflows/")
+              )
+
+          files = changed_files()
+          backend = any(selects_backend(path) for path in files)
+          frontend = any(selects_frontend(path) for path in files)
+
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write(f"backend={'true' if backend else 'false'}\n")
+              output.write(f"frontend={'true' if frontend else 'false'}\n")
+          PY
 
       - name: Summarize selected checks
         run: |

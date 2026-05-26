@@ -1,6 +1,10 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { waitForSuccessfulRetranslateJob } from "./retranslateJob";
+import {
+  RETRANSLATE_JOB_TIMEOUT_MESSAGE,
+  RetranslateJobPollingTimeoutError,
+  waitForSuccessfulRetranslateJob,
+} from "./retranslateJob";
 import type { ProcessingJobRead } from "../types/api";
 
 function processingJob(status: string, errorMessage: string | null = null): ProcessingJobRead {
@@ -27,18 +31,84 @@ function processingJob(status: string, errorMessage: string | null = null): Proc
 }
 
 describe("waitForSuccessfulRetranslateJob", () => {
-  it("keeps polling beyond the old fixed retry window until the job succeeds", async () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("rejects with a timeout-specific error when the job stays running", async () => {
+    let now = 0;
+    const getProcessingJob = vi.fn<(jobId: string, options?: { signal?: AbortSignal }) => Promise<ProcessingJobRead>>().mockResolvedValue(processingJob("running"));
+    const waitForNextPoll = vi.fn<(_ms: number) => Promise<void>>().mockImplementation(async (ms) => {
+      now += ms;
+    });
+
+    let error: unknown;
+    try {
+      await waitForSuccessfulRetranslateJob(processingJob("queued"), {
+        getProcessingJob,
+        waitForNextPoll,
+        getNow: () => now,
+        timeoutMs: 1_500,
+      });
+    } catch (caught) {
+      error = caught;
+    }
+
+    expect(error).toBeInstanceOf(RetranslateJobPollingTimeoutError);
+    expect(error).toMatchObject({
+      name: "RetranslateJobPollingTimeoutError",
+      message: RETRANSLATE_JOB_TIMEOUT_MESSAGE,
+      jobId: "job-1",
+      lastStatus: "running",
+    });
+    expect(getProcessingJob).toHaveBeenCalledTimes(2);
+    expect(waitForNextPoll).toHaveBeenCalledTimes(3);
+  });
+
+  it("rejects with a timeout-specific error when a status request hangs", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+    let requestSignal: AbortSignal | undefined;
+    const getProcessingJob = vi.fn<(jobId: string, options?: { signal?: AbortSignal }) => Promise<ProcessingJobRead>>().mockImplementation((_jobId, options) => {
+      requestSignal = options?.signal;
+      return new Promise(() => {});
+    });
+
+    const result = waitForSuccessfulRetranslateJob(processingJob("queued"), {
+      getProcessingJob,
+      timeoutMs: 1_500,
+    });
+    const assertion = expect(result).rejects.toMatchObject({
+      name: "RetranslateJobPollingTimeoutError",
+      message: RETRANSLATE_JOB_TIMEOUT_MESSAGE,
+      jobId: "job-1",
+      lastStatus: "queued",
+    });
+
+    await vi.advanceTimersByTimeAsync(1_500);
+
+    await assertion;
+    expect(getProcessingJob).toHaveBeenCalledTimes(1);
+    expect(requestSignal?.aborted).toBe(true);
+  });
+
+  it("keeps polling until the job succeeds before the timeout", async () => {
+    let now = 0;
     const runningJobs = Array.from({ length: 30 }, () => processingJob("running"));
-    const getProcessingJob = vi.fn<(jobId: string) => Promise<ProcessingJobRead>>();
+    const getProcessingJob = vi.fn<(jobId: string, options?: { signal?: AbortSignal }) => Promise<ProcessingJobRead>>();
     for (const job of runningJobs) {
       getProcessingJob.mockResolvedValueOnce(job);
     }
     getProcessingJob.mockResolvedValueOnce(processingJob("succeeded"));
-    const waitForNextPoll = vi.fn<(_ms: number) => Promise<void>>().mockResolvedValue(undefined);
+    const waitForNextPoll = vi.fn<(_ms: number) => Promise<void>>().mockImplementation(async (ms) => {
+      now += ms;
+    });
 
     const result = await waitForSuccessfulRetranslateJob(processingJob("queued"), {
       getProcessingJob,
       waitForNextPoll,
+      getNow: () => now,
+      timeoutMs: 60_000,
     });
 
     expect(result.status).toBe("succeeded");
@@ -47,7 +117,9 @@ describe("waitForSuccessfulRetranslateJob", () => {
   });
 
   it("throws only when the backend reports a terminal failure", async () => {
-    const getProcessingJob = vi.fn<(jobId: string) => Promise<ProcessingJobRead>>().mockResolvedValue(processingJob("failed", "Provider unavailable."));
+    const getProcessingJob = vi.fn<(jobId: string, options?: { signal?: AbortSignal }) => Promise<ProcessingJobRead>>().mockResolvedValue(
+      processingJob("failed", "Provider unavailable."),
+    );
     const waitForNextPoll = vi.fn<(_ms: number) => Promise<void>>().mockResolvedValue(undefined);
 
     await expect(

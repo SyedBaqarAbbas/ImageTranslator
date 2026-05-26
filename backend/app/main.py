@@ -33,13 +33,22 @@ app = FastAPI(
 def _cors_allowed_origins() -> list[str]:
     if settings.cors_allowed_origins:
         return settings.cors_allowed_origins
-    return ["*"]
+    if settings.environment == "local":
+        return ["*"]
+    return []
+
+
+def _cors_allow_credentials(allowed_origins: list[str]) -> bool:
+    return "*" not in allowed_origins or settings.environment == "local"
+
+
+cors_allowed_origins = _cors_allowed_origins()
 
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=_cors_allowed_origins(),
-    allow_credentials=True,
+    allow_origins=cors_allowed_origins,
+    allow_credentials=_cors_allow_credentials(cors_allowed_origins),
     allow_methods=["*"],
     allow_headers=["*"],
 )

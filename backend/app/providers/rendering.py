@@ -187,15 +187,24 @@ def _draw_rounded_fill(
         ImageDraw.Draw(canvas).rounded_rectangle(bbox, radius=8, fill=fill)
         return
 
-    overlay = Image.new("RGBA", canvas.size, (0, 0, 0, 0))
+    left = max(0, bbox[0])
+    top = max(0, bbox[1])
+    right = min(canvas.width, bbox[2] + 1)
+    bottom = min(canvas.height, bbox[3] + 1)
+    if right <= left or bottom <= top:
+        return
+
+    crop_box = (left, top, right, bottom)
+    base = canvas.crop(crop_box).convert("RGBA")
+    overlay = Image.new("RGBA", base.size, (0, 0, 0, 0))
     overlay_draw = ImageDraw.Draw(overlay)
     overlay_draw.rounded_rectangle(
-        bbox,
+        (bbox[0] - left, bbox[1] - top, bbox[2] - left, bbox[3] - top),
         radius=8,
         fill=(*fill, round(opacity * 255)),
     )
-    composed = Image.alpha_composite(canvas.convert("RGBA"), overlay).convert("RGB")
-    canvas.paste(composed)
+    composed = Image.alpha_composite(base, overlay).convert(canvas.mode)
+    canvas.paste(composed, (left, top))
 
 
 def _render_region(
