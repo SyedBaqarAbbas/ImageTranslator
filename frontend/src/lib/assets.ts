@@ -27,7 +27,7 @@ export function downloadUrlForAsset(asset: { url?: string; key?: string } | null
   }
 
   if (asset?.key) {
-    return `${import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000/api/v1"}/assets/by-key/${asset.key}`;
+    return `${import.meta.env.VITE_API_BASE_URL ?? "/api/v1"}/assets/by-key/${asset.key}`;
   }
 
   return undefined;

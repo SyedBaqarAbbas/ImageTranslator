@@ -2,7 +2,7 @@ x-backend-env: &backend-env
   DATABASE_URL: postgresql+asyncpg://app:app@postgres:5432/image_translator
   CELERY_TASK_ALWAYS_EAGER: "true"
   LOCAL_STORAGE_PATH: /app/data/storage
-  PUBLIC_BASE_URL: http://localhost:8000
+  PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-}
   OCR_PROVIDER: ${OCR_PROVIDER:-tesseract}
   TRANSLATION_PROVIDER: ${TRANSLATION_PROVIDER:-opus_mt}
   OPUS_MT_MODEL_ROOT: ${OPUS_MT_MODEL_ROOT:-/app/models/opus-mt}
@@ -43,7 +43,8 @@ services:
     command: sh -c "npm install && npm run dev"
     environment:
       VITE_API_MODE: http
-      VITE_API_BASE_URL: http://localhost:8000/api/v1
+      VITE_API_BASE_URL: ${VITE_API_BASE_URL:-/api/v1}
+      VITE_API_PROXY_TARGET: ${VITE_API_PROXY_TARGET:-http://api:8000}
       CHOKIDAR_USEPOLLING: "true"
     ports:
       - "5173:5173"

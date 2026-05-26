@@ -61,7 +61,7 @@ describe("asset URL helpers", () => {
     expect(downloadUrlForAsset(null)).toBeUndefined();
     expect(downloadUrlForAsset({ url: "ready-url" })).toBe("ready-url");
     expect(downloadUrlForAsset({ key: "projects/project-1/final/page.png" })).toBe(
-      "http://localhost:8000/api/v1/assets/by-key/projects/project-1/final/page.png",
+      "/api/v1/assets/by-key/projects/project-1/final/page.png",
     );
   });
 });

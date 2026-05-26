@@ -1,0 +1,53 @@
+site_name: ImageTranslator Docs
+site_description: User and developer documentation for the ImageTranslator manga/comic translation workflow.
+site_url: https://syedbaqarabbas.github.io/ImageTranslator/
+repo_url: https://github.com/SyedBaqarAbbas/ImageTranslator
+repo_name: SyedBaqarAbbas/ImageTranslator
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  features:
+    - navigation.sections
+    - navigation.tabs
+    - navigation.top
+    - search.highlight
+    - search.suggest
+    - toc.follow
+  palette:
+    - scheme: default
+      primary: deep purple
+      accent: cyan
+
+plugins:
+  - search
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.highlight
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+
+nav:
+  - Home: index.md
+  - Release Notes: release-notes.md
+  - User Guide:
+      - Getting Started: getting-started.md
+      - Using the App: using-the-app.md
+      - Troubleshooting: troubleshooting.md
+  - Setup:
+      - Local Setup: local-setup.md
+      - Docker: docker.md
+      - Deployment: deployment.md
+  - Technical Reference:
+      - Architecture: architecture.md
+      - Backend API: backend-api.md
+      - Frontend: frontend.md
+      - Providers: providers.md
+  - Contributing: contributing.md
