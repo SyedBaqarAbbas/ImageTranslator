@@ -7,7 +7,12 @@ from app.api.deps import get_public_user
 from app.db.session import get_session
 from app.models import User
 from app.schemas.job import ProcessingJobRead
-from app.schemas.region import RetranslateRequest, TextRegionRead, TextRegionUpdate
+from app.schemas.region import (
+    RetranslateRequest,
+    TextRegionCreate,
+    TextRegionRead,
+    TextRegionUpdate,
+)
 from app.services.processing_service import ProcessingService
 from app.services.region_service import RegionService
 
@@ -23,6 +28,24 @@ async def list_page_regions(
     session: AsyncSession = SESSION_DEP,
 ) -> list[TextRegionRead]:
     return await RegionService(session).list_page_regions(current_user.id, page_id)
+
+
+@router.post(
+    "/pages/{page_id}/regions",
+    response_model=TextRegionRead,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_page_region(
+    page_id: str,
+    payload: TextRegionCreate,
+    current_user: User = PUBLIC_USER_DEP,
+    session: AsyncSession = SESSION_DEP,
+) -> TextRegionRead:
+    region = await RegionService(session).create_region(current_user.id, page_id, payload)
+    if payload.auto_rerender:
+        await ProcessingService(session).create_rerender_region_job(current_user.id, region.id)
+        await session.refresh(region)
+    return region
 
 
 @router.patch("/regions/{region_id}", response_model=TextRegionRead)

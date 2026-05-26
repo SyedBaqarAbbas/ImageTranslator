@@ -122,6 +122,57 @@ describe("CanvasWorkspace", () => {
     expect(screen.getByText("No page preview available")).toBeInTheDocument();
   });
 
+  it("creates a default text box from an add-tool click", () => {
+    const onCreateRegion = vi.fn();
+    renderWorkspace({}, "translated", {
+      regions: [],
+      selectedRegionId: undefined,
+      tool: "addText",
+      onCreateRegion,
+    });
+    const canvasFrame = screen.getByTestId("canvas-frame");
+
+    fireEvent.pointerDown(canvasFrame, { pointerId: 1, button: 0, clientX: 400, clientY: 300 });
+    fireEvent.pointerUp(canvasFrame, { pointerId: 1, clientX: 400, clientY: 300 });
+
+    expect(onCreateRegion).toHaveBeenCalledWith(
+      expect.objectContaining({
+        x: expect.any(Number),
+        y: expect.any(Number),
+        width: expect.any(Number),
+        height: expect.any(Number),
+      }),
+    );
+    const box = onCreateRegion.mock.calls[0][0];
+    expect(box.width).toBeGreaterThan(0);
+    expect(box.height).toBeGreaterThan(0);
+    expect(box.x).toBeGreaterThanOrEqual(0);
+    expect(box.y).toBeGreaterThanOrEqual(0);
+  });
+
+  it("creates a dragged text box in add mode", () => {
+    const onCreateRegion = vi.fn();
+    renderWorkspace({}, "translated", {
+      regions: [],
+      selectedRegionId: undefined,
+      tool: "addText",
+      onCreateRegion,
+    });
+    const canvasFrame = screen.getByTestId("canvas-frame");
+
+    fireEvent.pointerDown(canvasFrame, { pointerId: 1, button: 0, clientX: 100, clientY: 120 });
+    fireEvent.pointerMove(canvasFrame, { pointerId: 1, clientX: 300, clientY: 260 });
+    fireEvent.pointerUp(canvasFrame, { pointerId: 1, clientX: 300, clientY: 260 });
+
+    expect(onCreateRegion).toHaveBeenCalledTimes(1);
+    expect(onCreateRegion.mock.calls[0][0]).toMatchObject({
+      x: 30,
+      y: 64,
+      width: 60,
+      height: 75,
+    });
+  });
+
   it("selects regions from keyboard input", () => {
     const onSelectRegion = vi.fn();
     renderWorkspace({}, "translated", { selectedRegionId: undefined, onSelectRegion });

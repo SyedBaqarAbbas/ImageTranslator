@@ -8,6 +8,7 @@ auditPage({
   expectedButtons: withWorkspaceShell([
     { label: "Undo", kind: "disabledExpected" },
     { label: "Reset view", kind: "changesUiState" },
+    { label: "Add text box", kind: "changesUiState" },
     { label: "original", kind: "changesUiState" },
     { label: "translated", kind: "currentSelection" },
     { label: "Compare split", kind: "changesUiState" },

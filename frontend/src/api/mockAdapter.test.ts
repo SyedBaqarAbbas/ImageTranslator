@@ -128,6 +128,33 @@ describe("mockApi", () => {
       mockApi.uploadPages(project.id, [new File(["page"], "page.png", { type: "text/plain" })]),
     );
     const regions = await resolveDelayed(mockApi.listRegions(pages[0].id));
+    const blankRegion = await resolveDelayed(
+      mockApi.createRegion(pages[0].id, {
+        bounding_box: { x: 12, y: 24, width: 120, height: 80 },
+      }),
+    );
+    const manualRegion = await resolveDelayed(
+      mockApi.createRegion(pages[0].id, {
+        region_type: "caption",
+        bounding_box: { x: 20, y: 30, width: 140, height: 90 },
+        user_text: "Manual mock caption",
+      }),
+    );
+
+    expect(blankRegion).toMatchObject({
+      region_index: regions.length + 1,
+      region_type: "unknown",
+      status: "detected",
+      user_text: null,
+    });
+    expect(manualRegion).toMatchObject({
+      region_index: regions.length + 2,
+      region_type: "caption",
+      status: "user_edited",
+      user_text: "Manual mock caption",
+    });
+    await expect(resolveDelayed(mockApi.listRegions(pages[0].id))).resolves.toHaveLength(regions.length + 2);
+
     const deleteJob = await resolveDelayed(mockApi.deleteRegion(regions[0].id));
     await vi.advanceTimersByTimeAsync(500);
     expect(await resolveDelayed(mockApi.getProcessingJob(deleteJob.id))).toMatchObject({
@@ -165,6 +192,9 @@ describe("mockApi", () => {
     await expect(mockApi.getProject("missing")).rejects.toThrow("Project not found.");
     await expect(mockApi.listPages("missing")).rejects.toThrow("Project not found.");
     await expect(mockApi.getPage("project-cyber", "missing")).rejects.toThrow("Page not found.");
+    await expect(mockApi.createRegion("missing-page", { bounding_box: { x: 1, y: 2, width: 3, height: 4 } })).rejects.toThrow(
+      "Page not found.",
+    );
     await expect(mockApi.listRegions("missing-page")).resolves.toEqual([]);
     await expect(mockApi.deleteRegion("missing-region")).rejects.toThrow("Text region not found.");
     await expect(mockApi.getProcessingJob("missing-job")).rejects.toThrow("Job not found.");

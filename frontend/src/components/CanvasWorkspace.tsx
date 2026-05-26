@@ -15,15 +15,33 @@ interface DragState {
   handle?: ResizeHandle;
 }
 
+interface AddTextDragState {
+  pointerId: number;
+  startClientX: number;
+  startClientY: number;
+  startPoint: CanvasPoint;
+  box: BoundingBox;
+  hasMoved: boolean;
+}
+
+interface CanvasPoint {
+  x: number;
+  y: number;
+}
+
 interface DisplaySize {
   width: number;
   height: number;
 }
 
+type CanvasTool = "select" | "addText";
 type ResizeHandle = "n" | "ne" | "e" | "se" | "s" | "sw" | "w" | "nw";
 
 const RESIZE_HANDLES: ResizeHandle[] = ["nw", "n", "ne", "e", "se", "s", "sw", "w"];
 const MIN_REGION_SIZE = 24;
+const DEFAULT_TEXT_BOX_MAX_WIDTH = 220;
+const DEFAULT_TEXT_BOX_MAX_HEIGHT = 120;
+const ADD_TEXT_DRAG_THRESHOLD = 6;
 const BASE_FIT_WIDTH = 760;
 const DEFAULT_TEXT_COLOR = "#0f172a";
 const DEFAULT_FILL_COLOR = "#ffffff";
@@ -74,14 +92,73 @@ function containerSizeReducer(_current: DisplaySize, next: DisplaySize): Display
 }
 
 function clampBox(box: BoundingBox, canvasWidth: number, canvasHeight: number): BoundingBox {
-  const width = Math.max(MIN_REGION_SIZE, Math.min(Math.round(box.width), canvasWidth));
-  const height = Math.max(MIN_REGION_SIZE, Math.min(Math.round(box.height), canvasHeight));
+  const maxWidth = Math.max(Math.round(canvasWidth), 1);
+  const maxHeight = Math.max(Math.round(canvasHeight), 1);
+  const minWidth = Math.min(MIN_REGION_SIZE, maxWidth);
+  const minHeight = Math.min(MIN_REGION_SIZE, maxHeight);
+  const width = Math.max(minWidth, Math.min(Math.round(box.width), maxWidth));
+  const height = Math.max(minHeight, Math.min(Math.round(box.height), maxHeight));
   return {
-    x: Math.max(0, Math.min(Math.round(box.x), Math.max(canvasWidth - width, 0))),
-    y: Math.max(0, Math.min(Math.round(box.y), Math.max(canvasHeight - height, 0))),
+    x: Math.max(0, Math.min(Math.round(box.x), Math.max(maxWidth - width, 0))),
+    y: Math.max(0, Math.min(Math.round(box.y), Math.max(maxHeight - height, 0))),
     width,
     height,
   };
+}
+
+function defaultTextBoxForPoint(point: CanvasPoint, canvasWidth: number, canvasHeight: number): BoundingBox {
+  const width = Math.min(
+    canvasWidth,
+    Math.max(MIN_REGION_SIZE, Math.min(Math.round(canvasWidth * 0.32), DEFAULT_TEXT_BOX_MAX_WIDTH)),
+  );
+  const height = Math.min(
+    canvasHeight,
+    Math.max(MIN_REGION_SIZE, Math.min(Math.round(canvasHeight * 0.14), DEFAULT_TEXT_BOX_MAX_HEIGHT)),
+  );
+  return clampBox(
+    {
+      x: point.x - width / 2,
+      y: point.y - height / 2,
+      width,
+      height,
+    },
+    canvasWidth,
+    canvasHeight,
+  );
+}
+
+function canvasPointForPointer(
+  event: PointerEvent,
+  element: HTMLElement | null,
+  canvasWidth: number,
+  canvasHeight: number,
+): CanvasPoint | null {
+  const rect = element?.getBoundingClientRect();
+  if (!rect?.width || !rect.height) {
+    return null;
+  }
+  return {
+    x: Math.max(0, Math.min(((event.clientX - rect.left) / rect.width) * canvasWidth, canvasWidth)),
+    y: Math.max(0, Math.min(((event.clientY - rect.top) / rect.height) * canvasHeight, canvasHeight)),
+  };
+}
+
+function boxFromCanvasPoints(
+  startPoint: CanvasPoint,
+  endPoint: CanvasPoint,
+  canvasWidth: number,
+  canvasHeight: number,
+): BoundingBox {
+  return clampBox(
+    {
+      x: Math.min(startPoint.x, endPoint.x),
+      y: Math.min(startPoint.y, endPoint.y),
+      width: Math.abs(endPoint.x - startPoint.x),
+      height: Math.abs(endPoint.y - startPoint.y),
+    },
+    canvasWidth,
+    canvasHeight,
+  );
 }
 
 function clampComparisonSplit(value: number): number {
@@ -224,6 +301,7 @@ function CanvasRegion({
   onUpdateDrag,
   onFinishDrag,
   onCancelDrag,
+  interactive,
 }: {
   region: TextRegionRead;
   active: boolean;
@@ -238,6 +316,7 @@ function CanvasRegion({
   onUpdateDrag: (event: PointerEvent<HTMLDivElement>) => void;
   onFinishDrag: (event: PointerEvent<HTMLDivElement>) => void;
   onCancelDrag: () => void;
+  interactive: boolean;
 }) {
   const left = (boundingBox.x / canvasWidth) * 100;
   const top = (boundingBox.y / canvasHeight) * 100;
@@ -258,21 +337,25 @@ function CanvasRegion({
     <div
       role="button"
       aria-current={active ? "true" : undefined}
-      tabIndex={0}
+      aria-disabled={interactive ? undefined : "true"}
+      tabIndex={interactive ? 0 : -1}
       title={`Region ${region.region_index}`}
-      onPointerDown={(event) => onStartDrag(event, region)}
-      onPointerMove={onUpdateDrag}
-      onPointerUp={onFinishDrag}
-      onPointerCancel={onCancelDrag}
+      onPointerDown={interactive ? (event) => onStartDrag(event, region) : undefined}
+      onPointerMove={interactive ? onUpdateDrag : undefined}
+      onPointerUp={interactive ? onFinishDrag : undefined}
+      onPointerCancel={interactive ? onCancelDrag : undefined}
       onKeyDown={(event) => {
+        if (!interactive) {
+          return;
+        }
         if (event.key === "Enter" || event.key === " ") {
           event.preventDefault();
           onSelectRegion(region.id);
         }
       }}
-      className={`absolute cursor-move select-none rounded-[3px] text-left transition ${
+      className={`absolute select-none rounded-[3px] text-left transition ${
         active ? "border-2 border-secondary bg-secondary/12 shadow-cyan" : "border-2 border-dashed border-secondary/80 bg-secondary/5 hover:bg-secondary/10"
-      }`}
+      } ${interactive ? "cursor-move" : "pointer-events-none cursor-crosshair"}`}
       style={{
         left: `${left}%`,
         top: `${top}%`,
@@ -289,7 +372,7 @@ function CanvasRegion({
           {region.user_text || region.translated_text || ""}
         </span>
       ) : null}
-      {active
+      {active && interactive
         ? RESIZE_HANDLES.map((handle) => (
             <span
               key={handle}
@@ -315,9 +398,12 @@ export function CanvasWorkspace({
   selectedRegionId,
   onSelectRegion,
   onMoveRegion,
+  onCreateRegion,
   mode,
   zoom = 1,
   comparison = false,
+  tool = "select",
+  isCreatingRegion = false,
 }: {
   imageUrl?: string;
   comparisonOriginalImageUrl?: string;
@@ -330,9 +416,12 @@ export function CanvasWorkspace({
   selectedRegionId?: string;
   onSelectRegion: (regionId: string) => void;
   onMoveRegion?: (regionId: string, boundingBox: BoundingBox) => void;
+  onCreateRegion?: (boundingBox: BoundingBox) => void;
   mode: "original" | "translated";
   zoom?: number;
   comparison?: boolean;
+  tool?: CanvasTool;
+  isCreatingRegion?: boolean;
 }) {
   const canvasWidth = width ?? 920;
   const canvasHeight = height ?? 1320;
@@ -341,6 +430,7 @@ export function CanvasWorkspace({
   const comparisonPointerId = useRef<number | null>(null);
   const [containerSize, setContainerSize] = useReducer(containerSizeReducer, { width: 0, height: 0 });
   const [drag, setDrag] = useState<DragState | null>(null);
+  const [addTextDrag, setAddTextDrag] = useState<AddTextDragState | null>(null);
   const [internalComparisonSplit, setInternalComparisonSplit] = useState(50);
   const activeComparisonSplit = clampComparisonSplit(comparisonSplit ?? internalComparisonSplit);
   const setComparisonSplit = onComparisonSplitChange ?? setInternalComparisonSplit;
@@ -459,6 +549,9 @@ export function CanvasWorkspace({
   }
 
   function startDrag(event: PointerEvent<HTMLDivElement>, region: TextRegionRead) {
+    if (tool !== "select") {
+      return;
+    }
     if (!displaySize || !onMoveRegion) {
       onSelectRegion(region.id);
       return;
@@ -478,6 +571,9 @@ export function CanvasWorkspace({
   }
 
   function startResize(event: PointerEvent<HTMLSpanElement>, region: TextRegionRead, handle: ResizeHandle) {
+    if (tool !== "select") {
+      return;
+    }
     if (!displaySize || !onMoveRegion) {
       onSelectRegion(region.id);
       return;
@@ -523,6 +619,66 @@ export function CanvasWorkspace({
     setDrag(null);
   }
 
+  function startAddTextDrag(event: PointerEvent<HTMLDivElement>) {
+    if (tool !== "addText" || isCreatingRegion || !onCreateRegion || event.button !== 0) {
+      return;
+    }
+    const point = canvasPointForPointer(event, canvasFrameRef.current, canvasWidth, canvasHeight);
+    if (!point) {
+      return;
+    }
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    setAddTextDrag({
+      pointerId: event.pointerId,
+      startClientX: event.clientX,
+      startClientY: event.clientY,
+      startPoint: point,
+      box: defaultTextBoxForPoint(point, canvasWidth, canvasHeight),
+      hasMoved: false,
+    });
+  }
+
+  function updateAddTextDrag(event: PointerEvent<HTMLDivElement>) {
+    setAddTextDrag((current) => {
+      if (!current || current.pointerId !== event.pointerId) {
+        return current;
+      }
+      const point = canvasPointForPointer(event, canvasFrameRef.current, canvasWidth, canvasHeight);
+      if (!point) {
+        return current;
+      }
+      const movedDistance = Math.hypot(event.clientX - current.startClientX, event.clientY - current.startClientY);
+      const hasMoved = current.hasMoved || movedDistance >= ADD_TEXT_DRAG_THRESHOLD;
+      return {
+        ...current,
+        box: hasMoved ? boxFromCanvasPoints(current.startPoint, point, canvasWidth, canvasHeight) : defaultTextBoxForPoint(point, canvasWidth, canvasHeight),
+        hasMoved,
+      };
+    });
+  }
+
+  function finishAddTextDrag(event: PointerEvent<HTMLDivElement>) {
+    if (!addTextDrag || addTextDrag.pointerId !== event.pointerId) {
+      return;
+    }
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    onCreateRegion?.(addTextDrag.box);
+    setAddTextDrag(null);
+  }
+
+  function cancelAddTextDrag(event: PointerEvent<HTMLDivElement>) {
+    if (!addTextDrag || addTextDrag.pointerId !== event.pointerId) {
+      return;
+    }
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    setAddTextDrag(null);
+  }
+
   return (
     <div ref={containerRef} className="min-h-[240px] min-w-0 flex-1 overflow-auto bg-background p-3 md:p-4 lg:min-h-0 lg:p-8">
       <div
@@ -534,7 +690,12 @@ export function CanvasWorkspace({
       >
         <div
           ref={canvasFrameRef}
-          className="relative shrink-0"
+          data-testid="canvas-frame"
+          onPointerDown={startAddTextDrag}
+          onPointerMove={updateAddTextDrag}
+          onPointerUp={finishAddTextDrag}
+          onPointerCancel={cancelAddTextDrag}
+          className={`relative shrink-0 ${tool === "addText" ? "cursor-crosshair touch-none" : ""}`}
           style={{
             aspectRatio: `${canvasWidth} / ${canvasHeight}`,
             width: displaySize?.width ?? "100%",
@@ -570,9 +731,23 @@ export function CanvasWorkspace({
                 onUpdateDrag={updateDrag}
                 onFinishDrag={finishDrag}
                 onCancelDrag={() => setDrag(null)}
+                interactive={tool === "select"}
               />
             );
           })}
+
+          {addTextDrag ? (
+            <div
+              aria-hidden="true"
+              className="pointer-events-none absolute rounded-[3px] border-2 border-primary bg-primary/15 shadow-glow"
+              style={{
+                left: `${(addTextDrag.box.x / canvasWidth) * 100}%`,
+                top: `${(addTextDrag.box.y / canvasHeight) * 100}%`,
+                width: `${(addTextDrag.box.width / canvasWidth) * 100}%`,
+                height: `${(addTextDrag.box.height / canvasHeight) * 100}%`,
+              }}
+            />
+          ) : null}
 
           {comparison ? (
             <>
