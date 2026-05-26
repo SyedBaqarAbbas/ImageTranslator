@@ -1,21 +1,31 @@
-import { FormEvent, useEffect, useReducer } from "react";
+import { FormEvent, useEffect, useMemo, useReducer } from "react";
 import { ArrowLeft, Loader2, Play, UploadCloud } from "lucide-react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "react-router-dom";
 
 import { api, queryKeys } from "../api";
-import { LockedLanguageSelect } from "../components/LockedLanguageSelect";
 import { UploadDropzone } from "../components/UploadDropzone";
+import {
+  DEFAULT_TRANSLATION_DEFAULTS,
+  SOURCE_LANGUAGE_OPTIONS,
+  TARGET_LANGUAGE_OPTIONS,
+  readTranslationDefaults,
+  type QualityMode,
+} from "../lib/translationDefaults";
 import { useUploadFlow } from "../lib/uploadFlow";
 import type { ReadingDirection, ReplacementMode } from "../types/api";
 
 interface ProjectSetupState {
   name: string;
   description: string;
+  sourceLanguage: string;
+  targetLanguage: string;
   tone: string;
   replacementMode: ReplacementMode;
   readingDirection: ReadingDirection;
   preserveSfx: boolean;
+  autoStartProcessing: boolean;
+  qualityMode: QualityMode;
   error: string | null;
   previewUrl?: string;
 }
@@ -23,10 +33,14 @@ interface ProjectSetupState {
 const initialProjectSetupState: ProjectSetupState = {
   name: "",
   description: "",
-  tone: "natural",
-  replacementMode: "replace",
-  readingDirection: "rtl",
-  preserveSfx: true,
+  sourceLanguage: DEFAULT_TRANSLATION_DEFAULTS.sourceLanguage,
+  targetLanguage: DEFAULT_TRANSLATION_DEFAULTS.targetLanguage,
+  tone: DEFAULT_TRANSLATION_DEFAULTS.tone,
+  replacementMode: DEFAULT_TRANSLATION_DEFAULTS.replacementMode,
+  readingDirection: DEFAULT_TRANSLATION_DEFAULTS.readingDirection,
+  preserveSfx: DEFAULT_TRANSLATION_DEFAULTS.preserveSfx,
+  autoStartProcessing: DEFAULT_TRANSLATION_DEFAULTS.autoStartProcessing,
+  qualityMode: DEFAULT_TRANSLATION_DEFAULTS.qualityMode,
   error: null,
 };
 
@@ -34,35 +48,50 @@ function projectSetupReducer(state: ProjectSetupState, patch: Partial<ProjectSet
   return { ...state, ...patch };
 }
 
+function createInitialProjectSetupState(): ProjectSetupState {
+  try {
+    const defaults = readTranslationDefaults();
+    return {
+      ...initialProjectSetupState,
+      sourceLanguage: defaults.sourceLanguage,
+      targetLanguage: defaults.targetLanguage,
+      tone: defaults.tone,
+      replacementMode: defaults.replacementMode,
+      readingDirection: defaults.readingDirection,
+      preserveSfx: defaults.preserveSfx,
+      autoStartProcessing: defaults.autoStartProcessing,
+      qualityMode: defaults.qualityMode,
+    };
+  } catch {
+    return {
+      ...initialProjectSetupState,
+      error: "Unable to load saved defaults. Built-in defaults are shown.",
+    };
+  }
+}
+
 export function ProjectSetup() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { pendingFiles, setPendingFiles, clearPendingFiles } = useUploadFlow();
+  const setupInitialState = useMemo(() => createInitialProjectSetupState(), []);
   const [
     {
       name,
       description,
+      sourceLanguage,
+      targetLanguage,
       tone,
       replacementMode,
       readingDirection,
       preserveSfx,
+      autoStartProcessing,
+      qualityMode,
       error,
       previewUrl,
     },
     setProjectSetupState,
-  ] = useReducer(projectSetupReducer, initialProjectSetupState);
-
-  const runtimeLanguageQuery = useQuery({
-    queryKey: queryKeys.runtimeLanguage,
-    queryFn: () => api.getRuntimeLanguage(),
-  });
-  const runtimeLanguage = runtimeLanguageQuery.data;
-  const sourceLanguage = runtimeLanguage?.source_language ?? "auto";
-  const targetLanguage = runtimeLanguage?.target_language ?? "en";
-  const lockMessage = runtimeLanguage?.lock_message ?? "Ask a system administrator to change the language.";
-  const runtimeLanguageError = runtimeLanguageQuery.isError
-    ? "Unable to load the configured translation language."
-    : null;
+  ] = useReducer(projectSetupReducer, setupInitialState);
 
   useEffect(() => {
     if (!name && pendingFiles[0]) {
@@ -90,34 +119,35 @@ export function ProjectSetup() {
       if (pendingFiles.length === 0) {
         throw new Error("Upload at least one page before starting processing.");
       }
-      if (!runtimeLanguage) {
-        throw new Error("Runtime language is still loading.");
-      }
-      return api.createProject({
+      const project = await api.createProject({
         name: name.trim() || "Untitled Translation",
         description: description.trim() || null,
-        source_language: runtimeLanguage.source_language,
-        target_language: runtimeLanguage.target_language,
+        source_language: sourceLanguage,
+        target_language: targetLanguage,
         translation_tone: tone,
         replacement_mode: replacementMode,
         reading_direction: readingDirection,
-      }).then((project) =>
-        Promise.all([
-          api.updateSettings(project.id, {
-            source_language: sourceLanguage,
-            target_language: targetLanguage,
-            translation_tone: tone,
-            replacement_mode: replacementMode,
-            reading_direction: readingDirection,
-            preserve_sfx: preserveSfx,
-            bilingual: replacementMode === "bilingual",
-            font_family: "Anime Ace",
-          }),
-          api.uploadPages(project.id, pendingFiles),
-        ])
-          .then(() => api.processProject(project.id, { force: false }))
-          .then(() => project.id),
-      );
+      });
+
+      await Promise.all([
+        api.updateSettings(project.id, {
+          source_language: sourceLanguage,
+          target_language: targetLanguage,
+          translation_tone: tone,
+          replacement_mode: replacementMode,
+          reading_direction: readingDirection,
+          preserve_sfx: preserveSfx,
+          bilingual: replacementMode === "bilingual",
+          font_family: "Anime Ace",
+        }),
+        api.uploadPages(project.id, pendingFiles),
+      ]);
+
+      if (autoStartProcessing) {
+        await api.processProject(project.id, { force: false });
+      }
+
+      return project.id;
     },
     onSuccess: async (projectId) => {
       clearPendingFiles();
@@ -170,7 +200,7 @@ export function ProjectSetup() {
 
         <form onSubmit={handleSubmit} className="glass-panel rounded-lg p-5">
           <h2 className="font-display text-2xl font-bold text-white">Translation settings</h2>
-          <p className="mt-1 text-sm text-text-muted">Project style and processing defaults.</p>
+          <p className="mt-1 text-sm text-text-muted">Prefilled from new project defaults. Changes here apply only to this project.</p>
 
           <div className="mt-6 space-y-4">
             <label className="block">
@@ -183,8 +213,26 @@ export function ProjectSetup() {
             </label>
 
             <div className="grid grid-cols-2 gap-3">
-              <LockedLanguageSelect isLoading={runtimeLanguageQuery.isLoading} label="Source" lockMessage={lockMessage} value={sourceLanguage} />
-              <LockedLanguageSelect isLoading={runtimeLanguageQuery.isLoading} label="Target" lockMessage={lockMessage} value={targetLanguage} />
+              <label className="block">
+                <span className="text-xs font-bold uppercase text-text-muted">Source</span>
+                <select value={sourceLanguage} onChange={(event) => setProjectSetupState({ sourceLanguage: event.target.value })} className="mt-2 w-full rounded-instrument border border-ink-border bg-background px-3 py-3 text-sm text-text-main outline-none focus:border-secondary">
+                  {SOURCE_LANGUAGE_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="block">
+                <span className="text-xs font-bold uppercase text-text-muted">Target</span>
+                <select value={targetLanguage} onChange={(event) => setProjectSetupState({ targetLanguage: event.target.value })} className="mt-2 w-full rounded-instrument border border-ink-border bg-background px-3 py-3 text-sm text-text-main outline-none focus:border-secondary">
+                  {TARGET_LANGUAGE_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
             </div>
 
             <label className="block">
@@ -230,15 +278,46 @@ export function ProjectSetup() {
                 aria-describedby="preserve-sfx-description"
               />
             </div>
+
+            <div className="flex items-center justify-between rounded-lg border border-ink-border bg-background p-3">
+              <span>
+                <span id="setup-auto-process-label" className="block text-sm font-bold text-white">Auto-start processing</span>
+                <span id="setup-auto-process-description" className="block text-xs text-text-muted">Run OCR and translation immediately after upload.</span>
+              </span>
+              <input
+                type="checkbox"
+                checked={autoStartProcessing}
+                onChange={(event) => setProjectSetupState({ autoStartProcessing: event.target.checked })}
+                className="h-5 w-5 rounded border-ink-border bg-surface text-primary focus:ring-primary"
+                aria-labelledby="setup-auto-process-label"
+                aria-describedby="setup-auto-process-description"
+              />
+            </div>
+
+            <div className="grid gap-2 sm:grid-cols-2">
+              {(["balanced", "high"] as const).map((mode) => (
+                <button
+                  key={mode}
+                  type="button"
+                  onClick={() => setProjectSetupState({ qualityMode: mode })}
+                  aria-pressed={qualityMode === mode}
+                  className={`flex items-center justify-between rounded-instrument border px-4 py-3 text-left text-sm font-bold capitalize transition ${
+                    qualityMode === mode ? "border-secondary bg-secondary/10 text-white" : "border-ink-border bg-background text-text-muted hover:border-primary/50 hover:text-white"
+                  }`}
+                >
+                  {mode} quality
+                </button>
+              ))}
+            </div>
           </div>
 
-          {error || runtimeLanguageError ? (
-            <p className="mt-4 rounded-instrument border border-danger/40 bg-danger/10 p-3 text-sm text-danger">{error ?? runtimeLanguageError}</p>
+          {error ? (
+            <p className="mt-4 rounded-instrument border border-danger/40 bg-danger/10 p-3 text-sm text-danger">{error}</p>
           ) : null}
 
-          <button disabled={startMutation.isPending || pendingFiles.length === 0 || !runtimeLanguage} className="mt-6 inline-flex w-full items-center justify-center gap-3 rounded-lg bg-primary px-6 py-4 text-base font-bold text-white shadow-glow transition hover:bg-violet-500 disabled:opacity-50">
+          <button disabled={startMutation.isPending || pendingFiles.length === 0} className="mt-6 inline-flex w-full items-center justify-center gap-3 rounded-lg bg-primary px-6 py-4 text-base font-bold text-white shadow-glow transition hover:bg-violet-500 disabled:opacity-50">
             {startMutation.isPending ? <Loader2 className="h-5 w-5 animate-spin" /> : <Play className="h-5 w-5" />}
-            Start AI Processing
+            {autoStartProcessing ? "Start AI Processing" : "Create Project"}
           </button>
         </form>
       </main>

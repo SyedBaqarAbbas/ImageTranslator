@@ -90,7 +90,7 @@ test.describe("top navigation popovers", () => {
     await expect(notificationPanel).toBeVisible();
     await page.getByRole("link", { name: "Settings" }).click();
     await expect(page).toHaveURL(/\/settings$/);
-    await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "New project defaults" })).toBeVisible();
     await expect(notificationPanel).toBeHidden();
 
     await notifications.click();

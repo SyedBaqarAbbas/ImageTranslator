@@ -70,10 +70,10 @@ should still be run before release-sensitive merges.
 | --- | --- | --- | --- |
 | `/` | Landing upload tests | File chooser, unsupported files, selected files | Upload to setup flow |
 | `/projects` | Dashboard tests | Loading, empty, search, sort, delete failure | Dashboard route and search |
-| `/projects/new` | Project setup tests | Missing files, locked language, create failure | Upload setup to processing |
+| `/projects/new` | Project setup tests | Missing files, saved defaults, optional auto-start, create failure | Upload setup to processing |
 | `/assets` | Assets tests | Loading, empty, API error, project/page assets | Route coverage |
 | `/team` | Redirect test | Prototype redirect to `/projects` | Navbar/button audit redirect |
-| `/settings` | Settings tests | Runtime language loading/error, save state | Route coverage |
+| `/settings` | Settings tests | Local-storage defaults, reset, storage failure, save state | Route coverage |
 | `/batch-ocr` | Batch OCR tests | Empty projects, run OCR API call/failure | Button audit |
 | `/typefaces` | Typefaces tests | Empty projects, font update/failure | Button audit |
 | `/archive` | Archive tests | Empty archive, export-ready projects | Route coverage |

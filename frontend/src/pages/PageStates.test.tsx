@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactElement } from "react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -119,6 +119,7 @@ describe("route state coverage", () => {
     mocks.api.getProject.mockResolvedValue(project);
     mocks.api.listPages.mockResolvedValue([]);
     mocks.api.getProcessingJobs.mockResolvedValue([]);
+    mocks.api.processProject.mockResolvedValue({});
   });
 
   it("renders the dashboard empty state and API error state", async () => {
@@ -150,6 +151,19 @@ describe("route state coverage", () => {
     expect(await screen.findByText("translating_regions")).toBeInTheDocument();
     expect(screen.getAllByText("45%")).toHaveLength(2);
     expect(screen.getAllByText(/failed/i).length).toBeGreaterThan(0);
+  });
+
+  it("starts processing when uploaded pages have no processing job yet", async () => {
+    mocks.api.listProjects.mockResolvedValue([project as ProjectRead]);
+    mocks.api.getProject.mockResolvedValue({ ...project, status: "ready", failure_reason: null });
+    mocks.api.listPages.mockResolvedValue([{ ...page, status: "uploaded", progress: 0, failure_reason: null }]);
+    mocks.api.getProcessingJobs.mockResolvedValue([]);
+
+    renderRoute(`/projects/${project.id}/processing`, "/projects/:projectId/processing", <Processing />);
+
+    fireEvent.click(await screen.findByRole("button", { name: /start processing/i }));
+
+    await waitFor(() => expect(mocks.api.processProject).toHaveBeenCalledWith(project.id, { force: true }));
   });
 
   it("surfaces export failure when no pages are available", async () => {

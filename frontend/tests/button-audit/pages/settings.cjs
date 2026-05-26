@@ -7,6 +7,7 @@ auditPage({
   expectedButtons: withWorkspaceShell([
     { label: "balanced quality", kind: "currentSelection" },
     { label: "high quality", kind: "changesUiState" },
+    { label: "Reset defaults", kind: "changesUiState" },
     { label: "Save settings", kind: "changesUiState" },
   ]),
 }).catch((error) => {

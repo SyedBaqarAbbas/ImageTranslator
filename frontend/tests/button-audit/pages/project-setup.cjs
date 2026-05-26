@@ -5,6 +5,8 @@ auditPage({
   path: "/projects/new",
   prepare: prepares.projectSetupWithFixture,
   expectedButtons: [
+    { label: "balanced quality", kind: "currentSelection" },
+    { label: "high quality", kind: "changesUiState" },
     { label: "Start AI Processing", kind: "navigates", expectedPathPattern: /^\/projects\/[^/]+\/processing$/ },
   ],
 }).catch((error) => {

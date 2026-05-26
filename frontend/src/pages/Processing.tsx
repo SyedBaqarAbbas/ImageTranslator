@@ -32,6 +32,7 @@ export function Processing() {
   const project = projectQuery.data;
   const done = project?.status === "review_required" || project?.status === "completed" || latestJob?.status === "succeeded";
   const failed = project?.status === "failed" || latestJob?.status === "failed";
+  const processButtonLabel = latestJob ? "Rerun processing" : "Start processing";
 
   return (
     <WorkspaceShell>
@@ -72,7 +73,7 @@ export function Processing() {
                 ) : (
                   <button disabled={processMutation.isPending} onClick={() => processMutation.mutate()} className="inline-flex items-center gap-2 rounded-lg bg-primary px-5 py-3 text-sm font-bold text-white shadow-glow transition hover:bg-violet-500 disabled:opacity-60">
                     {processMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
-                    Rerun processing
+                    {processButtonLabel}
                   </button>
                 )}
                 <button

@@ -7,7 +7,7 @@ const routes = [
   { path: "/projects/new", heading: "New Project Setup" },
   { path: "/assets", heading: "Assets" },
   { path: "/team", heading: "Projects", expectedPath: "/projects" },
-  { path: "/settings", heading: "Settings" },
+  { path: "/settings", heading: "New project defaults" },
   { path: "/batch-ocr", heading: "Batch OCR" },
   { path: "/typefaces", heading: "Typefaces" },
   { path: "/archive", heading: "Archive" },
