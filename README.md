@@ -8,6 +8,7 @@ ImageTranslator is a full-stack manga/comic translation workflow. You can upload
 
 ## Documentation
 
+- Deployed app: <http://158.101.11.4:5173>
 - Published docs: <https://syedbaqarabbas.github.io/ImageTranslator/>
 - In-repo docs entrypoint: [docs/index.md](docs/index.md)
 

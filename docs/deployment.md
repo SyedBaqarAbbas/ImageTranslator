@@ -37,6 +37,12 @@ The repository owner may still need to enable Pages in GitHub repository setting
 
 ## Application Deployment Notes
 
+The currently deployed prototype app is available at:
+
+```text
+http://158.101.11.4:5173
+```
+
 The app is not currently documented as a hardened production deployment. Before deploying beyond local prototype use, review:
 
 - authentication and workspace boundaries
