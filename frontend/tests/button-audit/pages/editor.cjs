@@ -6,6 +6,7 @@ auditPage({
   path: "/projects/:projectId/editor",
   prepare: prepares.projectRoute("editor"),
   expectedButtons: withWorkspaceShell([
+    { label: "Back", kind: "navigates", expectedPathPattern: /^\/projects\/[^/]+\/review$/ },
     { label: "Undo", kind: "disabledExpected" },
     { label: "Highlight OCR Region", kind: "changesUiState" },
     { label: "Reset view", kind: "changesUiState" },

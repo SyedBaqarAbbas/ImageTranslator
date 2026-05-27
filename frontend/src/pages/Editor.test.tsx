@@ -171,6 +171,7 @@ const originalSetPointerCapture = HTMLElement.prototype.setPointerCapture;
 const originalReleasePointerCapture = HTMLElement.prototype.releasePointerCapture;
 const originalHasPointerCapture = HTMLElement.prototype.hasPointerCapture;
 let currentRegions: TextRegionRead[];
+let updateCount: number;
 
 class ResizeObserverStub {
   observe() {}
@@ -186,7 +187,13 @@ function firePointerEvent(target: Element, type: string, properties: Record<stri
   fireEvent(target, event);
 }
 
-function renderEditor() {
+function renderEditor({
+  initialEntries = [`/projects/${project.id}/editor`],
+  initialIndex,
+}: {
+  initialEntries?: string[];
+  initialIndex?: number;
+} = {}) {
   const queryClient = new QueryClient({
     defaultOptions: {
       queries: { retry: false },
@@ -195,9 +202,11 @@ function renderEditor() {
   });
 
   return render(
-    <MemoryRouter initialEntries={[`/projects/${project.id}/editor`]}>
+    <MemoryRouter initialEntries={initialEntries} initialIndex={initialIndex}>
       <QueryClientProvider client={queryClient}>
         <Routes>
+          <Route path="/projects" element={<h1>Projects</h1>} />
+          <Route path="/projects/:projectId/review" element={<h1>Review Page</h1>} />
           <Route path="/projects/:projectId/editor" element={<Editor />} />
         </Routes>
       </QueryClientProvider>
@@ -231,6 +240,7 @@ describe("Editor", () => {
     HTMLElement.prototype.releasePointerCapture = vi.fn();
     HTMLElement.prototype.hasPointerCapture = vi.fn(() => true);
     currentRegions = [region];
+    updateCount = 0;
 
     mocks.api.listProjects.mockResolvedValue([project]);
     mocks.api.getProject.mockResolvedValue(project);
@@ -252,7 +262,7 @@ describe("Editor", () => {
         render_style: payload.render_style ?? null,
         status: payload.user_text?.trim() ? "user_edited" : payload.detected_text?.trim() ? "detected" : "needs_review",
         created_at: now,
-        updated_at: now,
+        updated_at: new Date(Date.parse(now) + ++updateCount * 1000).toISOString(),
       };
       currentRegions = [...currentRegions, createdRegion];
       return Promise.resolve(createdRegion);
@@ -262,11 +272,11 @@ describe("Editor", () => {
       const updatedRegion: TextRegionRead = {
         ...existingRegion,
         id: regionId,
-        detected_text: payload.detected_text ?? existingRegion.detected_text,
-        user_text: payload.user_text ?? existingRegion.user_text,
-        translated_text: payload.translated_text ?? existingRegion.translated_text,
-        render_style: payload.render_style ?? existingRegion.render_style,
-        editable: payload.editable ?? existingRegion.editable,
+        detected_text: "detected_text" in payload ? payload.detected_text ?? null : existingRegion.detected_text,
+        user_text: "user_text" in payload ? payload.user_text ?? null : existingRegion.user_text,
+        translated_text: "translated_text" in payload ? payload.translated_text ?? null : existingRegion.translated_text,
+        render_style: "render_style" in payload ? payload.render_style ?? null : existingRegion.render_style,
+        editable: "editable" in payload ? payload.editable ?? existingRegion.editable : existingRegion.editable,
         bounding_box: payload.bounding_box ?? existingRegion.bounding_box,
         status:
           payload.user_text !== undefined ||
@@ -279,7 +289,7 @@ describe("Editor", () => {
                 ? "detected"
                 : "needs_review"
             : existingRegion.status,
-        updated_at: now,
+        updated_at: new Date(Date.parse(now) + ++updateCount * 1000).toISOString(),
       };
       currentRegions = currentRegions.map((item) => (item.id === regionId ? updatedRegion : item));
       return Promise.resolve(updatedRegion);
@@ -304,6 +314,7 @@ describe("Editor", () => {
     renderEditor();
 
     expect(await screen.findByText(project.name)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /undo/i })).toHaveAttribute("aria-disabled", "true");
 
     fireEvent.click(screen.getByRole("button", { name: /compare split/i }));
     expect(screen.getByRole("button", { name: /compare split/i })).toHaveAttribute("aria-pressed", "true");
@@ -323,6 +334,27 @@ describe("Editor", () => {
       expect(mocks.api.updateRegion).toHaveBeenCalledWith(region.id, { auto_rerender: true });
     });
     expect(await screen.findByText(/Saved/)).toBeInTheDocument();
+  });
+
+  it("routes Back to the project review fallback when no editor history is available", async () => {
+    renderEditor();
+    await screen.findByText(project.name);
+
+    fireEvent.click(screen.getByRole("button", { name: /back/i }));
+
+    expect(await screen.findByRole("heading", { name: /review page/i })).toBeInTheDocument();
+  });
+
+  it("uses router history for Back when the editor has an entry path", async () => {
+    renderEditor({
+      initialEntries: ["/projects", `/projects/${project.id}/editor`],
+      initialIndex: 1,
+    });
+    await screen.findByText(project.name);
+
+    fireEvent.click(screen.getByRole("button", { name: /back/i }));
+
+    expect(await screen.findByRole("heading", { name: /projects/i })).toBeInTheDocument();
   });
 
   it("saves and approves selected region edits", async () => {
@@ -345,7 +377,7 @@ describe("Editor", () => {
         }),
       );
     });
-    expect(await screen.findByRole("status")).toHaveTextContent("Saved");
+    expect(await screen.findByText("Saved")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /^approve$/i }));
 
@@ -357,6 +389,82 @@ describe("Editor", () => {
           auto_rerender: true,
         }),
       );
+    });
+  });
+
+  it("undoes saved target text and style changes", async () => {
+    renderEditor();
+    await screen.findByText(project.name);
+
+    fireEvent.change(await screen.findByDisplayValue("Machine translation"), {
+      target: { value: "Human edited translation" },
+    });
+    fireEvent.change(screen.getByLabelText("Text size"), { target: { value: "32" } });
+    fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
+
+    await waitFor(() => {
+      expect(mocks.api.updateRegion).toHaveBeenCalledWith(
+        region.id,
+        expect.objectContaining({
+          user_text: "Human edited translation",
+          render_style: expect.objectContaining({ fontSize: 32 }),
+          auto_rerender: true,
+        }),
+      );
+    });
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /undo/i })).not.toHaveAttribute("aria-disabled", "true");
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /undo/i }));
+
+    await waitFor(() => {
+      expect(mocks.api.updateRegion).toHaveBeenCalledWith(
+        region.id,
+        expect.objectContaining({
+          detected_text: "source text",
+          translated_text: "Machine translation",
+          user_text: null,
+          bounding_box: region.bounding_box,
+          render_style: region.render_style,
+          editable: true,
+          auto_rerender: true,
+        }),
+      );
+    });
+    expect(await screen.findByText(/Undo applied/)).toBeInTheDocument();
+    expect(screen.getByLabelText(/target/i)).toHaveValue("Machine translation");
+    expect(screen.getByRole("button", { name: /undo/i })).toHaveAttribute("aria-disabled", "true");
+  });
+
+  it("surfaces undo failures in the editor status area", async () => {
+    renderEditor();
+    await screen.findByText(project.name);
+
+    fireEvent.change(await screen.findByDisplayValue("Machine translation"), {
+      target: { value: "Human edited translation" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
+
+    await waitFor(() => {
+      expect(mocks.api.updateRegion).toHaveBeenCalledWith(
+        region.id,
+        expect.objectContaining({
+          user_text: "Human edited translation",
+          auto_rerender: true,
+        }),
+      );
+    });
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /undo/i })).not.toHaveAttribute("aria-disabled", "true");
+    });
+    mocks.api.updateRegion.mockRejectedValueOnce(new Error("undo write failed"));
+
+    fireEvent.click(screen.getByRole("button", { name: /undo/i }));
+
+    expect(await screen.findByText(/Undo failed: undo write failed/)).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /undo/i })).not.toHaveAttribute("aria-disabled", "true");
     });
   });
 
@@ -459,7 +567,7 @@ describe("Editor", () => {
     expect(mocks.waitForSuccessfulOcrJob).toHaveBeenCalledWith(expect.objectContaining({ job_type: "ocr_region" }), {
       getProcessingJob: mocks.api.getProcessingJob,
     });
-    expect(await screen.findByRole("status")).toHaveTextContent("OCR text updated.");
+    expect(await screen.findByText("OCR text updated.")).toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText(/source/i), { target: { value: "manual source" } });
     fireEvent.click(screen.getByRole("button", { name: /translate region/i }));
@@ -472,7 +580,7 @@ describe("Editor", () => {
       });
     });
     expect(mocks.waitForSuccessfulRetranslateJob).toHaveBeenCalledWith(job, { getProcessingJob: mocks.api.getProcessingJob });
-    expect(await screen.findByRole("status")).toHaveTextContent("Translation updated.");
+    expect(await screen.findByText("Translation updated.")).toBeInTheDocument();
   });
 
   it("refreshes region data after OCR failure updates backend region state", async () => {
@@ -532,7 +640,43 @@ describe("Editor", () => {
     await waitFor(() => {
       expect(mocks.api.retranslateRegion).toHaveBeenCalledTimes(2);
     });
-    expect(await screen.findByRole("status")).toHaveTextContent("Translation updated.");
+    expect(await screen.findByText("Translation updated.")).toBeInTheDocument();
+  });
+
+  it("undoes persisted canvas region moves", async () => {
+    renderEditor();
+    await screen.findByText(project.name);
+
+    const regionOverlay = screen.getByTitle("Region 1");
+    firePointerEvent(regionOverlay, "pointerdown", { pointerId: 1, clientX: 100, clientY: 100 });
+    firePointerEvent(regionOverlay, "pointermove", { pointerId: 1, clientX: 140, clientY: 130 });
+    firePointerEvent(regionOverlay, "pointerup", { pointerId: 1, clientX: 140, clientY: 130 });
+
+    await waitFor(() => {
+      expect(mocks.api.updateRegion).toHaveBeenCalledWith(
+        region.id,
+        expect.objectContaining({
+          bounding_box: expect.not.objectContaining(region.bounding_box),
+          auto_rerender: true,
+        }),
+      );
+    });
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /undo/i })).not.toHaveAttribute("aria-disabled", "true");
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /undo/i }));
+
+    await waitFor(() => {
+      expect(mocks.api.updateRegion).toHaveBeenCalledWith(
+        region.id,
+        expect.objectContaining({
+          bounding_box: region.bounding_box,
+          auto_rerender: true,
+        }),
+      );
+    });
+    expect(await screen.findByText(/Undo applied/)).toBeInTheDocument();
   });
 
   it("deletes selected regions and persists canvas region moves", async () => {

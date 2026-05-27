@@ -1,7 +1,7 @@
-import { Columns2, Download, Minus, Plus, RotateCcw, Save, ScanText, SquarePlus, Undo2 } from "lucide-react";
-import { useEffect, useMemo, useReducer } from "react";
+import { ArrowLeft, Columns2, Download, Minus, Plus, RotateCcw, Save, ScanText, SquarePlus, Undo2 } from "lucide-react";
+import { useEffect, useMemo, useReducer, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, useParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 
 import { api, queryKeys } from "../api";
 import { CanvasWorkspace } from "../components/CanvasWorkspace";
@@ -153,6 +153,7 @@ interface SaveRegionVariables {
   regionId: string;
   payload: TextRegionUpdate;
   action: EditorSaveAction;
+  undoEntry?: UndoEntry;
 }
 
 interface CreateRegionVariables {
@@ -167,9 +168,76 @@ interface RetranslateRegionVariables {
   source: RegionRetranslateSource;
 }
 
+interface UndoEntry {
+  regionId: string;
+  pageId: string;
+  payload: TextRegionUpdate;
+}
+
+function cloneJson<T>(value: T): T {
+  return value === undefined ? value : JSON.parse(JSON.stringify(value));
+}
+
+function valuesMatch(left: unknown, right: unknown): boolean {
+  return JSON.stringify(left ?? null) === JSON.stringify(right ?? null);
+}
+
+function regionUpdateChanges(region: TextRegionRead, payload: TextRegionUpdate): boolean {
+  return (
+    ("detected_text" in payload && payload.detected_text !== region.detected_text) ||
+    ("translated_text" in payload && payload.translated_text !== region.translated_text) ||
+    ("user_text" in payload && payload.user_text !== region.user_text) ||
+    ("bounding_box" in payload && !valuesMatch(payload.bounding_box, region.bounding_box)) ||
+    ("render_style" in payload && !valuesMatch(payload.render_style, region.render_style)) ||
+    ("editable" in payload && payload.editable !== region.editable)
+  );
+}
+
+function undoPayloadForRegion(region: TextRegionRead): TextRegionUpdate {
+  return {
+    detected_text: region.detected_text,
+    translated_text: region.translated_text,
+    user_text: region.user_text,
+    bounding_box: cloneJson(region.bounding_box),
+    render_style: cloneJson(region.render_style),
+    editable: region.editable,
+    auto_rerender: true,
+  };
+}
+
+function undoEntryForUpdate(region: TextRegionRead | undefined, payload: TextRegionUpdate): UndoEntry | undefined {
+  if (!region || !regionUpdateChanges(region, payload)) {
+    return undefined;
+  }
+  return {
+    regionId: region.id,
+    pageId: region.page_id,
+    payload: undoPayloadForRegion(region),
+  };
+}
+
+function regionWithPayload(region: TextRegionRead, payload: TextRegionUpdate): TextRegionRead {
+  return {
+    ...region,
+    detected_text: "detected_text" in payload ? payload.detected_text ?? null : region.detected_text,
+    translated_text: "translated_text" in payload ? payload.translated_text ?? null : region.translated_text,
+    user_text: "user_text" in payload ? payload.user_text ?? null : region.user_text,
+    bounding_box: payload.bounding_box ? cloneJson(payload.bounding_box) : region.bounding_box,
+    render_style: "render_style" in payload ? cloneJson(payload.render_style ?? null) : region.render_style,
+    editable: "editable" in payload ? payload.editable ?? region.editable : region.editable,
+  };
+}
+
+function projectBackFallback(projectId: string, status?: string): string {
+  return projectId && status === "review_required" ? `/projects/${projectId}/review` : "/projects";
+}
+
 export function Editor() {
   const { projectId = "" } = useParams();
+  const navigate = useNavigate();
+  const location = useLocation();
   const queryClient = useQueryClient();
+  const [undoStack, setUndoStack] = useState<UndoEntry[]>([]);
   const [
     {
       selectedPageId,
@@ -188,8 +256,14 @@ export function Editor() {
     dispatchEditor,
   ] = useReducer(editorReducer, initialEditorState);
   const zoomLabel = `${Math.round(zoom * 100)}%`;
+  const undoDisabled = undoStack.length === 0;
 
   const projectQuery = useQuery({ queryKey: queryKeys.project(projectId), queryFn: () => api.getProject(projectId), enabled: Boolean(projectId) });
+  const backFallbackPath = projectBackFallback(projectId, projectQuery.data?.status);
+  const canNavigateBack =
+    typeof window !== "undefined" && typeof window.history.state?.idx === "number"
+      ? window.history.state.idx > 0
+      : location.key !== "default";
   const pagesQuery = useQuery({ queryKey: queryKeys.pages(projectId), queryFn: () => api.listPages(projectId), enabled: Boolean(projectId) });
   const pages = useMemo(() => pagesQuery.data ?? [], [pagesQuery.data]);
   const selectedPage = pages.find((page) => page.id === selectedPageId) ?? pages[0];
@@ -214,6 +288,36 @@ export function Editor() {
       }),
     [regions, styleDrafts],
   );
+
+  function pushUndoEntry(entry?: UndoEntry) {
+    if (!entry) {
+      return;
+    }
+    setUndoStack((current) => [...current, entry].slice(-25));
+  }
+
+  function handleBack() {
+    if (canNavigateBack) {
+      navigate(-1);
+      return;
+    }
+    navigate(backFallbackPath, { replace: true });
+  }
+
+  function handleUndo() {
+    const entry = undoStack[undoStack.length - 1];
+    if (!entry) {
+      dispatchEditor({ type: "patch", patch: { workspaceStatus: "Nothing to undo" } });
+      return;
+    }
+    setUndoStack((current) => current.slice(0, -1));
+    undoMutation.mutate(entry);
+  }
+
+  function handleSaveRegion(regionId: string, payload: TextRegionUpdate, action: EditorSaveAction) {
+    const undoEntry = action === "workspace" ? undefined : undoEntryForUpdate(regions.find((region) => region.id === regionId), payload);
+    saveMutation.mutate({ regionId, payload, action, undoEntry });
+  }
 
   useEffect(() => {
     if (!selectedRegionId && regions[0]) {
@@ -284,6 +388,7 @@ export function Editor() {
       dispatchEditor({ type: "patch", patch: { workspaceStatus: "Saving..." } });
     },
     onSuccess: async (updatedRegion, variables) => {
+      pushUndoEntry(variables.undoEntry);
       queryClient.setQueryData<TextRegionRead[]>(queryKeys.regions(updatedRegion.page_id), (current) =>
         current?.map((region) => (region.id === updatedRegion.id ? updatedRegion : region)) ?? current,
       );
@@ -339,11 +444,18 @@ export function Editor() {
       const key = queryKeys.regions(selectedPage.id);
       await queryClient.cancelQueries({ queryKey: key });
       const previous = queryClient.getQueryData<TextRegionRead[]>(key);
+      const undoEntry = undoEntryForUpdate(previous?.find((region) => region.id === regionId), {
+        bounding_box: boundingBox,
+        auto_rerender: true,
+      });
       queryClient.setQueryData<TextRegionRead[]>(
         key,
         (current) => current?.map((region) => (region.id === regionId ? { ...region, bounding_box: boundingBox } : region)) ?? current,
       );
-      return { key, previous };
+      return { key, previous, undoEntry };
+    },
+    onSuccess: (_updatedRegion, _variables, context) => {
+      pushUndoEntry(context?.undoEntry);
     },
     onError: (_error, _variables, context) => {
       if (context?.previous) {
@@ -355,6 +467,43 @@ export function Editor() {
         selectedPage ? queryClient.invalidateQueries({ queryKey: queryKeys.regions(selectedPage.id) }) : Promise.resolve(),
         projectId ? queryClient.invalidateQueries({ queryKey: queryKeys.pages(projectId) }) : Promise.resolve(),
       ]);
+    },
+  });
+
+  const undoMutation = useMutation({
+    mutationFn: (entry: UndoEntry) => api.updateRegion(entry.regionId, entry.payload),
+    onMutate: async (entry) => {
+      const key = queryKeys.regions(entry.pageId);
+      await queryClient.cancelQueries({ queryKey: key });
+      const previous = queryClient.getQueryData<TextRegionRead[]>(key);
+      queryClient.setQueryData<TextRegionRead[]>(
+        key,
+        (current) => current?.map((region) => (region.id === entry.regionId ? regionWithPayload(region, entry.payload) : region)) ?? current,
+      );
+      dispatchEditor({ type: "clearStyleDraft", regionId: entry.regionId });
+      dispatchEditor({ type: "setRegionSaveFeedback", feedback: null });
+      dispatchEditor({ type: "patch", patch: { selectedPageId: entry.pageId, selectedRegionId: entry.regionId, workspaceStatus: "Undoing..." } });
+      return { key, previous };
+    },
+    onSuccess: async (updatedRegion) => {
+      queryClient.setQueryData<TextRegionRead[]>(queryKeys.regions(updatedRegion.page_id), (current) =>
+        current?.map((region) => (region.id === updatedRegion.id ? updatedRegion : region)) ?? current,
+      );
+      dispatchEditor({ type: "clearStyleDraft", regionId: updatedRegion.id });
+      dispatchEditor({ type: "setRegionSaveFeedback", feedback: null });
+      dispatchEditor({ type: "patch", patch: { selectedPageId: updatedRegion.page_id, selectedRegionId: updatedRegion.id, workspaceStatus: "Undo applied" } });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.regions(updatedRegion.page_id) }),
+        projectId ? queryClient.invalidateQueries({ queryKey: queryKeys.pages(projectId) }) : Promise.resolve(),
+        projectId ? queryClient.invalidateQueries({ queryKey: queryKeys.project(projectId) }) : Promise.resolve(),
+      ]);
+    },
+    onError: (error, entry, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(context.key, context.previous);
+      }
+      setUndoStack((current) => [...current, entry]);
+      dispatchEditor({ type: "patch", patch: { workspaceStatus: `Undo failed: ${errorMessage(error, "The request failed.")}` } });
     },
   });
 
@@ -489,23 +638,35 @@ export function Editor() {
         <div className="flex h-full min-h-0 flex-col">
           <div className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-ink-border bg-surface-low px-3 md:px-5">
             <div className="flex min-w-0 items-center gap-2">
+              <button
+                type="button"
+                onClick={handleBack}
+                className="rounded-instrument p-2 text-text-muted transition hover:bg-surface-high hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-secondary"
+                aria-label="Back"
+                title="Back"
+              >
+                <ArrowLeft className="h-4 w-4" />
+              </button>
               <span className="group relative inline-flex">
                 <button
                   type="button"
-                  aria-disabled="true"
-                  aria-describedby="undo-coming-soon"
-                  onClick={(event) => event.preventDefault()}
-                  className="rounded-instrument p-2 text-text-muted opacity-45 transition hover:bg-surface-high hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-secondary"
+                  aria-disabled={undoDisabled ? "true" : undefined}
+                  aria-describedby="undo-status-hint"
+                  onClick={handleUndo}
+                  className={`rounded-instrument p-2 text-text-muted transition hover:bg-surface-high hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-secondary ${
+                    undoDisabled ? "opacity-45" : ""
+                  }`}
                   aria-label="Undo"
+                  title={undoDisabled ? "Nothing to undo" : "Undo last editor change"}
                 >
                   <Undo2 className="h-4 w-4" />
                 </button>
                 <span
-                  id="undo-coming-soon"
+                  id="undo-status-hint"
                   role="tooltip"
                   className="pointer-events-none absolute left-0 top-full z-50 mt-2 w-48 rounded-instrument border border-ink-border bg-background px-3 py-2 text-xs font-semibold text-text-main opacity-0 shadow-2xl transition group-hover:opacity-100 group-focus-within:opacity-100"
                 >
-                  Coming soon: undo history is not available yet.
+                  {undoDisabled ? "Nothing to undo." : "Undo last editor change."}
                 </span>
               </span>
               <button
@@ -662,7 +823,7 @@ export function Editor() {
               regions={displayRegions}
               selectedRegionId={selectedRegionId}
               onSelect={(regionId) => dispatchEditor({ type: "patch", patch: { selectedRegionId: regionId } })}
-              onSave={(regionId, payload, action) => saveMutation.mutate({ regionId, payload, action })}
+              onSave={handleSaveRegion}
               onRunOcr={(regionId) => ocrMutation.mutate(regionId)}
               onRetranslate={(regionId, sourceText, source) => retranslateMutation.mutate({ regionId, sourceText, source })}
               onDelete={(regionId) => deleteMutation.mutate(regionId)}
@@ -677,18 +838,20 @@ export function Editor() {
             />
           </div>
 
-          <div className="flex h-12 shrink-0 items-center justify-between border-t border-ink-border bg-background px-4 text-xs font-semibold text-text-muted">
-            <span>{regions.length} regions · Page {selectedPage.page_number}</span>
-            <span className="hidden text-secondary sm:inline">Zoom {zoomLabel}{comparison ? " · Compare split on" : ""} · {workspaceStatus}</span>
+          <div className="flex h-12 shrink-0 items-center justify-between gap-3 border-t border-ink-border bg-background px-4 text-xs font-semibold text-text-muted">
+            <span className="shrink-0">{regions.length} regions · Page {selectedPage.page_number}</span>
+            <span aria-live="polite" className="min-w-0 flex-1 truncate text-secondary">
+              Zoom {zoomLabel}{comparison ? " · Compare split on" : ""} · {workspaceStatus}
+            </span>
             <button
               type="button"
               disabled={!selectedRegionId || saveMutation.isPending}
               onClick={() => {
                 if (selectedRegionId) {
-                  saveMutation.mutate({ regionId: selectedRegionId, payload: { auto_rerender: true }, action: "workspace" });
+                  handleSaveRegion(selectedRegionId, { auto_rerender: true }, "workspace");
                 }
               }}
-              className="inline-flex items-center gap-2 rounded-instrument border border-ink-border px-3 py-1.5 text-text-main transition hover:bg-surface-high disabled:cursor-not-allowed disabled:opacity-60"
+              className="inline-flex shrink-0 items-center gap-2 rounded-instrument border border-ink-border px-3 py-1.5 text-text-main transition hover:bg-surface-high disabled:cursor-not-allowed disabled:opacity-60"
             >
               <Save className="h-3.5 w-3.5" />
               {saveMutation.isPending && saveMutation.variables?.action === "workspace" ? "Saving" : "Save workspace"}
