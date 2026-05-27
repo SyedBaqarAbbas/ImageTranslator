@@ -403,6 +403,8 @@ export function Editor() {
     },
     onError: async (error, regionId) => {
       const timedOut = isOcrJobPollingTimeoutError(error);
+      const failedRegion = regions.find((region) => region.id === regionId);
+      const pageId = failedRegion?.page_id ?? selectedPage?.id;
       dispatchEditor({
         type: "setRegionOcrFeedback",
         feedback: {
@@ -412,9 +414,10 @@ export function Editor() {
         },
       });
       dispatchEditor({ type: "patch", patch: { workspaceStatus: timedOut ? "OCR still running" : "OCR failed" } });
-      if (timedOut && projectId) {
-        await queryClient.invalidateQueries({ queryKey: queryKeys.jobs(projectId) });
-      }
+      await Promise.all([
+        pageId ? queryClient.invalidateQueries({ queryKey: queryKeys.regions(pageId) }) : Promise.resolve(),
+        timedOut && projectId ? queryClient.invalidateQueries({ queryKey: queryKeys.jobs(projectId) }) : Promise.resolve(),
+      ]);
     },
   });
 
@@ -504,6 +507,7 @@ export function Editor() {
               </span>
               <button
                 type="button"
+                aria-label="Highlight OCR Region"
                 aria-pressed={tool === "highlight_ocr"}
                 disabled={!selectedPage || createRegionMutation.isPending}
                 onClick={() => {
@@ -523,7 +527,7 @@ export function Editor() {
                 }`}
               >
                 <ScanText className="h-4 w-4" />
-                Highlight OCR Region
+                <span className="hidden sm:inline">Highlight OCR Region</span>
               </button>
               <button
                 type="button"
@@ -562,7 +566,7 @@ export function Editor() {
                 <SquarePlus className="h-4 w-4" />
               </button>
               <span className="hidden h-5 w-px bg-ink-border sm:block" />
-              <h1 className="truncate font-display text-base font-bold text-white">{projectQuery.data.name}</h1>
+              <h1 className="min-w-16 max-w-36 truncate font-display text-base font-bold text-white sm:max-w-none">{projectQuery.data.name}</h1>
             </div>
             <div className="flex items-center gap-2">
               <div className="hidden rounded-instrument border border-ink-border bg-background p-1 sm:flex">

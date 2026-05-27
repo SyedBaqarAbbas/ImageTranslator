@@ -141,8 +141,8 @@ describe("CanvasWorkspace", () => {
     });
     const canvasFrame = screen.getByTestId("canvas-frame");
 
-    fireEvent.pointerDown(canvasFrame, { pointerId: 1, button: 0, clientX: 400, clientY: 300 });
-    fireEvent.pointerUp(canvasFrame, { pointerId: 1, clientX: 400, clientY: 300 });
+    firePointerEvent(canvasFrame, "pointerdown", { pointerId: 1, button: 0, clientX: 400, clientY: 300 });
+    firePointerEvent(canvasFrame, "pointerup", { pointerId: 1, clientX: 400, clientY: 300 });
 
     expect(onCreateRegion).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -169,9 +169,9 @@ describe("CanvasWorkspace", () => {
     });
     const canvasFrame = screen.getByTestId("canvas-frame");
 
-    fireEvent.pointerDown(canvasFrame, { pointerId: 1, button: 0, clientX: 100, clientY: 120 });
-    fireEvent.pointerMove(canvasFrame, { pointerId: 1, clientX: 300, clientY: 260 });
-    fireEvent.pointerUp(canvasFrame, { pointerId: 1, clientX: 300, clientY: 260 });
+    firePointerEvent(canvasFrame, "pointerdown", { pointerId: 1, button: 0, clientX: 100, clientY: 120 });
+    firePointerEvent(canvasFrame, "pointermove", { pointerId: 1, clientX: 300, clientY: 260 });
+    firePointerEvent(canvasFrame, "pointerup", { pointerId: 1, clientX: 300, clientY: 260 });
 
     expect(onCreateRegion).toHaveBeenCalledTimes(1);
     expect(onCreateRegion.mock.calls[0][0]).toMatchObject({

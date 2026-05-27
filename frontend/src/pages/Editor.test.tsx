@@ -475,6 +475,19 @@ describe("Editor", () => {
     expect(await screen.findByRole("status")).toHaveTextContent("Translation updated.");
   });
 
+  it("refreshes region data after OCR failure updates backend region state", async () => {
+    mocks.waitForSuccessfulOcrJob.mockRejectedValueOnce(new Error("No text detected in the selected region."));
+    renderEditor();
+    await screen.findByText(project.name);
+
+    fireEvent.click(screen.getByRole("button", { name: /run ocr/i }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("OCR failed: No text detected in the selected region.");
+    await waitFor(() => {
+      expect(mocks.api.listRegions).toHaveBeenCalledTimes(2);
+    });
+  });
+
   it("recovers region editing and retry after retranslate polling times out", async () => {
     const timeoutError = new Error(mocks.retranslateTimeoutMessage);
     timeoutError.name = "RetranslateJobPollingTimeoutError";
