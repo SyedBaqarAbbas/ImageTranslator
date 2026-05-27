@@ -4,22 +4,30 @@ const RETRANSLATE_JOB_POLL_INTERVAL_MS = 500;
 export const RETRANSLATE_JOB_TIMEOUT_MS = 60_000;
 export const RETRANSLATE_JOB_TIMEOUT_MESSAGE =
   "Translation is taking longer than expected. You can retry or refresh the page to check the job later.";
+export const OCR_JOB_TIMEOUT_MESSAGE =
+  "OCR is taking longer than expected. You can retry or refresh the page to check the job later.";
 const TERMINAL_JOB_STATUSES = new Set(["succeeded", "partial_success", "failed", "cancelled"]);
 
 function wait(ms: number): Promise<void> {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
 
-function resolveBeforeTimeout<T>(promise: Promise<T>, timeoutMs: number, timeoutJob: ProcessingJobRead, abortRequest: () => void): Promise<T> {
+function resolveBeforeTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  timeoutJob: ProcessingJobRead,
+  abortRequest: () => void,
+  timeoutErrorForJob: (job: ProcessingJobRead) => Error,
+): Promise<T> {
   if (timeoutMs <= 0) {
     abortRequest();
-    return Promise.reject(new RetranslateJobPollingTimeoutError(timeoutJob));
+    return Promise.reject(timeoutErrorForJob(timeoutJob));
   }
 
   return new Promise((resolve, reject) => {
     const timeoutId = window.setTimeout(() => {
       abortRequest();
-      reject(new RetranslateJobPollingTimeoutError(timeoutJob));
+      reject(timeoutErrorForJob(timeoutJob));
     }, timeoutMs);
 
     promise.then(
@@ -47,8 +55,24 @@ export class RetranslateJobPollingTimeoutError extends Error {
   }
 }
 
+export class OcrJobPollingTimeoutError extends Error {
+  readonly jobId: string;
+  readonly lastStatus: string;
+
+  constructor(job: ProcessingJobRead) {
+    super(OCR_JOB_TIMEOUT_MESSAGE);
+    this.name = "OcrJobPollingTimeoutError";
+    this.jobId = job.id;
+    this.lastStatus = job.status;
+  }
+}
+
 export function isRetranslateJobPollingTimeoutError(error: unknown): error is RetranslateJobPollingTimeoutError {
   return error instanceof RetranslateJobPollingTimeoutError;
+}
+
+export function isOcrJobPollingTimeoutError(error: unknown): error is OcrJobPollingTimeoutError {
+  return error instanceof OcrJobPollingTimeoutError;
 }
 
 interface RetranslateJobPollOptions {
@@ -59,7 +83,7 @@ interface RetranslateJobPollOptions {
   timeoutMs?: number;
 }
 
-export async function waitForSuccessfulRetranslateJob(
+async function waitForSuccessfulJob(
   job: ProcessingJobRead,
   {
     getProcessingJob,
@@ -68,6 +92,8 @@ export async function waitForSuccessfulRetranslateJob(
     pollIntervalMs = RETRANSLATE_JOB_POLL_INTERVAL_MS,
     timeoutMs = RETRANSLATE_JOB_TIMEOUT_MS,
   }: RetranslateJobPollOptions,
+  timeoutErrorForJob: (job: ProcessingJobRead) => Error,
+  failureLabel: string,
 ): Promise<ProcessingJobRead> {
   let currentJob = job;
   const startedAt = getNow();
@@ -75,14 +101,14 @@ export async function waitForSuccessfulRetranslateJob(
   while (!TERMINAL_JOB_STATUSES.has(currentJob.status)) {
     const remainingBeforePollMs = timeoutMs - (getNow() - startedAt);
     if (remainingBeforePollMs <= 0) {
-      throw new RetranslateJobPollingTimeoutError(currentJob);
+      throw timeoutErrorForJob(currentJob);
     }
 
     await waitForNextPoll(Math.min(pollIntervalMs, remainingBeforePollMs));
 
     const remainingBeforeRequestMs = timeoutMs - (getNow() - startedAt);
     if (remainingBeforeRequestMs <= 0) {
-      throw new RetranslateJobPollingTimeoutError(currentJob);
+      throw timeoutErrorForJob(currentJob);
     }
 
     const requestController = new AbortController();
@@ -91,12 +117,37 @@ export async function waitForSuccessfulRetranslateJob(
       remainingBeforeRequestMs,
       currentJob,
       () => requestController.abort(),
+      timeoutErrorForJob,
     );
   }
 
   if (currentJob.status !== "succeeded") {
-    throw new Error(currentJob.error_message || `Translation job ${currentJob.status}.`);
+    throw new Error(currentJob.error_message || `${failureLabel} job ${currentJob.status}.`);
   }
 
   return currentJob;
+}
+
+export async function waitForSuccessfulRetranslateJob(
+  job: ProcessingJobRead,
+  options: RetranslateJobPollOptions,
+): Promise<ProcessingJobRead> {
+  return waitForSuccessfulJob(
+    job,
+    options,
+    (currentJob) => new RetranslateJobPollingTimeoutError(currentJob),
+    "Translation",
+  );
+}
+
+export async function waitForSuccessfulOcrJob(
+  job: ProcessingJobRead,
+  options: RetranslateJobPollOptions,
+): Promise<ProcessingJobRead> {
+  return waitForSuccessfulJob(
+    job,
+    options,
+    (currentJob) => new OcrJobPollingTimeoutError(currentJob),
+    "OCR",
+  );
 }

@@ -50,6 +50,15 @@ function renderWorkspace(
   );
 }
 
+function firePointerEvent(target: Element, type: string, properties: Record<string, number>) {
+  const event = new Event(type, { bubbles: true, cancelable: true });
+  Object.defineProperties(
+    event,
+    Object.fromEntries(Object.entries(properties).map(([key, value]) => [key, { configurable: true, value }])),
+  );
+  fireEvent(target, event);
+}
+
 describe("CanvasWorkspace", () => {
   beforeEach(() => {
     vi.stubGlobal("ResizeObserver", ResizeObserverStub);
@@ -132,8 +141,8 @@ describe("CanvasWorkspace", () => {
     });
     const canvasFrame = screen.getByTestId("canvas-frame");
 
-    fireEvent.pointerDown(canvasFrame, { pointerId: 1, button: 0, clientX: 400, clientY: 300 });
-    fireEvent.pointerUp(canvasFrame, { pointerId: 1, clientX: 400, clientY: 300 });
+    firePointerEvent(canvasFrame, "pointerdown", { pointerId: 1, button: 0, clientX: 400, clientY: 300 });
+    firePointerEvent(canvasFrame, "pointerup", { pointerId: 1, clientX: 400, clientY: 300 });
 
     expect(onCreateRegion).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -160,9 +169,9 @@ describe("CanvasWorkspace", () => {
     });
     const canvasFrame = screen.getByTestId("canvas-frame");
 
-    fireEvent.pointerDown(canvasFrame, { pointerId: 1, button: 0, clientX: 100, clientY: 120 });
-    fireEvent.pointerMove(canvasFrame, { pointerId: 1, clientX: 300, clientY: 260 });
-    fireEvent.pointerUp(canvasFrame, { pointerId: 1, clientX: 300, clientY: 260 });
+    firePointerEvent(canvasFrame, "pointerdown", { pointerId: 1, button: 0, clientX: 100, clientY: 120 });
+    firePointerEvent(canvasFrame, "pointermove", { pointerId: 1, clientX: 300, clientY: 260 });
+    firePointerEvent(canvasFrame, "pointerup", { pointerId: 1, clientX: 300, clientY: 260 });
 
     expect(onCreateRegion).toHaveBeenCalledTimes(1);
     expect(onCreateRegion.mock.calls[0][0]).toMatchObject({
@@ -208,6 +217,28 @@ describe("CanvasWorkspace", () => {
     expect(onMoveRegion).toHaveBeenCalledWith(
       "region-1",
       expect.objectContaining({ width: expect.any(Number), height: expect.any(Number) }),
+    );
+  });
+
+  it("creates highlighted OCR regions from empty-canvas dragging", () => {
+    const onCreateRegion = vi.fn();
+    renderWorkspace({}, "original", {
+      tool: "highlight_ocr",
+      onCreateRegion,
+    });
+    const canvasFrame = screen.getByTestId("canvas-frame");
+
+    firePointerEvent(canvasFrame, "pointerdown", { pointerId: 9, button: 0, clientX: 100, clientY: 100 });
+    firePointerEvent(canvasFrame, "pointermove", { pointerId: 9, clientX: 300, clientY: 260 });
+    firePointerEvent(canvasFrame, "pointerup", { pointerId: 9, clientX: 300, clientY: 260 });
+
+    expect(onCreateRegion).toHaveBeenCalledWith(
+      expect.objectContaining({
+        x: expect.any(Number),
+        y: expect.any(Number),
+        width: expect.any(Number),
+        height: expect.any(Number),
+      }),
     );
   });
 

@@ -395,9 +395,9 @@ export const mockApi: ApiAdapter = {
       user_text: payload.user_text ?? null,
       ocr_confidence: null,
       translation_confidence: null,
-      render_style: payload.render_style ?? null,
+      render_style: payload.render_style ?? { align: "center", padding: 6 },
       editable: payload.editable ?? true,
-      status: payload.user_text?.trim() ? "user_edited" : "detected",
+      status: payload.user_text?.trim() ? "user_edited" : payload.detected_text?.trim() ? "detected" : "needs_review",
       failure_reason: null,
       created_at: now,
       updated_at: now,
@@ -425,7 +425,13 @@ export const mockApi: ApiAdapter = {
         payload.bounding_box !== undefined ||
         payload.render_style !== undefined
           ? "user_edited"
-          : region.status,
+          : payload.detected_text !== undefined
+            ? payload.detected_text?.trim()
+              ? "detected"
+              : "needs_review"
+            : region.status,
+      ocr_confidence: payload.detected_text !== undefined ? null : region.ocr_confidence,
+      failure_reason: payload.detected_text !== undefined ? null : region.failure_reason,
       updated_at: iso(),
     });
     return delay(region);
@@ -448,6 +454,42 @@ export const mockApi: ApiAdapter = {
       job.completed_at = iso();
       page.updated_at = iso();
     }, 400);
+    return delay(job);
+  },
+
+  async ocrRegion(regionId: string): Promise<ProcessingJobRead> {
+    const region = findRegion(regionId);
+    const page = store.pages.find((item) => item.id === region.page_id);
+    if (!page) {
+      throw new Error("Page not found.");
+    }
+    const job = buildJob(page.project_id, "ocr_region", { region_id: region.id });
+    job.page_id = page.id;
+    job.region_id = region.id;
+    jobs.unshift(job);
+    window.setTimeout(() => {
+      job.status = "running";
+      job.progress = 35;
+      job.stage = "ocr_region";
+      job.started_at = iso();
+      job.updated_at = iso();
+      region.status = "detected";
+      region.failure_reason = null;
+      region.updated_at = iso();
+    }, 250);
+    window.setTimeout(() => {
+      job.status = "succeeded";
+      job.progress = 100;
+      job.stage = "ocr_complete";
+      job.completed_at = iso();
+      job.updated_at = iso();
+      region.detected_text = "Manual OCR detected text";
+      region.detected_language = "ja";
+      region.ocr_confidence = 0.92;
+      region.status = "ocr_complete";
+      region.failure_reason = null;
+      region.updated_at = iso();
+    }, 800);
     return delay(job);
   },
 
@@ -476,6 +518,11 @@ export const mockApi: ApiAdapter = {
       job.stage = "complete";
       job.completed_at = iso();
       job.updated_at = iso();
+      if (payload.source_text !== undefined) {
+        region.detected_text = payload.source_text;
+        region.detected_language = "ja";
+        region.ocr_confidence = null;
+      }
       region.translated_text = payload.source_text ? `${payload.source_text} (AI polished)` : `${region.translated_text ?? ""} (refined)`;
       region.translation_confidence = 0.91;
       region.status = "translated";

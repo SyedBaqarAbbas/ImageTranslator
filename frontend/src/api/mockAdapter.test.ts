@@ -39,11 +39,32 @@ describe("mockApi", () => {
     await expect(mockApi.getProject("project-cyber")).rejects.toThrow("Project not found.");
   });
 
-  it("reports completed retranslation jobs with updated region text", async () => {
+  it("creates manual regions and reports completed OCR and retranslation jobs with updated region text", async () => {
     vi.useFakeTimers();
     const mockApi = await loadMockApi();
     const pages = await resolveDelayed(mockApi.listPages("project-cyber"));
     const regions = await resolveDelayed(mockApi.listRegions(pages[0].id));
+    const manualRegion = await resolveDelayed(
+      mockApi.createRegion(pages[0].id, {
+        bounding_box: { x: 12, y: 24, width: 80, height: 60 },
+      }),
+    );
+
+    expect(manualRegion).toMatchObject({
+      page_id: pages[0].id,
+      region_type: "unknown",
+      status: "needs_review",
+    });
+
+    const ocrJob = await resolveDelayed(mockApi.ocrRegion(manualRegion.id));
+    expect(ocrJob.status).toBe("queued");
+
+    await vi.advanceTimersByTimeAsync(800);
+    const completedOcrJob = await resolveDelayed(mockApi.getProcessingJob(ocrJob.id));
+    const ocrRegions = await resolveDelayed(mockApi.listRegions(pages[0].id));
+
+    expect(completedOcrJob).toMatchObject({ status: "succeeded", job_type: "ocr_region" });
+    expect(ocrRegions.find((item) => item.id === manualRegion.id)?.detected_text).toBe("Manual OCR detected text");
 
     const acceptedJob = await resolveDelayed(
       mockApi.retranslateRegion(regions[0].id, {
@@ -59,6 +80,7 @@ describe("mockApi", () => {
 
     expect(completedJob.status).toBe("succeeded");
     expect(updatedRegions.find((item) => item.id === regions[0].id)?.translated_text).toBe("Fresh source (AI polished)");
+    expect(updatedRegions.find((item) => item.id === regions[0].id)?.detected_text).toBe("Fresh source");
   });
 
   it("creates projects, uploads archive placeholders, processes pages, and manages settings", async () => {
@@ -144,7 +166,7 @@ describe("mockApi", () => {
     expect(blankRegion).toMatchObject({
       region_index: regions.length + 1,
       region_type: "unknown",
-      status: "detected",
+      status: "needs_review",
       user_text: null,
     });
     expect(manualRegion).toMatchObject({

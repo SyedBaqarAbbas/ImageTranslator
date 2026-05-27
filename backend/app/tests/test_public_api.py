@@ -344,7 +344,7 @@ def test_create_region_adds_manual_text_box_and_rerenders_page(client: TestClien
     assert blank_region["region_index"] == created["region_index"] + 1
     assert blank_region["region_type"] == "unknown"
     assert blank_region["user_text"] is None
-    assert blank_region["status"] == "detected"
+    assert blank_region["status"] == "needs_review"
 
     region_ids = [region["id"] for region in client.get(f"/api/v1/pages/{page_id}/regions").json()]
     assert created["id"] in region_ids

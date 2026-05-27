@@ -196,6 +196,12 @@ export const httpApi: ApiAdapter = {
     });
   },
 
+  ocrRegion(regionId: string): Promise<ProcessingJobRead> {
+    return request<ProcessingJobRead>(`/regions/${regionId}/ocr`, {
+      method: "POST",
+    });
+  },
+
   retranslateRegion(regionId: string, payload: RetranslateRequest): Promise<ProcessingJobRead> {
     return request<ProcessingJobRead>(`/regions/${regionId}/retranslate`, {
       method: "POST",

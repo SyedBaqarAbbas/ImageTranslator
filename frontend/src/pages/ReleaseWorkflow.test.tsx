@@ -32,6 +32,7 @@ const mocks = vi.hoisted(() => ({
     createRegion: vi.fn(),
     updateRegion: vi.fn(),
     deleteRegion: vi.fn(),
+    ocrRegion: vi.fn(),
     retranslateRegion: vi.fn(),
     getProcessingJob: vi.fn(),
     processProject: vi.fn(),
@@ -77,18 +78,18 @@ vi.mock("../components/RegionPanel", () => ({
   }: {
     regions: TextRegionRead[];
     selectedRegionId?: string;
-    onSave: (regionId: string, payload: { user_text: string }, action: "panel") => void;
-    onRetranslate: (regionId: string, sourceText: string | null, source: "detected") => void;
+    onSave: (regionId: string, payload: { user_text: string }, action: "save") => void;
+    onRetranslate: (regionId: string, sourceText: string | null, source: "detected_text") => void;
   }) => {
     const selectedRegion = regions.find((item) => item.id === selectedRegionId) ?? regions[0];
     return (
       <aside data-testid="region-panel">
         <p>{selectedRegion?.translated_text ?? "No region selected"}</p>
-        <button type="button" onClick={() => selectedRegion && onSave(selectedRegion.id, { user_text: "Panel edit" }, "panel")}>
+        <button type="button" onClick={() => selectedRegion && onSave(selectedRegion.id, { user_text: "Panel edit" }, "save")}>
           Save panel region
         </button>
-        <button type="button" onClick={() => selectedRegion && onRetranslate(selectedRegion.id, selectedRegion.detected_text, "detected")}>
-          Retranslate panel region
+        <button type="button" onClick={() => selectedRegion && onRetranslate(selectedRegion.id, selectedRegion.detected_text, "detected_text")}>
+          Translate panel region
         </button>
       </aside>
     );
@@ -304,8 +305,10 @@ describe("release workflow pages", () => {
     mocks.api.listPages.mockResolvedValue([page]);
     mocks.api.getPage.mockResolvedValue(page);
     mocks.api.listRegions.mockResolvedValue([region]);
+    mocks.api.createRegion.mockResolvedValue({ ...region, id: "manual-region", region_index: 2, status: "needs_review" });
     mocks.api.updateRegion.mockResolvedValue({ ...region, editable: false, user_text: "Hello", status: "user_edited" });
     mocks.api.deleteRegion.mockResolvedValue({ ...processingJob, job_type: "rerender_page", status: "succeeded" });
+    mocks.api.ocrRegion.mockResolvedValue({ ...processingJob, job_type: "ocr_region", region_id: region.id, status: "succeeded" });
     mocks.api.retranslateRegion.mockResolvedValue({ ...processingJob, job_type: "retranslate_region", region_id: region.id, status: "succeeded" });
     mocks.api.getProcessingJob.mockResolvedValue({ ...processingJob, status: "succeeded", progress: 100 });
     mocks.api.processProject.mockResolvedValue(processingJob);
@@ -388,7 +391,7 @@ describe("release workflow pages", () => {
     expect(await screen.findByTestId("canvas-workspace")).toBeInTheDocument();
     expect(await screen.findByText("Hello")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /save panel region/i }));
-    fireEvent.click(screen.getByRole("button", { name: /retranslate panel region/i }));
+    fireEvent.click(screen.getByRole("button", { name: /translate panel region/i }));
 
     await waitFor(() => expect(mocks.api.updateRegion).toHaveBeenCalledWith("region-1", expect.objectContaining({ user_text: "Panel edit" })));
     await waitFor(() =>

@@ -8,6 +8,7 @@ import { Editor } from "./Editor";
 
 const mocks = vi.hoisted(() => ({
   retranslateTimeoutMessage: "Translation is taking longer than expected. You can retry or refresh the page to check the job later.",
+  ocrTimeoutMessage: "OCR is taking longer than expected. You can retry or refresh the page to check the job later.",
   api: {
     listProjects: vi.fn(),
     getProject: vi.fn(),
@@ -16,9 +17,11 @@ const mocks = vi.hoisted(() => ({
     createRegion: vi.fn(),
     updateRegion: vi.fn(),
     deleteRegion: vi.fn(),
+    ocrRegion: vi.fn(),
     retranslateRegion: vi.fn(),
     getProcessingJob: vi.fn(),
   },
+  waitForSuccessfulOcrJob: vi.fn(),
   waitForSuccessfulRetranslateJob: vi.fn(),
 }));
 
@@ -34,9 +37,13 @@ vi.mock("../api", () => ({
 }));
 
 vi.mock("../lib/retranslateJob", () => ({
+  OCR_JOB_TIMEOUT_MESSAGE: mocks.ocrTimeoutMessage,
   RETRANSLATE_JOB_TIMEOUT_MESSAGE: mocks.retranslateTimeoutMessage,
+  isOcrJobPollingTimeoutError: (error: unknown) =>
+    error instanceof Error && error.name === "OcrJobPollingTimeoutError",
   isRetranslateJobPollingTimeoutError: (error: unknown) =>
     error instanceof Error && error.name === "RetranslateJobPollingTimeoutError",
+  waitForSuccessfulOcrJob: mocks.waitForSuccessfulOcrJob,
   waitForSuccessfulRetranslateJob: mocks.waitForSuccessfulRetranslateJob,
 }));
 
@@ -243,7 +250,7 @@ describe("Editor", () => {
         ocr_confidence: null,
         translation_confidence: null,
         render_style: payload.render_style ?? null,
-        status: payload.user_text?.trim() ? "user_edited" : "detected",
+        status: payload.user_text?.trim() ? "user_edited" : payload.detected_text?.trim() ? "detected" : "needs_review",
         created_at: now,
         updated_at: now,
       };
@@ -255,13 +262,22 @@ describe("Editor", () => {
       const updatedRegion: TextRegionRead = {
         ...existingRegion,
         id: regionId,
+        detected_text: payload.detected_text ?? existingRegion.detected_text,
         user_text: payload.user_text ?? existingRegion.user_text,
+        translated_text: payload.translated_text ?? existingRegion.translated_text,
         render_style: payload.render_style ?? existingRegion.render_style,
         editable: payload.editable ?? existingRegion.editable,
         bounding_box: payload.bounding_box ?? existingRegion.bounding_box,
         status:
-          payload.user_text !== undefined || payload.translated_text !== undefined || payload.bounding_box !== undefined || payload.render_style !== undefined
+          payload.user_text !== undefined ||
+          payload.translated_text !== undefined ||
+          payload.bounding_box !== undefined ||
+          payload.render_style !== undefined
             ? "user_edited"
+            : payload.detected_text !== undefined
+              ? payload.detected_text?.trim()
+                ? "detected"
+                : "needs_review"
             : existingRegion.status,
         updated_at: now,
       };
@@ -269,8 +285,10 @@ describe("Editor", () => {
       return Promise.resolve(updatedRegion);
     });
     mocks.api.deleteRegion.mockResolvedValue({ ...job, job_type: "rerender_page" });
+    mocks.api.ocrRegion.mockResolvedValue({ ...job, job_type: "ocr_region" });
     mocks.api.retranslateRegion.mockResolvedValue(job);
     mocks.api.getProcessingJob.mockResolvedValue(job);
+    mocks.waitForSuccessfulOcrJob.mockResolvedValue({ ...job, job_type: "ocr_region" });
     mocks.waitForSuccessfulRetranslateJob.mockResolvedValue(job);
   });
 
@@ -400,21 +418,94 @@ describe("Editor", () => {
     expect(screen.getByText(/Unsaved/)).toBeInTheDocument();
   });
 
-  it("retranslates a region with project language context", async () => {
+  it("creates and selects a highlighted OCR region from the canvas", async () => {
     renderEditor();
     await screen.findByText(project.name);
 
-    fireEvent.click(screen.getByRole("button", { name: /retranslate region/i }));
+    fireEvent.click(screen.getByRole("button", { name: /highlight ocr region/i }));
+    expect(screen.getByRole("button", { name: /^original$/i })).toHaveAttribute("aria-pressed", "true");
+    const canvasFrame = screen.getByTestId("canvas-frame");
+    firePointerEvent(canvasFrame, "pointerdown", { pointerId: 5, button: 0, clientX: 120, clientY: 120 });
+    firePointerEvent(canvasFrame, "pointermove", { pointerId: 5, clientX: 320, clientY: 260 });
+    firePointerEvent(canvasFrame, "pointerup", { pointerId: 5, clientX: 320, clientY: 260 });
+
+    await waitFor(() => {
+      expect(mocks.api.createRegion).toHaveBeenCalledWith(
+        page.id,
+        expect.objectContaining({
+          bounding_box: expect.objectContaining({
+            x: expect.any(Number),
+            y: expect.any(Number),
+            width: expect.any(Number),
+            height: expect.any(Number),
+          }),
+          region_type: "unknown",
+        }),
+      );
+    });
+    expect(await screen.findByText(/OCR region highlighted/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^translated$/i })).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("runs OCR and translates source text with project language context", async () => {
+    renderEditor();
+    await screen.findByText(project.name);
+
+    fireEvent.click(screen.getByRole("button", { name: /run ocr/i }));
+
+    await waitFor(() => {
+      expect(mocks.api.ocrRegion).toHaveBeenCalledWith(region.id);
+    });
+    expect(mocks.waitForSuccessfulOcrJob).toHaveBeenCalledWith(expect.objectContaining({ job_type: "ocr_region" }), {
+      getProcessingJob: mocks.api.getProcessingJob,
+    });
+    expect(await screen.findByRole("status")).toHaveTextContent("OCR text updated.");
+
+    fireEvent.change(screen.getByLabelText(/source/i), { target: { value: "manual source" } });
+    fireEvent.click(screen.getByRole("button", { name: /translate region/i }));
 
     await waitFor(() => {
       expect(mocks.api.retranslateRegion).toHaveBeenCalledWith(region.id, {
-        source_text: "source text",
+        source_text: "manual source",
         target_language: "en",
         tone: "natural",
       });
     });
     expect(mocks.waitForSuccessfulRetranslateJob).toHaveBeenCalledWith(job, { getProcessingJob: mocks.api.getProcessingJob });
     expect(await screen.findByRole("status")).toHaveTextContent("Translation updated.");
+  });
+
+  it("refreshes region data after OCR failure updates backend region state", async () => {
+    mocks.waitForSuccessfulOcrJob.mockRejectedValueOnce(new Error("No text detected in the selected region."));
+    renderEditor();
+    await screen.findByText(project.name);
+
+    fireEvent.click(screen.getByRole("button", { name: /run ocr/i }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("OCR failed: No text detected in the selected region.");
+    await waitFor(() => {
+      expect(mocks.api.listRegions).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  it("refreshes region data after translation failure updates backend region state", async () => {
+    mocks.waitForSuccessfulRetranslateJob.mockRejectedValueOnce(new Error("Translation provider rejected the request."));
+    renderEditor();
+    await screen.findByText(project.name);
+
+    const translateButton = screen.getByRole("button", { name: /translate region/i });
+    await waitFor(() => {
+      expect(translateButton).not.toBeDisabled();
+    });
+    fireEvent.click(translateButton);
+
+    await waitFor(() => {
+      expect(mocks.waitForSuccessfulRetranslateJob).toHaveBeenCalled();
+    });
+    expect(await screen.findByRole("alert")).toHaveTextContent("Translation failed: Translation provider rejected the request.");
+    await waitFor(() => {
+      expect(mocks.api.listRegions).toHaveBeenCalledTimes(2);
+    });
   });
 
   it("recovers region editing and retry after retranslate polling times out", async () => {
@@ -425,14 +516,16 @@ describe("Editor", () => {
     renderEditor();
     await screen.findByText(project.name);
 
-    fireEvent.click(screen.getByRole("button", { name: /retranslate region/i }));
+    fireEvent.change(screen.getByLabelText(/source/i), { target: { value: "source text" } });
+    fireEvent.click(screen.getByRole("button", { name: /translate region/i }));
 
+    await waitFor(() => expect(mocks.waitForSuccessfulRetranslateJob).toHaveBeenCalled());
     expect(await screen.findByRole("alert")).toHaveTextContent(mocks.retranslateTimeoutMessage);
     expect(screen.queryByText(/Translation failed:/)).not.toBeInTheDocument();
     expect(screen.getByText(/Translation still running/)).toBeInTheDocument();
     expect(screen.getByLabelText(/target/i)).not.toBeDisabled();
 
-    const retryButton = screen.getByRole("button", { name: /retranslate region/i });
+    const retryButton = screen.getByRole("button", { name: /translate region/i });
     expect(retryButton).not.toBeDisabled();
     fireEvent.click(retryButton);
 

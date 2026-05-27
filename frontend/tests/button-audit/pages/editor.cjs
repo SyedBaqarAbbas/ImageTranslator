@@ -7,6 +7,7 @@ auditPage({
   prepare: prepares.projectRoute("editor"),
   expectedButtons: withWorkspaceShell([
     { label: "Undo", kind: "disabledExpected" },
+    { label: "Highlight OCR Region", kind: "changesUiState" },
     { label: "Reset view", kind: "changesUiState" },
     { label: "Add text box", kind: "changesUiState" },
     { label: "original", kind: "changesUiState" },
@@ -20,7 +21,8 @@ auditPage({
     { pattern: /^#1 /, kind: "disabledExpected" },
     { pattern: /^#\d+ /, kind: "changesUiState" },
     { label: "Reject", kind: "changesUiState" },
-    { label: "Retranslate region", kind: "changesUiState" },
+    { label: "Run OCR", kind: "changesUiState" },
+    { label: "Translate region", kind: "changesUiState" },
     { label: "Pick", kind: "changesUiState" },
     { label: "Save", kind: "changesUiState" },
     { label: "Approve", kind: "changesUiState" },

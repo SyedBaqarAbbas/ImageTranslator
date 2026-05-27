@@ -40,21 +40,24 @@ class RegionService:
                 )
             )
         ) or 1
+        detected_text = payload.detected_text
         user_text = payload.user_text
         status_value = (
             TextRegionStatus.USER_EDITED.value
             if user_text and user_text.strip()
             else TextRegionStatus.DETECTED.value
+            if detected_text and detected_text.strip()
+            else TextRegionStatus.NEEDS_REVIEW.value
         )
         region = TextRegion(
             page_id=page_id,
             region_index=next_region_index,
             region_type=payload.region_type.value,
             bounding_box=payload.bounding_box.model_dump(),
-            detected_text=payload.detected_text,
+            detected_text=detected_text,
             translated_text=payload.translated_text,
             user_text=user_text,
-            render_style=payload.render_style,
+            render_style=payload.render_style or {"align": "center", "padding": 6},
             editable=payload.editable,
             status=status_value,
         )
@@ -71,6 +74,11 @@ class RegionService:
     ) -> TextRegion:
         region = await self.get_region(user_id, region_id)
         data = payload.model_dump(exclude={"auto_rerender"}, exclude_unset=True)
+        detected_text_was_set = "detected_text" in data
+        user_text_was_set = "user_text" in data
+        translated_text_was_set = "translated_text" in data
+        bounding_box_was_set = "bounding_box" in data
+        render_style_was_set = "render_style" in data
         if "bounding_box" in data and data["bounding_box"] is not None:
             value = data["bounding_box"]
             data["bounding_box"] = value.model_dump() if hasattr(value, "model_dump") else value
@@ -78,12 +86,18 @@ class RegionService:
             if hasattr(value, "value"):
                 value = value.value
             setattr(region, key, value)
-        if (
-            payload.user_text is not None
-            or payload.translated_text is not None
-            or payload.bounding_box is not None
-            or payload.render_style is not None
-        ):
+        if detected_text_was_set:
+            detected_text = region.detected_text or ""
+            region.ocr_confidence = None
+            region.failure_reason = None
+            region.status = (
+                TextRegionStatus.DETECTED.value
+                if detected_text.strip()
+                else TextRegionStatus.NEEDS_REVIEW.value
+            )
+        if user_text_was_set or translated_text_was_set:
+            region.status = TextRegionStatus.USER_EDITED.value
+        elif bounding_box_was_set or render_style_was_set:
             region.status = TextRegionStatus.USER_EDITED.value
         await self.session.commit()
         await self.session.refresh(region)

@@ -15,8 +15,16 @@ interface DragState {
   handle?: ResizeHandle;
 }
 
-interface AddTextDragState {
+interface CanvasPoint {
+  x: number;
+  y: number;
+}
+
+type CanvasTool = "select" | "addText" | "highlight_ocr";
+
+interface CreateDragState {
   pointerId: number;
+  tool: Exclude<CanvasTool, "select">;
   startClientX: number;
   startClientY: number;
   startPoint: CanvasPoint;
@@ -24,17 +32,11 @@ interface AddTextDragState {
   hasMoved: boolean;
 }
 
-interface CanvasPoint {
-  x: number;
-  y: number;
-}
-
 interface DisplaySize {
   width: number;
   height: number;
 }
 
-type CanvasTool = "select" | "addText";
 type ResizeHandle = "n" | "ne" | "e" | "se" | "s" | "sw" | "w" | "nw";
 
 const RESIZE_HANDLES: ResizeHandle[] = ["nw", "n", "ne", "e", "se", "s", "sw", "w"];
@@ -430,7 +432,7 @@ export function CanvasWorkspace({
   const comparisonPointerId = useRef<number | null>(null);
   const [containerSize, setContainerSize] = useReducer(containerSizeReducer, { width: 0, height: 0 });
   const [drag, setDrag] = useState<DragState | null>(null);
-  const [addTextDrag, setAddTextDrag] = useState<AddTextDragState | null>(null);
+  const [createDrag, setCreateDrag] = useState<CreateDragState | null>(null);
   const [internalComparisonSplit, setInternalComparisonSplit] = useState(50);
   const activeComparisonSplit = clampComparisonSplit(comparisonSplit ?? internalComparisonSplit);
   const setComparisonSplit = onComparisonSplitChange ?? setInternalComparisonSplit;
@@ -552,6 +554,7 @@ export function CanvasWorkspace({
     if (tool !== "select") {
       return;
     }
+    event.stopPropagation();
     if (!displaySize || !onMoveRegion) {
       onSelectRegion(region.id);
       return;
@@ -619,8 +622,8 @@ export function CanvasWorkspace({
     setDrag(null);
   }
 
-  function startAddTextDrag(event: PointerEvent<HTMLDivElement>) {
-    if (tool !== "addText" || isCreatingRegion || !onCreateRegion || event.button !== 0) {
+  function startCreateRegion(event: PointerEvent<HTMLDivElement>) {
+    if (tool === "select" || comparison || isCreatingRegion || !onCreateRegion || event.button !== 0) {
       return;
     }
     const point = canvasPointForPointer(event, canvasFrameRef.current, canvasWidth, canvasHeight);
@@ -629,18 +632,22 @@ export function CanvasWorkspace({
     }
     event.preventDefault();
     event.currentTarget.setPointerCapture(event.pointerId);
-    setAddTextDrag({
+    setCreateDrag({
       pointerId: event.pointerId,
+      tool,
       startClientX: event.clientX,
       startClientY: event.clientY,
       startPoint: point,
-      box: defaultTextBoxForPoint(point, canvasWidth, canvasHeight),
+      box:
+        tool === "addText"
+          ? defaultTextBoxForPoint(point, canvasWidth, canvasHeight)
+          : { x: point.x, y: point.y, width: 0, height: 0 },
       hasMoved: false,
     });
   }
 
-  function updateAddTextDrag(event: PointerEvent<HTMLDivElement>) {
-    setAddTextDrag((current) => {
+  function updateCreateRegion(event: PointerEvent<HTMLDivElement>) {
+    setCreateDrag((current) => {
       if (!current || current.pointerId !== event.pointerId) {
         return current;
       }
@@ -652,31 +659,36 @@ export function CanvasWorkspace({
       const hasMoved = current.hasMoved || movedDistance >= ADD_TEXT_DRAG_THRESHOLD;
       return {
         ...current,
-        box: hasMoved ? boxFromCanvasPoints(current.startPoint, point, canvasWidth, canvasHeight) : defaultTextBoxForPoint(point, canvasWidth, canvasHeight),
+        box:
+          current.tool === "addText" && !hasMoved
+            ? defaultTextBoxForPoint(point, canvasWidth, canvasHeight)
+            : boxFromCanvasPoints(current.startPoint, point, canvasWidth, canvasHeight),
         hasMoved,
       };
     });
   }
 
-  function finishAddTextDrag(event: PointerEvent<HTMLDivElement>) {
-    if (!addTextDrag || addTextDrag.pointerId !== event.pointerId) {
+  function finishCreateRegion(event: PointerEvent<HTMLDivElement>) {
+    if (!createDrag || createDrag.pointerId !== event.pointerId) {
       return;
     }
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId);
     }
-    onCreateRegion?.(addTextDrag.box);
-    setAddTextDrag(null);
+    if (createDrag.tool === "addText" || (createDrag.box.width >= MIN_REGION_SIZE && createDrag.box.height >= MIN_REGION_SIZE)) {
+      onCreateRegion?.(clampBox(createDrag.box, canvasWidth, canvasHeight));
+    }
+    setCreateDrag(null);
   }
 
-  function cancelAddTextDrag(event: PointerEvent<HTMLDivElement>) {
-    if (!addTextDrag || addTextDrag.pointerId !== event.pointerId) {
+  function cancelCreateRegion(event: PointerEvent<HTMLDivElement>) {
+    if (!createDrag || createDrag.pointerId !== event.pointerId) {
       return;
     }
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId);
     }
-    setAddTextDrag(null);
+    setCreateDrag(null);
   }
 
   return (
@@ -691,11 +703,11 @@ export function CanvasWorkspace({
         <div
           ref={canvasFrameRef}
           data-testid="canvas-frame"
-          onPointerDown={startAddTextDrag}
-          onPointerMove={updateAddTextDrag}
-          onPointerUp={finishAddTextDrag}
-          onPointerCancel={cancelAddTextDrag}
-          className={`relative shrink-0 ${tool === "addText" ? "cursor-crosshair touch-none" : ""}`}
+          onPointerDown={startCreateRegion}
+          onPointerMove={updateCreateRegion}
+          onPointerUp={finishCreateRegion}
+          onPointerCancel={cancelCreateRegion}
+          className={`relative shrink-0 ${tool !== "select" && !comparison ? "cursor-crosshair touch-none" : ""}`}
           style={{
             aspectRatio: `${canvasWidth} / ${canvasHeight}`,
             width: displaySize?.width ?? "100%",
@@ -731,20 +743,24 @@ export function CanvasWorkspace({
                 onUpdateDrag={updateDrag}
                 onFinishDrag={finishDrag}
                 onCancelDrag={() => setDrag(null)}
-                interactive={tool === "select"}
+                interactive={tool === "select" && !comparison}
               />
             );
           })}
 
-          {addTextDrag ? (
+          {createDrag ? (
             <div
               aria-hidden="true"
-              className="pointer-events-none absolute rounded-[3px] border-2 border-primary bg-primary/15 shadow-glow"
+              className={`pointer-events-none absolute rounded-[3px] border-2 ${
+                createDrag.tool === "highlight_ocr"
+                  ? "border-dashed border-tertiary bg-tertiary/15 shadow-[0_0_18px_rgba(250,204,21,0.2)]"
+                  : "border-primary bg-primary/15 shadow-glow"
+              }`}
               style={{
-                left: `${(addTextDrag.box.x / canvasWidth) * 100}%`,
-                top: `${(addTextDrag.box.y / canvasHeight) * 100}%`,
-                width: `${(addTextDrag.box.width / canvasWidth) * 100}%`,
-                height: `${(addTextDrag.box.height / canvasHeight) * 100}%`,
+                left: `${(createDrag.box.x / canvasWidth) * 100}%`,
+                top: `${(createDrag.box.y / canvasHeight) * 100}%`,
+                width: `${(createDrag.box.width / canvasWidth) * 100}%`,
+                height: `${(createDrag.box.height / canvasHeight) * 100}%`,
               }}
             />
           ) : null}
