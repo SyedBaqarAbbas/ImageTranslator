@@ -488,6 +488,26 @@ describe("Editor", () => {
     });
   });
 
+  it("refreshes region data after translation failure updates backend region state", async () => {
+    mocks.waitForSuccessfulRetranslateJob.mockRejectedValueOnce(new Error("Translation provider rejected the request."));
+    renderEditor();
+    await screen.findByText(project.name);
+
+    const translateButton = screen.getByRole("button", { name: /translate region/i });
+    await waitFor(() => {
+      expect(translateButton).not.toBeDisabled();
+    });
+    fireEvent.click(translateButton);
+
+    await waitFor(() => {
+      expect(mocks.waitForSuccessfulRetranslateJob).toHaveBeenCalled();
+    });
+    expect(await screen.findByRole("alert")).toHaveTextContent("Translation failed: Translation provider rejected the request.");
+    await waitFor(() => {
+      expect(mocks.api.listRegions).toHaveBeenCalledTimes(2);
+    });
+  });
+
   it("recovers region editing and retry after retranslate polling times out", async () => {
     const timeoutError = new Error(mocks.retranslateTimeoutMessage);
     timeoutError.name = "RetranslateJobPollingTimeoutError";

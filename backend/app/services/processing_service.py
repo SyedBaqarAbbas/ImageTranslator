@@ -263,8 +263,9 @@ async def _mark_job_failed(session: AsyncSession, job: ProcessingJob, exc: Excep
         if region:
             region.status = TextRegionStatus.FAILED.value
             region.failure_reason = str(exc)
-        await session.commit()
-        return
+        if job.job_type != JobType.RERENDER_PAGE.value:
+            await session.commit()
+            return
     project = await session.get(Project, job.project_id)
     if project:
         project.status = ProjectStatus.FAILED.value
@@ -525,7 +526,10 @@ async def _ocr_region(session: AsyncSession, job: ProcessingJob) -> None:
     confidences = [ocr_region.confidence for ocr_region in ocr_regions]
     confidence = sum(confidences) / len(confidences) if confidences else None
     region.detected_text = "\n".join(text_parts)
-    region.detected_language = next((ocr_region.language for ocr_region in ocr_regions if ocr_region.language), None)
+    region.detected_language = next(
+        (ocr_region.language for ocr_region in ocr_regions if ocr_region.language),
+        None,
+    )
     region.ocr_confidence = confidence
     region.status = (
         TextRegionStatus.OCR_LOW_CONFIDENCE.value
@@ -585,6 +589,7 @@ async def _retranslate_region(session: AsyncSession, job: ProcessingJob) -> None
     region.translated_text = result.translated_text
     region.translation_confidence = result.confidence
     region.status = TextRegionStatus.TRANSLATED.value
+    region.failure_reason = None
     job.progress = 65
     await session.commit()
     await _rerender_page(session, project, page)

@@ -549,7 +549,11 @@ async def test_processing_inner_retranslate_rerender_and_execute_edges(
                 )
             ]
 
-    monkeypatch.setattr(processing_service_module, "get_ocr_provider", lambda: CropAwareOCRProvider())
+    monkeypatch.setattr(
+        processing_service_module,
+        "get_ocr_provider",
+        lambda: CropAwareOCRProvider(),
+    )
     ocr_job = ProcessingJob(
         project_id=project.id,
         page_id=page.id,
@@ -567,6 +571,7 @@ async def test_processing_inner_retranslate_rerender_and_execute_edges(
     assert regions[0].ocr_confidence == pytest.approx(0.82)
     assert regions[0].status == TextRegionStatus.OCR_COMPLETE.value
 
+    regions[0].failure_reason = "Previous translation failure"
     retranslate_job = ProcessingJob(
         project_id=project.id,
         page_id=page.id,
@@ -584,6 +589,7 @@ async def test_processing_inner_retranslate_rerender_and_execute_edges(
     assert retranslate_job.progress == 65
     assert regions[0].detected_text == "manual source"
     assert regions[0].translated_text == "en:literal:manual source"
+    assert regions[0].failure_reason is None
     assert page.final_asset_id
 
     regions[0].status = "user_edited"
@@ -824,6 +830,70 @@ async def test_processing_project_page_and_rerender_failure_branches(
     with pytest.raises(AppError) as missing_page_project:
         await _rerender_page_for_job(db_session, orphan_page_job)
     assert missing_page_project.value.code == "project_not_found"
+
+
+@pytest.mark.asyncio
+async def test_region_rerender_failure_marks_region_page_and_project_failed(
+    db_session: AsyncSession,
+) -> None:
+    user = await _user(db_session)
+    project = Project(
+        user_id=user.id,
+        name="Region Rerender Failure",
+        source_language="ja",
+        target_language="en",
+        status=ProjectStatus.REVIEW_REQUIRED.value,
+    )
+    db_session.add(project)
+    await db_session.commit()
+    await db_session.refresh(project)
+
+    page = Page(
+        project_id=project.id,
+        page_number=1,
+        status=PageStatus.REVIEW_REQUIRED.value,
+    )
+    db_session.add(page)
+    await db_session.commit()
+    await db_session.refresh(page)
+
+    region = TextRegion(
+        page_id=page.id,
+        region_index=1,
+        bounding_box={"x": 1, "y": 1, "width": 10, "height": 10},
+        detected_text="source",
+        translated_text="translated",
+        status=TextRegionStatus.TRANSLATED.value,
+    )
+    db_session.add(region)
+    await db_session.commit()
+    await db_session.refresh(region)
+
+    rerender_region_job = ProcessingJob(
+        project_id=project.id,
+        page_id=page.id,
+        region_id=region.id,
+        job_type=JobType.RERENDER_PAGE.value,
+    )
+    db_session.add(rerender_region_job)
+    await db_session.commit()
+    await db_session.refresh(rerender_region_job)
+
+    with pytest.raises(AppError) as rerender_failure:
+        await execute_processing_job(rerender_region_job.id)
+    assert rerender_failure.value.code == "page_missing_image"
+
+    await db_session.refresh(rerender_region_job)
+    await db_session.refresh(region)
+    await db_session.refresh(page)
+    await db_session.refresh(project)
+    assert rerender_region_job.status == JobStatus.FAILED.value
+    assert region.status == TextRegionStatus.FAILED.value
+    assert region.failure_reason == "Page has no image to render."
+    assert page.status == PageStatus.FAILED.value
+    assert page.failure_reason == "Page has no image to render."
+    assert project.status == ProjectStatus.FAILED.value
+    assert project.failure_reason == "Page has no image to render."
 
 
 @pytest.mark.asyncio

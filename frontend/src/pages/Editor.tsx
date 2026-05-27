@@ -461,6 +461,8 @@ export function Editor() {
     },
     onError: async (error, variables) => {
       const timedOut = isRetranslateJobPollingTimeoutError(error);
+      const failedRegion = regions.find((region) => region.id === variables.regionId);
+      const pageId = failedRegion?.page_id ?? selectedPage?.id;
       dispatchEditor({
         type: "setRegionRetranslateFeedback",
         feedback: {
@@ -470,9 +472,10 @@ export function Editor() {
         },
       });
       dispatchEditor({ type: "patch", patch: { workspaceStatus: timedOut ? "Translation still running" : "Translation failed" } });
-      if (timedOut && projectId) {
-        await queryClient.invalidateQueries({ queryKey: queryKeys.jobs(projectId) });
-      }
+      await Promise.all([
+        pageId ? queryClient.invalidateQueries({ queryKey: queryKeys.regions(pageId) }) : Promise.resolve(),
+        timedOut && projectId ? queryClient.invalidateQueries({ queryKey: queryKeys.jobs(projectId) }) : Promise.resolve(),
+      ]);
     },
   });
 
