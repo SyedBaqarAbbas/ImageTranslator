@@ -15,10 +15,11 @@ The workflow at `.github/workflows/deploy-oci.yml` deploys the current Compose
 prototype to Oracle Cloud Infrastructure (OCI). It starts automatically only
 after the GitHub `CI` workflow completes successfully for a `push` to `main`.
 Pull request CI runs do not deploy and do not receive OCI deployment secrets.
-Automatic deployments also verify that the remote `main` checkout matches the
-successful CI run's commit before restarting Compose. If `main` advanced while
-an older CI run was finishing, the older deploy exits and the newer CI run is
-left to deploy its own commit.
+Automatic deployments also verify that the fetched `origin/main` commit matches
+the successful CI run's commit before changing the bind-mounted server checkout.
+If `main` advanced while an older CI run was finishing, the older deploy exits
+without updating the working tree and the newer CI run is left to deploy its own
+commit.
 
 The same workflow also supports manual redeployment from GitHub Actions:
 
@@ -118,10 +119,11 @@ OCI host, it:
 2. verifies the directory is a Git checkout with root `docker-compose.yml`
 3. fails if tracked server-side files are modified, while ignoring untracked
    runtime files
-4. runs `git fetch --prune origin main`
-5. runs `git checkout main`
-6. runs `git pull --ff-only origin main`
-7. verifies automatic deployments still match the successful CI commit
+4. runs `git fetch --prune origin main:refs/remotes/origin/main`
+5. verifies automatic deployments match the successful CI commit before the
+   bind-mounted checkout is changed
+6. runs `git checkout main`
+7. runs `git merge --ff-only refs/remotes/origin/main`
 8. runs `docker compose config --quiet`
 9. runs `docker compose up --build -d --remove-orphans`
 10. retries frontend and API health checks

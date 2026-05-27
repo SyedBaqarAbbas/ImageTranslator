@@ -179,7 +179,13 @@ jobs:
           fi
 
           log "Fetching latest main"
-          git fetch --prune origin main
+          git fetch --prune origin main:refs/remotes/origin/main
+          fetched_main_sha="$(git rev-parse refs/remotes/origin/main)"
+
+          if [ -n "${OCI_EXPECTED_SHA:-}" ] && [ "$fetched_main_sha" != "$OCI_EXPECTED_SHA" ]; then
+            fail "Fetched origin/main $fetched_main_sha does not match successful CI commit $OCI_EXPECTED_SHA. A newer main push likely exists; wait for that CI run to deploy."
+          fi
+
           git checkout main
 
           if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
@@ -187,12 +193,12 @@ jobs:
             fail "Tracked files became dirty after checking out main; resolve the server checkout before deployment."
           fi
 
-          git pull --ff-only origin main
+          git merge --ff-only refs/remotes/origin/main
           current_sha="$(git rev-parse HEAD)"
           log "Updated checkout to ${current_sha:0:12}"
 
-          if [ -n "${OCI_EXPECTED_SHA:-}" ] && [ "$current_sha" != "$OCI_EXPECTED_SHA" ]; then
-            fail "main HEAD $current_sha does not match successful CI commit $OCI_EXPECTED_SHA. A newer main push likely exists; wait for that CI run to deploy."
+          if [ "$current_sha" != "$fetched_main_sha" ]; then
+            fail "main HEAD $current_sha does not match fetched origin/main $fetched_main_sha after fast-forward."
           fi
 
           command -v docker >/dev/null 2>&1 || fail "docker is not installed or is not on PATH for the deploy user"

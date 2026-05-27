@@ -69,13 +69,14 @@ receive OCI secrets. Manual `workflow_dispatch` runs from `main` also deploy.
 The workflow uses environment-scoped OCI SSH secrets, pinned known hosts,
 serialized `production-oci` concurrency, safe fast-forward Git updates, `docker
 compose config --quiet`, `docker compose up --build -d --remove-orphans`, and
-frontend plus API health checks. Automatic runs verify that the remote `main`
-checkout matches the successful CI run's commit before Compose restarts, so an
-older CI completion cannot deploy a newer unverified `main` push. It must not
-delete server `.env` files, OPUS-MT models, asset storage, or Postgres/Docker
-volumes. This deployment workflow depends on hosted `CI` for tested application
-state, complements CodeQL security scanning, and is separate from the GitHub
-Pages docs deployment.
+frontend plus API health checks. Automatic runs verify that fetched
+`origin/main` matches the successful CI run's commit before changing the
+bind-mounted server checkout, so an older CI completion cannot update the
+running prototype to a newer unverified `main` push. It must not delete server
+`.env` files, OPUS-MT models, asset storage, or Postgres/Docker volumes. This
+deployment workflow depends on hosted `CI` for tested application state,
+complements CodeQL security scanning, and is separate from the GitHub Pages docs
+deployment.
 
 The local `./up-and-test.sh` release gate remains broader than hosted CI and
 should still be run before release-sensitive merges.
