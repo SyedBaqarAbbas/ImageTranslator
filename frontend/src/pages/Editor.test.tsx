@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -173,6 +173,34 @@ const originalHasPointerCapture = HTMLElement.prototype.hasPointerCapture;
 let currentRegions: TextRegionRead[];
 let updateCount: number;
 
+function applyRegionUpdate(regionId: string, payload: TextRegionUpdate): TextRegionRead {
+  const existingRegion = currentRegions.find((item) => item.id === regionId) ?? region;
+  const updatedRegion: TextRegionRead = {
+    ...existingRegion,
+    id: regionId,
+    detected_text: "detected_text" in payload ? payload.detected_text ?? null : existingRegion.detected_text,
+    user_text: "user_text" in payload ? payload.user_text ?? null : existingRegion.user_text,
+    translated_text: "translated_text" in payload ? payload.translated_text ?? null : existingRegion.translated_text,
+    render_style: "render_style" in payload ? payload.render_style ?? null : existingRegion.render_style,
+    editable: "editable" in payload ? payload.editable ?? existingRegion.editable : existingRegion.editable,
+    bounding_box: payload.bounding_box ?? existingRegion.bounding_box,
+    status:
+      payload.user_text !== undefined ||
+      payload.translated_text !== undefined ||
+      payload.bounding_box !== undefined ||
+      payload.render_style !== undefined
+        ? "user_edited"
+        : payload.detected_text !== undefined
+          ? payload.detected_text?.trim()
+            ? "detected"
+            : "needs_review"
+          : existingRegion.status,
+    updated_at: new Date(Date.parse(now) + ++updateCount * 1000).toISOString(),
+  };
+  currentRegions = currentRegions.map((item) => (item.id === regionId ? updatedRegion : item));
+  return updatedRegion;
+}
+
 class ResizeObserverStub {
   observe() {}
   disconnect() {}
@@ -267,33 +295,7 @@ describe("Editor", () => {
       currentRegions = [...currentRegions, createdRegion];
       return Promise.resolve(createdRegion);
     });
-    mocks.api.updateRegion.mockImplementation((regionId: string, payload: TextRegionUpdate) => {
-      const existingRegion = currentRegions.find((item) => item.id === regionId) ?? region;
-      const updatedRegion: TextRegionRead = {
-        ...existingRegion,
-        id: regionId,
-        detected_text: "detected_text" in payload ? payload.detected_text ?? null : existingRegion.detected_text,
-        user_text: "user_text" in payload ? payload.user_text ?? null : existingRegion.user_text,
-        translated_text: "translated_text" in payload ? payload.translated_text ?? null : existingRegion.translated_text,
-        render_style: "render_style" in payload ? payload.render_style ?? null : existingRegion.render_style,
-        editable: "editable" in payload ? payload.editable ?? existingRegion.editable : existingRegion.editable,
-        bounding_box: payload.bounding_box ?? existingRegion.bounding_box,
-        status:
-          payload.user_text !== undefined ||
-          payload.translated_text !== undefined ||
-          payload.bounding_box !== undefined ||
-          payload.render_style !== undefined
-            ? "user_edited"
-            : payload.detected_text !== undefined
-              ? payload.detected_text?.trim()
-                ? "detected"
-                : "needs_review"
-            : existingRegion.status,
-        updated_at: new Date(Date.parse(now) + ++updateCount * 1000).toISOString(),
-      };
-      currentRegions = currentRegions.map((item) => (item.id === regionId ? updatedRegion : item));
-      return Promise.resolve(updatedRegion);
-    });
+    mocks.api.updateRegion.mockImplementation((regionId: string, payload: TextRegionUpdate) => Promise.resolve(applyRegionUpdate(regionId, payload)));
     mocks.api.deleteRegion.mockResolvedValue({ ...job, job_type: "rerender_page" });
     mocks.api.ocrRegion.mockResolvedValue({ ...job, job_type: "ocr_region" });
     mocks.api.retranslateRegion.mockResolvedValue(job);
@@ -705,6 +707,67 @@ describe("Editor", () => {
       },
     ]);
     expect(await screen.findByText(/Undo applied/)).toBeInTheDocument();
+  });
+
+  it("preserves undo action order when overlapping save and move requests resolve out of order", async () => {
+    const pendingUpdates: Array<{
+      regionId: string;
+      payload: TextRegionUpdate;
+      resolve: (region: TextRegionRead) => void;
+    }> = [];
+    mocks.api.updateRegion.mockImplementation(
+      (regionId: string, payload: TextRegionUpdate) =>
+        new Promise<TextRegionRead>((resolve) => {
+          pendingUpdates.push({ regionId, payload, resolve });
+        }),
+    );
+    renderEditor();
+    await screen.findByText(project.name);
+
+    fireEvent.change(await screen.findByDisplayValue("Machine translation"), {
+      target: { value: "Human edited translation" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
+
+    await waitFor(() => {
+      expect(mocks.api.updateRegion).toHaveBeenCalledTimes(1);
+    });
+
+    const regionOverlay = screen.getByTitle("Region 1");
+    firePointerEvent(regionOverlay, "pointerdown", { pointerId: 1, clientX: 100, clientY: 100 });
+    firePointerEvent(regionOverlay, "pointermove", { pointerId: 1, clientX: 140, clientY: 130 });
+    firePointerEvent(regionOverlay, "pointerup", { pointerId: 1, clientX: 140, clientY: 130 });
+
+    await waitFor(() => {
+      expect(mocks.api.updateRegion).toHaveBeenCalledTimes(2);
+    });
+    expect(pendingUpdates[0].payload).toEqual(expect.objectContaining({ user_text: "Human edited translation" }));
+    expect(pendingUpdates[1].payload).toEqual(expect.objectContaining({ bounding_box: expect.not.objectContaining(region.bounding_box) }));
+
+    await act(async () => {
+      pendingUpdates[1].resolve(applyRegionUpdate(pendingUpdates[1].regionId, pendingUpdates[1].payload));
+    });
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /undo/i })).not.toHaveAttribute("aria-disabled", "true");
+    });
+
+    await act(async () => {
+      pendingUpdates[0].resolve(applyRegionUpdate(pendingUpdates[0].regionId, pendingUpdates[0].payload));
+    });
+    await screen.findByText("Saved");
+
+    fireEvent.click(screen.getByRole("button", { name: /undo/i }));
+
+    await waitFor(() => {
+      expect(mocks.api.updateRegion).toHaveBeenCalledTimes(3);
+    });
+    expect(mocks.api.updateRegion.mock.calls.at(-1)).toEqual([
+      region.id,
+      {
+        bounding_box: region.bounding_box,
+        auto_rerender: true,
+      },
+    ]);
   });
 
   it("preserves unsaved style drafts when undoing canvas moves", async () => {

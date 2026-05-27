@@ -1,5 +1,5 @@
 import { ArrowLeft, Columns2, Download, Minus, Plus, RotateCcw, Save, ScanText, SquarePlus, Undo2 } from "lucide-react";
-import { useEffect, useMemo, useReducer, useState } from "react";
+import { useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 
@@ -169,6 +169,7 @@ interface RetranslateRegionVariables {
 }
 
 interface UndoEntry {
+  order: number;
   regionId: string;
   pageId: string;
   payload: TextRegionUpdate;
@@ -218,12 +219,13 @@ function undoPayloadForRegion(region: TextRegionRead, payload: TextRegionUpdate)
   return undoPayload;
 }
 
-function undoEntryForUpdate(region: TextRegionRead | undefined, payload: TextRegionUpdate): UndoEntry | undefined {
+function undoEntryForUpdate(region: TextRegionRead | undefined, payload: TextRegionUpdate, order: number): UndoEntry | undefined {
   const undoPayload = region ? undoPayloadForRegion(region, payload) : undefined;
   if (!region || !undoPayload) {
     return undefined;
   }
   return {
+    order,
     regionId: region.id,
     pageId: region.page_id,
     payload: undoPayload,
@@ -256,6 +258,7 @@ export function Editor() {
   const location = useLocation();
   const queryClient = useQueryClient();
   const [undoStack, setUndoStack] = useState<UndoEntry[]>([]);
+  const undoOrderRef = useRef(0);
   const [
     {
       selectedPageId,
@@ -307,11 +310,16 @@ export function Editor() {
     [regions, styleDrafts],
   );
 
-  function pushUndoEntry(entry?: UndoEntry) {
+  function nextUndoOrder(): number {
+    undoOrderRef.current += 1;
+    return undoOrderRef.current;
+  }
+
+  function insertUndoEntry(entry?: UndoEntry) {
     if (!entry) {
       return;
     }
-    setUndoStack((current) => [...current, entry].slice(-25));
+    setUndoStack((current) => [...current, entry].sort((left, right) => left.order - right.order).slice(-25));
   }
 
   function handleBack() {
@@ -333,7 +341,10 @@ export function Editor() {
   }
 
   function handleSaveRegion(regionId: string, payload: TextRegionUpdate, action: EditorSaveAction) {
-    const undoEntry = action === "workspace" ? undefined : undoEntryForUpdate(regions.find((region) => region.id === regionId), payload);
+    const undoEntry =
+      action === "workspace"
+        ? undefined
+        : undoEntryForUpdate(regions.find((region) => region.id === regionId), payload, nextUndoOrder());
     saveMutation.mutate({ regionId, payload, action, undoEntry });
   }
 
@@ -406,7 +417,7 @@ export function Editor() {
       dispatchEditor({ type: "patch", patch: { workspaceStatus: "Saving..." } });
     },
     onSuccess: async (updatedRegion, variables) => {
-      pushUndoEntry(variables.undoEntry);
+      insertUndoEntry(variables.undoEntry);
       queryClient.setQueryData<TextRegionRead[]>(queryKeys.regions(updatedRegion.page_id), (current) =>
         current?.map((region) => (region.id === updatedRegion.id ? updatedRegion : region)) ?? current,
       );
@@ -460,12 +471,17 @@ export function Editor() {
         return undefined;
       }
       const key = queryKeys.regions(selectedPage.id);
+      const undoOrder = nextUndoOrder();
       await queryClient.cancelQueries({ queryKey: key });
       const previous = queryClient.getQueryData<TextRegionRead[]>(key);
-      const undoEntry = undoEntryForUpdate(previous?.find((region) => region.id === regionId), {
-        bounding_box: boundingBox,
-        auto_rerender: true,
-      });
+      const undoEntry = undoEntryForUpdate(
+        previous?.find((region) => region.id === regionId),
+        {
+          bounding_box: boundingBox,
+          auto_rerender: true,
+        },
+        undoOrder,
+      );
       queryClient.setQueryData<TextRegionRead[]>(
         key,
         (current) => current?.map((region) => (region.id === regionId ? { ...region, bounding_box: boundingBox } : region)) ?? current,
@@ -473,7 +489,7 @@ export function Editor() {
       return { key, previous, undoEntry };
     },
     onSuccess: (_updatedRegion, _variables, context) => {
-      pushUndoEntry(context?.undoEntry);
+      insertUndoEntry(context?.undoEntry);
     },
     onError: (_error, _variables, context) => {
       if (context?.previous) {
@@ -524,7 +540,7 @@ export function Editor() {
       if (context?.previous) {
         queryClient.setQueryData(context.key, context.previous);
       }
-      setUndoStack((current) => [...current, entry]);
+      insertUndoEntry(entry);
       dispatchEditor({ type: "patch", patch: { workspaceStatus: `Undo failed: ${errorMessage(error, "The request failed.")}` } });
     },
   });
