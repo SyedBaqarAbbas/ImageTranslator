@@ -182,37 +182,51 @@ function valuesMatch(left: unknown, right: unknown): boolean {
   return JSON.stringify(left ?? null) === JSON.stringify(right ?? null);
 }
 
-function regionUpdateChanges(region: TextRegionRead, payload: TextRegionUpdate): boolean {
-  return (
-    ("detected_text" in payload && payload.detected_text !== region.detected_text) ||
-    ("translated_text" in payload && payload.translated_text !== region.translated_text) ||
-    ("user_text" in payload && payload.user_text !== region.user_text) ||
-    ("bounding_box" in payload && !valuesMatch(payload.bounding_box, region.bounding_box)) ||
-    ("render_style" in payload && !valuesMatch(payload.render_style, region.render_style)) ||
-    ("editable" in payload && payload.editable !== region.editable)
-  );
-}
+function undoPayloadForRegion(region: TextRegionRead, payload: TextRegionUpdate): TextRegionUpdate | undefined {
+  const undoPayload: TextRegionUpdate = {};
+  let needsRerender = false;
 
-function undoPayloadForRegion(region: TextRegionRead): TextRegionUpdate {
-  return {
-    detected_text: region.detected_text,
-    translated_text: region.translated_text,
-    user_text: region.user_text,
-    bounding_box: cloneJson(region.bounding_box),
-    render_style: cloneJson(region.render_style),
-    editable: region.editable,
-    auto_rerender: true,
-  };
+  if ("detected_text" in payload && payload.detected_text !== region.detected_text) {
+    undoPayload.detected_text = region.detected_text;
+    needsRerender = true;
+  }
+  if ("translated_text" in payload && payload.translated_text !== region.translated_text) {
+    undoPayload.translated_text = region.translated_text;
+    needsRerender = true;
+  }
+  if ("user_text" in payload && payload.user_text !== region.user_text) {
+    undoPayload.user_text = region.user_text;
+    needsRerender = true;
+  }
+  if ("bounding_box" in payload && !valuesMatch(payload.bounding_box, region.bounding_box)) {
+    undoPayload.bounding_box = cloneJson(region.bounding_box);
+    needsRerender = true;
+  }
+  if ("render_style" in payload && !valuesMatch(payload.render_style, region.render_style)) {
+    undoPayload.render_style = cloneJson(region.render_style);
+    needsRerender = true;
+  }
+  if ("editable" in payload && payload.editable !== region.editable) {
+    undoPayload.editable = region.editable;
+  }
+  if (!Object.keys(undoPayload).length) {
+    return undefined;
+  }
+  if (needsRerender) {
+    undoPayload.auto_rerender = true;
+  }
+  return undoPayload;
 }
 
 function undoEntryForUpdate(region: TextRegionRead | undefined, payload: TextRegionUpdate): UndoEntry | undefined {
-  if (!region || !regionUpdateChanges(region, payload)) {
+  const undoPayload = region ? undoPayloadForRegion(region, payload) : undefined;
+  if (!region || !undoPayload) {
     return undefined;
   }
   return {
     regionId: region.id,
     pageId: region.page_id,
-    payload: undoPayloadForRegion(region),
+    payload: undoPayload,
   };
 }
 

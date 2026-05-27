@@ -419,22 +419,49 @@ describe("Editor", () => {
     fireEvent.click(screen.getByRole("button", { name: /undo/i }));
 
     await waitFor(() => {
+      expect(mocks.api.updateRegion).toHaveBeenCalledTimes(2);
+    });
+    expect(mocks.api.updateRegion.mock.calls.at(-1)).toEqual([
+      region.id,
+      {
+        user_text: null,
+        render_style: region.render_style,
+        auto_rerender: true,
+      },
+    ]);
+    expect(await screen.findByText(/Undo applied/)).toBeInTheDocument();
+    expect(screen.getByLabelText(/target/i)).toHaveValue("Machine translation");
+    expect(screen.getByRole("button", { name: /undo/i })).toHaveAttribute("aria-disabled", "true");
+  });
+
+  it("undoes approval without resending unchanged text or style fields", async () => {
+    currentRegions = [{ ...region, user_text: "Machine translation" }];
+    renderEditor();
+    await screen.findByText(project.name);
+    await screen.findByDisplayValue("Machine translation");
+
+    fireEvent.click(screen.getByRole("button", { name: /^approve$/i }));
+
+    await waitFor(() => {
       expect(mocks.api.updateRegion).toHaveBeenCalledWith(
         region.id,
         expect.objectContaining({
-          detected_text: "source text",
-          translated_text: "Machine translation",
-          user_text: null,
-          bounding_box: region.bounding_box,
-          render_style: region.render_style,
-          editable: true,
+          editable: false,
           auto_rerender: true,
         }),
       );
     });
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /undo/i })).not.toHaveAttribute("aria-disabled", "true");
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /undo/i }));
+
+    await waitFor(() => {
+      expect(mocks.api.updateRegion).toHaveBeenCalledTimes(2);
+    });
+    expect(mocks.api.updateRegion.mock.calls.at(-1)).toEqual([region.id, { editable: true }]);
     expect(await screen.findByText(/Undo applied/)).toBeInTheDocument();
-    expect(screen.getByLabelText(/target/i)).toHaveValue("Machine translation");
-    expect(screen.getByRole("button", { name: /undo/i })).toHaveAttribute("aria-disabled", "true");
   });
 
   it("surfaces undo failures in the editor status area", async () => {
@@ -668,14 +695,15 @@ describe("Editor", () => {
     fireEvent.click(screen.getByRole("button", { name: /undo/i }));
 
     await waitFor(() => {
-      expect(mocks.api.updateRegion).toHaveBeenCalledWith(
-        region.id,
-        expect.objectContaining({
-          bounding_box: region.bounding_box,
-          auto_rerender: true,
-        }),
-      );
+      expect(mocks.api.updateRegion).toHaveBeenCalledTimes(2);
     });
+    expect(mocks.api.updateRegion.mock.calls.at(-1)).toEqual([
+      region.id,
+      {
+        bounding_box: region.bounding_box,
+        auto_rerender: true,
+      },
+    ]);
     expect(await screen.findByText(/Undo applied/)).toBeInTheDocument();
   });
 
