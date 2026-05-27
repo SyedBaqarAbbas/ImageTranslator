@@ -112,6 +112,7 @@ Use Linear for planned project work and GitHub Issues for public bug reports or 
 ## More Docs
 
 - Documentation site source: [docs/](docs/)
+- Deployment operations: [docs/deployment.md](docs/deployment.md)
 - Public MVP release notes: <https://syedbaqarabbas.github.io/ImageTranslator/release-notes/>
 - Setup details: [run-guide.md](run-guide.md)
 - Contributing: [CONTRIBUTING.md](CONTRIBUTING.md)

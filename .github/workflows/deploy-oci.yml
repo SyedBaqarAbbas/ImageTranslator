@@ -1,0 +1,225 @@
+name: Deploy OCI
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-oci
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy OCI prototype
+    runs-on: ubuntu-latest
+    if: >-
+      ${{
+        (
+          github.event_name == 'workflow_dispatch' &&
+          github.ref == 'refs/heads/main'
+        ) ||
+        (
+          github.event.workflow_run.conclusion == 'success' &&
+          github.event.workflow_run.event == 'push' &&
+          github.event.workflow_run.head_branch == 'main'
+        )
+      }}
+
+    environment:
+      name: production-oci
+      url: ${{ vars.OCI_APP_URL || 'http://158.101.11.4:5173' }}
+
+    env:
+      OCI_DEPLOY_HOST: ${{ secrets.OCI_DEPLOY_HOST }}
+      OCI_DEPLOY_USER: ${{ secrets.OCI_DEPLOY_USER }}
+      OCI_DEPLOY_SSH_KEY: ${{ secrets.OCI_DEPLOY_SSH_KEY }}
+      OCI_DEPLOY_KNOWN_HOSTS: ${{ secrets.OCI_DEPLOY_KNOWN_HOSTS }}
+      OCI_DEPLOY_PORT: ${{ vars.OCI_DEPLOY_PORT || '22' }}
+      OCI_DEPLOY_PATH: ${{ vars.OCI_DEPLOY_PATH }}
+      OCI_EXPECTED_SHA: ${{ github.event.workflow_run.head_sha || '' }}
+      OCI_FRONTEND_HEALTH_URL: ${{ vars.OCI_FRONTEND_HEALTH_URL || 'http://127.0.0.1:5173/' }}
+      OCI_API_HEALTH_URL: ${{ vars.OCI_API_HEALTH_URL || 'http://127.0.0.1:8000/api/v1/health' }}
+
+    steps:
+      - name: Validate deployment configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          missing=()
+          for name in OCI_DEPLOY_HOST OCI_DEPLOY_USER OCI_DEPLOY_SSH_KEY OCI_DEPLOY_KNOWN_HOSTS; do
+            if [ -z "${!name}" ]; then
+              missing+=("$name")
+            fi
+          done
+
+          if [ "${#missing[@]}" -gt 0 ]; then
+            printf 'Missing required production-oci secrets: %s\n' "${missing[*]}" >&2
+            exit 1
+          fi
+
+          if [ -z "$OCI_DEPLOY_PATH" ]; then
+            printf 'Missing required production-oci variable: OCI_DEPLOY_PATH\n' >&2
+            exit 1
+          fi
+
+          if ! [[ "$OCI_DEPLOY_PORT" =~ ^[0-9]+$ ]]; then
+            printf 'OCI_DEPLOY_PORT must be numeric; got %q\n' "$OCI_DEPLOY_PORT" >&2
+            exit 1
+          fi
+
+      - name: Configure SSH
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          install -m 700 -d "$HOME/.ssh"
+
+          key_file="$RUNNER_TEMP/oci_deploy_key"
+          printf '%s\n' "$OCI_DEPLOY_SSH_KEY" > "$key_file"
+          chmod 600 "$key_file"
+
+          printf '%s\n' "$OCI_DEPLOY_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
+          chmod 600 "$HOME/.ssh/known_hosts"
+
+          echo "OCI_SSH_KEY_FILE=$key_file" >> "$GITHUB_ENV"
+
+      - name: Deploy over SSH
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          printf -v remote_deploy_path '%q' "$OCI_DEPLOY_PATH"
+          printf -v remote_expected_sha '%q' "$OCI_EXPECTED_SHA"
+          printf -v remote_frontend_health_url '%q' "$OCI_FRONTEND_HEALTH_URL"
+          printf -v remote_api_health_url '%q' "$OCI_API_HEALTH_URL"
+
+          ssh \
+            -i "$OCI_SSH_KEY_FILE" \
+            -p "$OCI_DEPLOY_PORT" \
+            -o BatchMode=yes \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$HOME/.ssh/known_hosts" \
+            "$OCI_DEPLOY_USER@$OCI_DEPLOY_HOST" \
+            "OCI_DEPLOY_PATH=$remote_deploy_path OCI_EXPECTED_SHA=$remote_expected_sha OCI_FRONTEND_HEALTH_URL=$remote_frontend_health_url OCI_API_HEALTH_URL=$remote_api_health_url bash -s" <<'REMOTE_SCRIPT'
+          set -Eeuo pipefail
+
+          log() {
+            printf '[deploy-oci] %s\n' "$*"
+          }
+
+          fail() {
+            printf '[deploy-oci] ERROR: %s\n' "$*" >&2
+            exit 1
+          }
+
+          dotenv_value() {
+            local key="$1"
+            local file=".env"
+
+            if [ ! -f "$file" ]; then
+              return 1
+            fi
+
+            awk -F= -v lookup_key="$key" '
+              $0 ~ /^[[:space:]]*#/ { next }
+              $1 == lookup_key {
+                value = substr($0, index($0, "=") + 1)
+                gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
+                gsub(/^"|"$/, "", value)
+                gsub(/^'\''|'\''$/, "", value)
+                print value
+                exit
+              }
+            ' "$file"
+          }
+
+          check_url() {
+            local label="$1"
+            local url="$2"
+            local attempts=30
+            local delay_seconds=5
+
+            for attempt in $(seq 1 "$attempts"); do
+              if curl -fsS "$url" >/dev/null; then
+                log "$label health check passed at $url"
+                return 0
+              fi
+
+              log "$label health check attempt $attempt/$attempts failed at $url"
+              sleep "$delay_seconds"
+            done
+
+            docker compose ps >&2 || true
+            docker compose logs --tail=120 api frontend migrate >&2 || true
+            fail "$label health check failed after $attempts attempts: $url"
+          }
+
+          : "${OCI_DEPLOY_PATH:?OCI_DEPLOY_PATH is required}"
+          : "${OCI_FRONTEND_HEALTH_URL:?OCI_FRONTEND_HEALTH_URL is required}"
+          : "${OCI_API_HEALTH_URL:?OCI_API_HEALTH_URL is required}"
+
+          log "Entering deploy path: $OCI_DEPLOY_PATH"
+          cd "$OCI_DEPLOY_PATH" || fail "Deploy path does not exist or is not accessible: $OCI_DEPLOY_PATH"
+
+          [ -d .git ] || fail "Deploy path is not a Git checkout: $OCI_DEPLOY_PATH"
+          [ -f docker-compose.yml ] || fail "Deploy path is missing root docker-compose.yml: $OCI_DEPLOY_PATH"
+          git rev-parse --is-inside-work-tree >/dev/null 2>&1 || fail "Deploy path is not inside a Git work tree"
+
+          if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
+            git status --short --untracked-files=no >&2
+            fail "Tracked files on the OCI checkout have local modifications; commit, stash, or revert them before deployment."
+          fi
+
+          log "Fetching latest main"
+          git fetch --prune origin main
+          git checkout main
+
+          if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
+            git status --short --untracked-files=no >&2
+            fail "Tracked files became dirty after checking out main; resolve the server checkout before deployment."
+          fi
+
+          git pull --ff-only origin main
+          current_sha="$(git rev-parse HEAD)"
+          log "Updated checkout to ${current_sha:0:12}"
+
+          if [ -n "${OCI_EXPECTED_SHA:-}" ] && [ "$current_sha" != "$OCI_EXPECTED_SHA" ]; then
+            fail "main HEAD $current_sha does not match successful CI commit $OCI_EXPECTED_SHA. A newer main push likely exists; wait for that CI run to deploy."
+          fi
+
+          command -v docker >/dev/null 2>&1 || fail "docker is not installed or is not on PATH for the deploy user"
+          docker compose version >/dev/null 2>&1 || fail "docker compose is not available to the deploy user"
+
+          translation_provider="${TRANSLATION_PROVIDER:-}"
+          if [ -z "$translation_provider" ]; then
+            translation_provider="$(dotenv_value TRANSLATION_PROVIDER || true)"
+          fi
+          translation_provider="${translation_provider:-opus_mt}"
+
+          if [ "$translation_provider" = "opus_mt" ]; then
+            [ -d backend/models/opus-mt ] || fail "TRANSLATION_PROVIDER=opus_mt but backend/models/opus-mt is missing on the OCI host."
+            if ! find backend/models/opus-mt -mindepth 1 -maxdepth 1 -type d | grep -q .; then
+              fail "TRANSLATION_PROVIDER=opus_mt but backend/models/opus-mt has no model directories on the OCI host."
+            fi
+          fi
+
+          log "Validating Docker Compose configuration"
+          docker compose config --quiet
+
+          log "Rebuilding and starting Compose services"
+          docker compose up --build -d --remove-orphans
+
+          log "Verifying deployed frontend and API health"
+          check_url "Frontend" "$OCI_FRONTEND_HEALTH_URL"
+          check_url "API" "$OCI_API_HEALTH_URL"
+
+          log "Deployment completed successfully"
+          REMOTE_SCRIPT
