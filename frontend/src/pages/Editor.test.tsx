@@ -707,6 +707,51 @@ describe("Editor", () => {
     expect(await screen.findByText(/Undo applied/)).toBeInTheDocument();
   });
 
+  it("preserves unsaved style drafts when undoing canvas moves", async () => {
+    renderEditor();
+    await screen.findByText(project.name);
+    await screen.findByDisplayValue("Machine translation");
+
+    const textSize = screen.getByLabelText("Text size");
+    fireEvent.change(textSize, { target: { value: "32" } });
+    await waitFor(() => {
+      expect(screen.getByLabelText("Text size")).toHaveValue("32");
+    });
+
+    const regionOverlay = screen.getByTitle("Region 1");
+    firePointerEvent(regionOverlay, "pointerdown", { pointerId: 1, clientX: 100, clientY: 100 });
+    firePointerEvent(regionOverlay, "pointermove", { pointerId: 1, clientX: 140, clientY: 130 });
+    firePointerEvent(regionOverlay, "pointerup", { pointerId: 1, clientX: 140, clientY: 130 });
+
+    await waitFor(() => {
+      expect(mocks.api.updateRegion).toHaveBeenCalledWith(
+        region.id,
+        expect.objectContaining({
+          bounding_box: expect.not.objectContaining(region.bounding_box),
+          auto_rerender: true,
+        }),
+      );
+    });
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /undo/i })).not.toHaveAttribute("aria-disabled", "true");
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /undo/i }));
+
+    await waitFor(() => {
+      expect(mocks.api.updateRegion).toHaveBeenCalledTimes(2);
+    });
+    expect(mocks.api.updateRegion.mock.calls.at(-1)).toEqual([
+      region.id,
+      {
+        bounding_box: region.bounding_box,
+        auto_rerender: true,
+      },
+    ]);
+    expect(await screen.findByText(/Undo applied/)).toBeInTheDocument();
+    expect(screen.getByLabelText("Text size")).toHaveValue("32");
+  });
+
   it("deletes selected regions and persists canvas region moves", async () => {
     renderEditor();
     await screen.findByText(project.name);

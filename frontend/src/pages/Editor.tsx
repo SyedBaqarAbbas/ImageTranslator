@@ -230,6 +230,10 @@ function undoEntryForUpdate(region: TextRegionRead | undefined, payload: TextReg
   };
 }
 
+function restoresRenderStyle(payload: TextRegionUpdate): boolean {
+  return "render_style" in payload;
+}
+
 function regionWithPayload(region: TextRegionRead, payload: TextRegionUpdate): TextRegionRead {
   return {
     ...region,
@@ -494,16 +498,20 @@ export function Editor() {
         key,
         (current) => current?.map((region) => (region.id === entry.regionId ? regionWithPayload(region, entry.payload) : region)) ?? current,
       );
-      dispatchEditor({ type: "clearStyleDraft", regionId: entry.regionId });
+      if (restoresRenderStyle(entry.payload)) {
+        dispatchEditor({ type: "clearStyleDraft", regionId: entry.regionId });
+      }
       dispatchEditor({ type: "setRegionSaveFeedback", feedback: null });
       dispatchEditor({ type: "patch", patch: { selectedPageId: entry.pageId, selectedRegionId: entry.regionId, workspaceStatus: "Undoing..." } });
       return { key, previous };
     },
-    onSuccess: async (updatedRegion) => {
+    onSuccess: async (updatedRegion, entry) => {
       queryClient.setQueryData<TextRegionRead[]>(queryKeys.regions(updatedRegion.page_id), (current) =>
         current?.map((region) => (region.id === updatedRegion.id ? updatedRegion : region)) ?? current,
       );
-      dispatchEditor({ type: "clearStyleDraft", regionId: updatedRegion.id });
+      if (restoresRenderStyle(entry.payload)) {
+        dispatchEditor({ type: "clearStyleDraft", regionId: updatedRegion.id });
+      }
       dispatchEditor({ type: "setRegionSaveFeedback", feedback: null });
       dispatchEditor({ type: "patch", patch: { selectedPageId: updatedRegion.page_id, selectedRegionId: updatedRegion.id, workspaceStatus: "Undo applied" } });
       await Promise.all([
