@@ -4,6 +4,8 @@ import io
 import math
 import textwrap
 from dataclasses import dataclass
+from functools import lru_cache
+from pathlib import Path
 from typing import Protocol
 
 from PIL import Image, ImageColor, ImageDraw, ImageFont
@@ -11,6 +13,20 @@ from PIL import Image, ImageColor, ImageDraw, ImageFont
 from app.core.enums import ReplacementMode
 
 DEFAULT_FILL_OPACITY = 0.27
+FONT_CANDIDATES = (
+    "Comic Sans MS Bold.ttf",
+    "Comic Sans MS.ttf",
+    "/System/Library/Fonts/Supplemental/Comic Sans MS Bold.ttf",
+    "/System/Library/Fonts/Supplemental/Comic Sans MS.ttf",
+    "/Library/Fonts/Comic Sans MS Bold.ttf",
+    "/Library/Fonts/Comic Sans MS.ttf",
+    "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
+    "/Library/Fonts/Arial Bold.ttf",
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+    "DejaVuSans-Bold.ttf",
+    "DejaVuSans.ttf",
+)
 
 
 @dataclass(frozen=True)
@@ -88,10 +104,19 @@ def _text_for(region: RenderRegion, replacement_mode: str) -> str:
     return translated
 
 
+@lru_cache(maxsize=128)
 def _font(size: int) -> ImageFont.ImageFont:
+    for candidate in FONT_CANDIDATES:
+        if "/" in candidate and not Path(candidate).exists():
+            continue
+        try:
+            return ImageFont.truetype(candidate, size)
+        except OSError:
+            continue
+
     try:
-        return ImageFont.truetype("DejaVuSans.ttf", size)
-    except OSError:
+        return ImageFont.load_default(size=size)
+    except TypeError:
         return ImageFont.load_default()
 
 
@@ -99,6 +124,62 @@ def _wrap_text(text: str, max_chars: int) -> str:
     lines: list[str] = []
     for paragraph in text.splitlines() or [""]:
         lines.extend(textwrap.wrap(paragraph, width=max(4, max_chars)) or [""])
+    return "\n".join(lines)
+
+
+def _line_width(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.ImageFont) -> float:
+    try:
+        return draw.textlength(text, font=font)
+    except AttributeError:
+        bbox = draw.textbbox((0, 0), text, font=font)
+        return bbox[2] - bbox[0]
+
+
+def _wrap_text_to_width(
+    draw: ImageDraw.ImageDraw,
+    text: str,
+    width: int,
+    font: ImageFont.ImageFont,
+) -> str:
+    lines: list[str] = []
+    for paragraph in text.splitlines() or [""]:
+        normalized = " ".join(paragraph.split())
+        if not normalized:
+            lines.append("")
+            continue
+
+        current = ""
+        last_break: int | None = None
+        for character in normalized:
+            candidate = f"{current}{character}"
+            if character in {" ", "-"}:
+                last_break = len(candidate) - 1
+            if _line_width(draw, candidate, font) <= width or not current:
+                current = candidate
+                continue
+
+            if last_break is not None and 0 < last_break < len(current):
+                line = (
+                    current[:last_break]
+                    if current[last_break] == " "
+                    else current[: last_break + 1]
+                )
+                lines.append(line.rstrip())
+                current = current[last_break + 1 :].lstrip() + character
+            else:
+                lines.append(current.rstrip())
+                current = "" if character == " " else character
+            last_break = next(
+                (
+                    index
+                    for index, value in reversed(list(enumerate(current)))
+                    if value in {" ", "-"}
+                ),
+                None,
+            )
+
+        if current:
+            lines.append(current.rstrip())
     return "\n".join(lines)
 
 
@@ -112,12 +193,11 @@ def _fit_text(
     start_size = min(42, max(12, height // 3))
     if preferred_size is not None:
         size = min(72, max(9, preferred_size))
-        avg_char_width = max(1, int(size * 0.58))
-        return _wrap_text(text, max(4, width // avg_char_width)), _font(size)
+        font = _font(size)
+        return _wrap_text_to_width(draw, text, width, font), font
     for size in range(start_size, 8, -1):
         font = _font(size)
-        avg_char_width = max(1, int(size * 0.58))
-        wrapped = _wrap_text(text, max(4, width // avg_char_width))
+        wrapped = _wrap_text_to_width(draw, text, width, font)
         bbox = draw.multiline_textbbox((0, 0), wrapped, font=font, spacing=max(2, size // 6))
         if (bbox[2] - bbox[0]) <= width and (bbox[3] - bbox[1]) <= height:
             return wrapped, font
@@ -280,8 +360,8 @@ def _render_region(
     text_bbox = draw.multiline_textbbox((0, 0), wrapped, font=font, spacing=3, align="center")
     text_width = text_bbox[2] - text_bbox[0]
     text_height = text_bbox[3] - text_bbox[1]
-    tx = x1 + ((x2 - x1) - text_width) / 2
-    ty = y1 + ((y2 - y1) - text_height) / 2
+    tx = x1 + ((x2 - x1) - text_width) / 2 - text_bbox[0]
+    ty = y1 + ((y2 - y1) - text_height) / 2 - text_bbox[1]
     _draw_multiline_text_clipped(
         canvas,
         (x1 + padding, y1 + padding, x2 - padding, y2 - padding),

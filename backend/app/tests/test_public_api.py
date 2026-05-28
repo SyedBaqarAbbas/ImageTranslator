@@ -252,7 +252,7 @@ def test_export_uses_current_editor_render_style(client: TestClient) -> None:
     update_response = client.patch(
         f"/api/v1/regions/{region['id']}",
         json={
-            "user_text": "[en] Sample detected text",
+            "user_text": "A",
             "render_style": {
                 "backgroundColor": "#ffffff",
                 "fillOpacity": 0.5,
@@ -284,6 +284,15 @@ def test_export_uses_current_editor_render_style(client: TestClient) -> None:
     assert 160 <= blended_fill[2] <= 175
     assert rendered.getpixel((80, 80)) == (36, 54, 79)
     assert blended_fill != (255, 255, 255)
+    black_text_pixels = [
+        (x, y)
+        for x in range(124, 276)
+        for y in range(24, 94)
+        if (pixel := rendered.getpixel((x, y)))[0] < 30 and pixel[1] < 30 and pixel[2] < 30
+    ]
+    assert black_text_pixels
+    assert max(x for x, _ in black_text_pixels) - min(x for x, _ in black_text_pixels) >= 18
+    assert max(y for _, y in black_text_pixels) - min(y for _, y in black_text_pixels) >= 24
 
 
 def test_export_without_rendered_pages_returns_failed_job(client: TestClient) -> None:

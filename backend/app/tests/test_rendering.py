@@ -12,6 +12,7 @@ from app.providers.rendering import (
     RenderRegion,
     _bbox_tuple,
     _fit_text,
+    _font,
     _style_color,
     _style_float,
     _style_int,
@@ -123,7 +124,7 @@ async def test_render_page_honors_editor_style_on_original_pixels() -> None:
             RenderRegion(
                 bounding_box={"x": 124, "y": 24, "width": 152, "height": 70},
                 original_text=None,
-                translated_text="[en] Sample detected text",
+                translated_text="A",
                 render_style={
                     "backgroundColor": "#ffffff",
                     "fillOpacity": 0.5,
@@ -144,12 +145,14 @@ async def test_render_page_honors_editor_style_on_original_pixels() -> None:
     assert rendered.getpixel((80, 80)) == (36, 54, 79)
 
     black_text_pixels = [
-        pixel
+        (x, y)
         for x in range(124, 276)
         for y in range(24, 94)
         if (pixel := rendered.getpixel((x, y)))[0] < 30 and pixel[1] < 30 and pixel[2] < 30
     ]
     assert black_text_pixels
+    assert max(x for x, _ in black_text_pixels) - min(x for x, _ in black_text_pixels) >= 18
+    assert max(y for _, y in black_text_pixels) - min(y for _, y in black_text_pixels) >= 24
 
 
 @pytest.mark.asyncio
@@ -355,11 +358,14 @@ def test_rendering_helper_edge_cases() -> None:
 
     draw = ImageDraw.Draw(image)
     wrapped, font = _fit_text(draw, "A very long translated sentence that must wrap", 40, 20, 200)
+    wrapped_hyphenated, hyphen_font = _fit_text(draw, "IMA-61", 140, 70, 40)
 
     assert _bbox_tuple({"x": "1", "y": 2, "width": 3, "height": 4}) == (1, 2, 4, 6)
     assert _wrap_text("first\nsecond", 6) == "first\nsecond"
     assert wrapped
     assert font is not None
+    assert wrapped_hyphenated == "IMA-\n61"
+    assert getattr(hyphen_font, "size", None) == 40
     assert _style_color(
         {"fill": [300, -2, "bad"], "backgroundColor": "invalid"},
         ("fill",),
@@ -373,3 +379,11 @@ def test_rendering_helper_edge_cases() -> None:
     assert _style_opacity({"fillOpacity": float("nan")}, "fillOpacity") == DEFAULT_FILL_OPACITY
     assert _style_opacity({"fillOpacity": 2}, "fillOpacity") == 1.0
     assert _style_opacity({"fillOpacity": -1}, "fillOpacity") == 0.0
+
+
+def test_font_loader_preserves_requested_editor_text_size() -> None:
+    font = _font(40)
+    text_bbox = font.getbbox("Sample")
+
+    assert getattr(font, "size", None) == 40
+    assert text_bbox[3] - text_bbox[1] >= 30
