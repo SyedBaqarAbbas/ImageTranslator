@@ -34,12 +34,19 @@ job first, then selects app jobs by changed path:
   launcher files, root `up-and-test.sh`, and workflow files. When selected, it
   installs backend dev dependencies, runs pytest with coverage, and compiles
   `app` and `migrations`.
-- `Frontend typecheck, lint, tests, build, and Playwright`: runs for
+- `Frontend typecheck, lint, tests, and build`: runs for
   frontend-impacting changes such as `frontend/**` code/config/test files,
   shared root E2E files, root Docker/local launcher files, root `up-and-test.sh`,
   and workflow files. When selected, it installs frontend dependencies with
   `npm ci` on Node 24 LTS, runs typecheck, lint, Vitest coverage, production
-  build, installs Chromium, and runs the mock-mode Playwright smoke/route tests.
+  build.
+- `Frontend Playwright smoke tests`: runs for frontend-impacting changes on
+  pushes to `main`, main-targeted pull requests, and manual dispatches from
+  `main`. It runs in the official Playwright container image pinned to the
+  lockfile's Playwright version, installs frontend dependencies with browser
+  downloads disabled, and runs the mock-mode Playwright smoke/route tests.
+  Dev-targeted pull requests still skip this release-only browser job while
+  keeping typecheck, lint, Vitest coverage, and production build coverage.
 - Docs-only, issue-template-only, PR-template-only, governance-only, and
   AI-instruction-only changes skip the expensive app jobs and complete through
   the lightweight `No app checks required` job.
