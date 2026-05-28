@@ -178,7 +178,7 @@ jobs:
             contains(fromJSON('["opened","synchronize","reopened"]'), github.event.action)
           )
         timeout-minutes: 10
-        run: npx playwright install --with-deps chromium
+        run: npx playwright install --with-deps --only-shell chromium
 
       - name: Run frontend Playwright smoke tests
         if: >
