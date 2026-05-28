@@ -15,6 +15,23 @@ interface DragState {
   handle?: ResizeHandle;
 }
 
+interface CanvasPoint {
+  x: number;
+  y: number;
+}
+
+type CanvasTool = "select" | "addText" | "highlight_ocr";
+
+interface CreateDragState {
+  pointerId: number;
+  tool: Exclude<CanvasTool, "select">;
+  startClientX: number;
+  startClientY: number;
+  startPoint: CanvasPoint;
+  box: BoundingBox;
+  hasMoved: boolean;
+}
+
 interface DisplaySize {
   width: number;
   height: number;
@@ -24,6 +41,9 @@ type ResizeHandle = "n" | "ne" | "e" | "se" | "s" | "sw" | "w" | "nw";
 
 const RESIZE_HANDLES: ResizeHandle[] = ["nw", "n", "ne", "e", "se", "s", "sw", "w"];
 const MIN_REGION_SIZE = 24;
+const DEFAULT_TEXT_BOX_MAX_WIDTH = 220;
+const DEFAULT_TEXT_BOX_MAX_HEIGHT = 120;
+const ADD_TEXT_DRAG_THRESHOLD = 6;
 const BASE_FIT_WIDTH = 760;
 const DEFAULT_TEXT_COLOR = "#0f172a";
 const DEFAULT_FILL_COLOR = "#ffffff";
@@ -74,14 +94,73 @@ function containerSizeReducer(_current: DisplaySize, next: DisplaySize): Display
 }
 
 function clampBox(box: BoundingBox, canvasWidth: number, canvasHeight: number): BoundingBox {
-  const width = Math.max(MIN_REGION_SIZE, Math.min(Math.round(box.width), canvasWidth));
-  const height = Math.max(MIN_REGION_SIZE, Math.min(Math.round(box.height), canvasHeight));
+  const maxWidth = Math.max(Math.round(canvasWidth), 1);
+  const maxHeight = Math.max(Math.round(canvasHeight), 1);
+  const minWidth = Math.min(MIN_REGION_SIZE, maxWidth);
+  const minHeight = Math.min(MIN_REGION_SIZE, maxHeight);
+  const width = Math.max(minWidth, Math.min(Math.round(box.width), maxWidth));
+  const height = Math.max(minHeight, Math.min(Math.round(box.height), maxHeight));
   return {
-    x: Math.max(0, Math.min(Math.round(box.x), Math.max(canvasWidth - width, 0))),
-    y: Math.max(0, Math.min(Math.round(box.y), Math.max(canvasHeight - height, 0))),
+    x: Math.max(0, Math.min(Math.round(box.x), Math.max(maxWidth - width, 0))),
+    y: Math.max(0, Math.min(Math.round(box.y), Math.max(maxHeight - height, 0))),
     width,
     height,
   };
+}
+
+function defaultTextBoxForPoint(point: CanvasPoint, canvasWidth: number, canvasHeight: number): BoundingBox {
+  const width = Math.min(
+    canvasWidth,
+    Math.max(MIN_REGION_SIZE, Math.min(Math.round(canvasWidth * 0.32), DEFAULT_TEXT_BOX_MAX_WIDTH)),
+  );
+  const height = Math.min(
+    canvasHeight,
+    Math.max(MIN_REGION_SIZE, Math.min(Math.round(canvasHeight * 0.14), DEFAULT_TEXT_BOX_MAX_HEIGHT)),
+  );
+  return clampBox(
+    {
+      x: point.x - width / 2,
+      y: point.y - height / 2,
+      width,
+      height,
+    },
+    canvasWidth,
+    canvasHeight,
+  );
+}
+
+function canvasPointForPointer(
+  event: PointerEvent,
+  element: HTMLElement | null,
+  canvasWidth: number,
+  canvasHeight: number,
+): CanvasPoint | null {
+  const rect = element?.getBoundingClientRect();
+  if (!rect?.width || !rect.height) {
+    return null;
+  }
+  return {
+    x: Math.max(0, Math.min(((event.clientX - rect.left) / rect.width) * canvasWidth, canvasWidth)),
+    y: Math.max(0, Math.min(((event.clientY - rect.top) / rect.height) * canvasHeight, canvasHeight)),
+  };
+}
+
+function boxFromCanvasPoints(
+  startPoint: CanvasPoint,
+  endPoint: CanvasPoint,
+  canvasWidth: number,
+  canvasHeight: number,
+): BoundingBox {
+  return clampBox(
+    {
+      x: Math.min(startPoint.x, endPoint.x),
+      y: Math.min(startPoint.y, endPoint.y),
+      width: Math.abs(endPoint.x - startPoint.x),
+      height: Math.abs(endPoint.y - startPoint.y),
+    },
+    canvasWidth,
+    canvasHeight,
+  );
 }
 
 function clampComparisonSplit(value: number): number {
@@ -224,6 +303,7 @@ function CanvasRegion({
   onUpdateDrag,
   onFinishDrag,
   onCancelDrag,
+  interactive,
 }: {
   region: TextRegionRead;
   active: boolean;
@@ -238,6 +318,7 @@ function CanvasRegion({
   onUpdateDrag: (event: PointerEvent<HTMLDivElement>) => void;
   onFinishDrag: (event: PointerEvent<HTMLDivElement>) => void;
   onCancelDrag: () => void;
+  interactive: boolean;
 }) {
   const left = (boundingBox.x / canvasWidth) * 100;
   const top = (boundingBox.y / canvasHeight) * 100;
@@ -258,21 +339,25 @@ function CanvasRegion({
     <div
       role="button"
       aria-current={active ? "true" : undefined}
-      tabIndex={0}
+      aria-disabled={interactive ? undefined : "true"}
+      tabIndex={interactive ? 0 : -1}
       title={`Region ${region.region_index}`}
-      onPointerDown={(event) => onStartDrag(event, region)}
-      onPointerMove={onUpdateDrag}
-      onPointerUp={onFinishDrag}
-      onPointerCancel={onCancelDrag}
+      onPointerDown={interactive ? (event) => onStartDrag(event, region) : undefined}
+      onPointerMove={interactive ? onUpdateDrag : undefined}
+      onPointerUp={interactive ? onFinishDrag : undefined}
+      onPointerCancel={interactive ? onCancelDrag : undefined}
       onKeyDown={(event) => {
+        if (!interactive) {
+          return;
+        }
         if (event.key === "Enter" || event.key === " ") {
           event.preventDefault();
           onSelectRegion(region.id);
         }
       }}
-      className={`absolute cursor-move select-none rounded-[3px] text-left transition ${
+      className={`absolute select-none rounded-[3px] text-left transition ${
         active ? "border-2 border-secondary bg-secondary/12 shadow-cyan" : "border-2 border-dashed border-secondary/80 bg-secondary/5 hover:bg-secondary/10"
-      }`}
+      } ${interactive ? "cursor-move" : "pointer-events-none cursor-crosshair"}`}
       style={{
         left: `${left}%`,
         top: `${top}%`,
@@ -289,7 +374,7 @@ function CanvasRegion({
           {region.user_text || region.translated_text || ""}
         </span>
       ) : null}
-      {active
+      {active && interactive
         ? RESIZE_HANDLES.map((handle) => (
             <span
               key={handle}
@@ -315,9 +400,12 @@ export function CanvasWorkspace({
   selectedRegionId,
   onSelectRegion,
   onMoveRegion,
+  onCreateRegion,
   mode,
   zoom = 1,
   comparison = false,
+  tool = "select",
+  isCreatingRegion = false,
 }: {
   imageUrl?: string;
   comparisonOriginalImageUrl?: string;
@@ -330,9 +418,12 @@ export function CanvasWorkspace({
   selectedRegionId?: string;
   onSelectRegion: (regionId: string) => void;
   onMoveRegion?: (regionId: string, boundingBox: BoundingBox) => void;
+  onCreateRegion?: (boundingBox: BoundingBox) => void;
   mode: "original" | "translated";
   zoom?: number;
   comparison?: boolean;
+  tool?: CanvasTool;
+  isCreatingRegion?: boolean;
 }) {
   const canvasWidth = width ?? 920;
   const canvasHeight = height ?? 1320;
@@ -341,6 +432,7 @@ export function CanvasWorkspace({
   const comparisonPointerId = useRef<number | null>(null);
   const [containerSize, setContainerSize] = useReducer(containerSizeReducer, { width: 0, height: 0 });
   const [drag, setDrag] = useState<DragState | null>(null);
+  const [createDrag, setCreateDrag] = useState<CreateDragState | null>(null);
   const [internalComparisonSplit, setInternalComparisonSplit] = useState(50);
   const activeComparisonSplit = clampComparisonSplit(comparisonSplit ?? internalComparisonSplit);
   const setComparisonSplit = onComparisonSplitChange ?? setInternalComparisonSplit;
@@ -459,6 +551,10 @@ export function CanvasWorkspace({
   }
 
   function startDrag(event: PointerEvent<HTMLDivElement>, region: TextRegionRead) {
+    if (tool !== "select") {
+      return;
+    }
+    event.stopPropagation();
     if (!displaySize || !onMoveRegion) {
       onSelectRegion(region.id);
       return;
@@ -478,6 +574,9 @@ export function CanvasWorkspace({
   }
 
   function startResize(event: PointerEvent<HTMLSpanElement>, region: TextRegionRead, handle: ResizeHandle) {
+    if (tool !== "select") {
+      return;
+    }
     if (!displaySize || !onMoveRegion) {
       onSelectRegion(region.id);
       return;
@@ -523,6 +622,75 @@ export function CanvasWorkspace({
     setDrag(null);
   }
 
+  function startCreateRegion(event: PointerEvent<HTMLDivElement>) {
+    if (tool === "select" || comparison || isCreatingRegion || !onCreateRegion || event.button !== 0) {
+      return;
+    }
+    const point = canvasPointForPointer(event, canvasFrameRef.current, canvasWidth, canvasHeight);
+    if (!point) {
+      return;
+    }
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    setCreateDrag({
+      pointerId: event.pointerId,
+      tool,
+      startClientX: event.clientX,
+      startClientY: event.clientY,
+      startPoint: point,
+      box:
+        tool === "addText"
+          ? defaultTextBoxForPoint(point, canvasWidth, canvasHeight)
+          : { x: point.x, y: point.y, width: 0, height: 0 },
+      hasMoved: false,
+    });
+  }
+
+  function updateCreateRegion(event: PointerEvent<HTMLDivElement>) {
+    setCreateDrag((current) => {
+      if (!current || current.pointerId !== event.pointerId) {
+        return current;
+      }
+      const point = canvasPointForPointer(event, canvasFrameRef.current, canvasWidth, canvasHeight);
+      if (!point) {
+        return current;
+      }
+      const movedDistance = Math.hypot(event.clientX - current.startClientX, event.clientY - current.startClientY);
+      const hasMoved = current.hasMoved || movedDistance >= ADD_TEXT_DRAG_THRESHOLD;
+      return {
+        ...current,
+        box:
+          current.tool === "addText" && !hasMoved
+            ? defaultTextBoxForPoint(point, canvasWidth, canvasHeight)
+            : boxFromCanvasPoints(current.startPoint, point, canvasWidth, canvasHeight),
+        hasMoved,
+      };
+    });
+  }
+
+  function finishCreateRegion(event: PointerEvent<HTMLDivElement>) {
+    if (!createDrag || createDrag.pointerId !== event.pointerId) {
+      return;
+    }
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    if (createDrag.tool === "addText" || (createDrag.box.width >= MIN_REGION_SIZE && createDrag.box.height >= MIN_REGION_SIZE)) {
+      onCreateRegion?.(clampBox(createDrag.box, canvasWidth, canvasHeight));
+    }
+    setCreateDrag(null);
+  }
+
+  function cancelCreateRegion(event: PointerEvent<HTMLDivElement>) {
+    if (!createDrag || createDrag.pointerId !== event.pointerId) {
+      return;
+    }
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    setCreateDrag(null);
+  }
+
   return (
     <div ref={containerRef} className="min-h-[240px] min-w-0 flex-1 overflow-auto bg-background p-3 md:p-4 lg:min-h-0 lg:p-8">
       <div
@@ -534,7 +702,12 @@ export function CanvasWorkspace({
       >
         <div
           ref={canvasFrameRef}
-          className="relative shrink-0"
+          data-testid="canvas-frame"
+          onPointerDown={startCreateRegion}
+          onPointerMove={updateCreateRegion}
+          onPointerUp={finishCreateRegion}
+          onPointerCancel={cancelCreateRegion}
+          className={`relative shrink-0 ${tool !== "select" && !comparison ? "cursor-crosshair touch-none" : ""}`}
           style={{
             aspectRatio: `${canvasWidth} / ${canvasHeight}`,
             width: displaySize?.width ?? "100%",
@@ -551,28 +724,78 @@ export function CanvasWorkspace({
             <PagePreview imageUrl={imageUrl} />
           )}
 
-          {regions.map((region) => {
-            const active = region.id === selectedRegionId;
-            const boundingBox = drag?.regionId === region.id ? drag.box : region.bounding_box;
-            return (
-              <CanvasRegion
-                key={region.id}
-                region={region}
-                active={active}
-                boundingBox={boundingBox}
-                canvasWidth={canvasWidth}
-                canvasHeight={canvasHeight}
-                displaySize={displaySize}
-                mode={comparison ? "original" : mode}
-                onSelectRegion={onSelectRegion}
-                onStartDrag={startDrag}
-                onStartResize={startResize}
-                onUpdateDrag={updateDrag}
-                onFinishDrag={finishDrag}
-                onCancelDrag={() => setDrag(null)}
-              />
-            );
-          })}
+          {comparison ? (
+            <div
+              data-testid="comparison-translated-region-layer"
+              className="pointer-events-none absolute inset-0 z-20 overflow-hidden rounded-instrument"
+              style={{ clipPath: `inset(0 0 0 ${activeComparisonSplit}%)` }}
+            >
+              {regions.map((region) => {
+                const active = region.id === selectedRegionId;
+                const boundingBox = drag?.regionId === region.id ? drag.box : region.bounding_box;
+                return (
+                  <CanvasRegion
+                    key={region.id}
+                    region={region}
+                    active={active}
+                    boundingBox={boundingBox}
+                    canvasWidth={canvasWidth}
+                    canvasHeight={canvasHeight}
+                    displaySize={displaySize}
+                    mode="translated"
+                    onSelectRegion={onSelectRegion}
+                    onStartDrag={startDrag}
+                    onStartResize={startResize}
+                    onUpdateDrag={updateDrag}
+                    onFinishDrag={finishDrag}
+                    onCancelDrag={() => setDrag(null)}
+                    interactive={false}
+                  />
+                );
+              })}
+            </div>
+          ) : (
+            regions.map((region) => {
+              const active = region.id === selectedRegionId;
+              const boundingBox = drag?.regionId === region.id ? drag.box : region.bounding_box;
+              return (
+                <CanvasRegion
+                  key={region.id}
+                  region={region}
+                  active={active}
+                  boundingBox={boundingBox}
+                  canvasWidth={canvasWidth}
+                  canvasHeight={canvasHeight}
+                  displaySize={displaySize}
+                  mode={mode}
+                  onSelectRegion={onSelectRegion}
+                  onStartDrag={startDrag}
+                  onStartResize={startResize}
+                  onUpdateDrag={updateDrag}
+                  onFinishDrag={finishDrag}
+                  onCancelDrag={() => setDrag(null)}
+                  interactive={tool === "select"}
+                />
+              );
+            })
+          )}
+
+          {createDrag ? (
+            <div
+              aria-hidden="true"
+              className={`pointer-events-none absolute rounded-[3px] border-2 ${
+                createDrag.tool === "highlight_ocr"
+                  ? "border-dashed border-tertiary bg-tertiary/15 shadow-[0_0_18px_rgba(250,204,21,0.2)]"
+                  : "border-primary bg-primary/15 shadow-glow"
+              }`}
+              style={{
+                left: `${(createDrag.box.x / canvasWidth) * 100}%`,
+                top: `${(createDrag.box.y / canvasHeight) * 100}%`,
+                width: `${(createDrag.box.width / canvasWidth) * 100}%`,
+                height: `${(createDrag.box.height / canvasHeight) * 100}%`,
+              }}
+            />
+          ) : null}
 
           {comparison ? (
             <>

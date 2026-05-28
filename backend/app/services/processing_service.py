@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import io
+
 from fastapi import status
+from PIL import Image
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -12,7 +15,6 @@ from app.core.enums import (
     JobType,
     PageStatus,
     ProjectStatus,
-    ReplacementMode,
     TextRegionStatus,
 )
 from app.core.errors import AppError
@@ -116,6 +118,24 @@ class ProcessingService:
         await self.session.refresh(job)
         return job
 
+    async def create_ocr_region_job(self, user_id: str, region_id: str) -> ProcessingJob:
+        region = await self._get_region_for_user(user_id, region_id)
+        page = await self.session.get(Page, region.page_id)
+        if page is None:
+            raise AppError("page_not_found", "Page not found.", status.HTTP_404_NOT_FOUND)
+        job = ProcessingJob(
+            project_id=page.project_id,
+            page_id=page.id,
+            region_id=region.id,
+            job_type=JobType.OCR_REGION.value,
+        )
+        self.session.add(job)
+        await self.session.commit()
+        await self.session.refresh(job)
+        await _dispatch_processing_job(job.id)
+        await self.session.refresh(job)
+        return job
+
     async def create_rerender_region_job(self, user_id: str, region_id: str) -> ProcessingJob:
         region = await self._get_region_for_user(user_id, region_id)
         page = await self.session.get(Page, region.page_id)
@@ -207,6 +227,8 @@ async def execute_processing_job(job_id: str) -> None:
                 await _process_project(session, job)
             elif job.job_type == JobType.PROCESS_PAGE.value:
                 await _process_single_page(session, job)
+            elif job.job_type == JobType.OCR_REGION.value:
+                await _ocr_region(session, job)
             elif job.job_type == JobType.RETRANSLATE_REGION.value:
                 await _retranslate_region(session, job)
             elif job.job_type == JobType.RERENDER_PAGE.value:
@@ -235,6 +257,14 @@ async def _mark_job_failed(session: AsyncSession, job: ProcessingJob, exc: Excep
     job.error_code = exc.__class__.__name__
     job.error_message = str(exc)
     job.completed_at = utcnow()
+    if job.region_id:
+        region = await session.get(TextRegion, job.region_id)
+        if region:
+            region.status = TextRegionStatus.FAILED.value
+            region.failure_reason = str(exc)
+        if job.job_type != JobType.RERENDER_PAGE.value:
+            await session.commit()
+            return
     project = await session.get(Project, job.project_id)
     if project:
         project.status = ProjectStatus.FAILED.value
@@ -391,13 +421,7 @@ async def _process_page_inner(session: AsyncSession, project: Project, page: Pag
 
     renderer = get_render_engine()
     cleaned = await renderer.clean_page(normalized, render_regions)
-    replace_modes = {ReplacementMode.REPLACE.value, ReplacementMode.BILINGUAL.value}
-    render_source = (
-        cleaned
-        if settings.replacement_mode in replace_modes
-        else normalized
-    )
-    final = await renderer.render_page(render_source, render_regions, settings.replacement_mode)
+    final = await renderer.render_page(normalized, render_regions, settings.replacement_mode)
 
     cleaned_asset = await assets.create_asset(
         user_id=project.user_id,
@@ -438,6 +462,79 @@ async def _process_page_inner(session: AsyncSession, project: Project, page: Pag
     await session.commit()
 
 
+def _crop_region_image_bytes(image_bytes: bytes, bounding_box: dict) -> bytes:
+    normalized = normalize_image_bytes(image_bytes)
+    with Image.open(io.BytesIO(normalized)) as image:
+        source = image.convert("RGB")
+        image_width, image_height = source.size
+        x = max(0, min(int(bounding_box.get("x", 0)), image_width))
+        y = max(0, min(int(bounding_box.get("y", 0)), image_height))
+        width = max(1, int(bounding_box.get("width", 1)))
+        height = max(1, int(bounding_box.get("height", 1)))
+        right = min(image_width, x + width)
+        bottom = min(image_height, y + height)
+        if right <= x or bottom <= y:
+            raise AppError("invalid_region_crop", "Highlighted region is outside the page image.")
+        crop = source.crop((x, y, right, bottom))
+
+    buffer = io.BytesIO()
+    crop.save(buffer, format="PNG")
+    return buffer.getvalue()
+
+
+async def _ocr_region(session: AsyncSession, job: ProcessingJob) -> None:
+    region = await session.get(TextRegion, job.region_id)
+    if region is None:
+        raise AppError("region_not_found", "Text region not found.")
+    page = await session.get(Page, region.page_id)
+    if page is None:
+        raise AppError("page_not_found", "Page not found.")
+    project = await session.scalar(
+        select(Project).options(selectinload(Project.settings)).where(Project.id == page.project_id)
+    )
+    if project is None:
+        raise AppError("project_not_found", "Project not found.")
+    if not page.original_asset_id:
+        raise AppError("page_missing_original", "Page has no original image for OCR.")
+    original_asset = await session.get(FileAsset, page.original_asset_id)
+    if original_asset is None:
+        raise AppError("asset_not_found", "Original image asset not found.")
+
+    assets = AssetService(session)
+    settings = await _settings_for_project(session, project)
+    original_bytes = await assets.read_asset_bytes(original_asset)
+    crop_bytes = _crop_region_image_bytes(original_bytes, region.bounding_box)
+
+    region.status = TextRegionStatus.DETECTED.value
+    region.failure_reason = None
+    job.stage = "ocr_region"
+    job.progress = 35
+    await session.commit()
+
+    ocr_regions = await get_ocr_provider().detect_and_read(crop_bytes, settings.source_language)
+    text_parts = [ocr_region.text.strip() for ocr_region in ocr_regions if ocr_region.text.strip()]
+    if not text_parts:
+        raise AppError("ocr_no_text", "No text was detected in the highlighted region.")
+
+    confidences = [ocr_region.confidence for ocr_region in ocr_regions]
+    confidence = sum(confidences) / len(confidences) if confidences else None
+    region.detected_text = "\n".join(text_parts)
+    region.detected_language = next(
+        (ocr_region.language for ocr_region in ocr_regions if ocr_region.language),
+        None,
+    )
+    region.ocr_confidence = confidence
+    region.status = (
+        TextRegionStatus.OCR_LOW_CONFIDENCE.value
+        if confidence is not None and confidence < 0.75
+        else TextRegionStatus.OCR_COMPLETE.value
+    )
+    region.failure_reason = None
+    job.stage = "ocr_complete"
+    job.progress = 70
+    await session.commit()
+
+
 async def _retranslate_region(session: AsyncSession, job: ProcessingJob) -> None:
     region = await session.get(TextRegion, job.region_id)
     if region is None:
@@ -452,16 +549,17 @@ async def _retranslate_region(session: AsyncSession, job: ProcessingJob) -> None
         raise AppError("project_not_found", "Project not found.")
 
     settings = await _settings_for_project(session, project)
+    result_payload = job.result or {}
+    manual_source_text = result_payload.get("source_text")
     source_text = (
-        (job.result or {}).get("source_text")
-        or region.user_text
-        or region.detected_text
-        or ""
+        manual_source_text
+        if manual_source_text is not None
+        else region.user_text or region.detected_text or ""
     )
     if not source_text:
         raise AppError("region_has_no_text", "Region has no source text to translate.")
-    target_language = (job.result or {}).get("target_language") or settings.target_language
-    tone = (job.result or {}).get("tone") or settings.translation_tone
+    target_language = result_payload.get("target_language") or settings.target_language
+    tone = result_payload.get("tone") or settings.translation_tone
 
     region.status = TextRegionStatus.TRANSLATING.value
     job.stage = "translating_region"
@@ -477,9 +575,14 @@ async def _retranslate_region(session: AsyncSession, job: ProcessingJob) -> None
             context={"project_id": project.id, "page_id": page.id, "region_id": region.id},
         )
     )[0]
+    if manual_source_text is not None:
+        region.detected_text = manual_source_text
+        region.detected_language = result.detected_language
+        region.ocr_confidence = None
     region.translated_text = result.translated_text
     region.translation_confidence = result.confidence
     region.status = TextRegionStatus.TRANSLATED.value
+    region.failure_reason = None
     job.progress = 65
     await session.commit()
     await _rerender_page(session, project, page)
@@ -532,13 +635,7 @@ async def _rerender_page(session: AsyncSession, project: Project, page: Page) ->
     settings = await _settings_for_project(session, project)
     renderer = get_render_engine()
     cleaned = await renderer.clean_page(source_bytes, render_regions)
-    replace_modes = {ReplacementMode.REPLACE.value, ReplacementMode.BILINGUAL.value}
-    render_source = (
-        cleaned
-        if settings.replacement_mode in replace_modes
-        else source_bytes
-    )
-    final = await renderer.render_page(render_source, render_regions, settings.replacement_mode)
+    final = await renderer.render_page(source_bytes, render_regions, settings.replacement_mode)
 
     cleaned_asset = await assets.create_asset(
         user_id=project.user_id,

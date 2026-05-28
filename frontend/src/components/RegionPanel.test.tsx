@@ -59,6 +59,7 @@ function renderRegionPanel(
       selectedRegionId="region-1"
       onSelect={vi.fn()}
       onSave={vi.fn()}
+      onRunOcr={vi.fn()}
       onRetranslate={vi.fn()}
       onDelete={vi.fn()}
       {...props}
@@ -108,18 +109,20 @@ describe("RegionPanel", () => {
     expect(screen.getByRole("status")).toHaveTextContent("Saving...");
   });
 
-  it("locks approved regions from edits, saves, and retranslation", () => {
+  it("locks approved regions from edits, saves, OCR, and translation", () => {
     const onSave = vi.fn();
     const onRetranslate = vi.fn();
     renderRegionPanel({ onSave, onRetranslate }, { editable: false, user_text: "Approved copy" });
 
+    expect(screen.getByLabelText(/source/i)).toBeDisabled();
     expect(screen.getByLabelText(/target/i)).toBeDisabled();
     expect(screen.getByRole("button", { name: /save/i })).toBeDisabled();
     expect(screen.getByRole("button", { name: /^approved$/i })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /run ocr/i })).toBeDisabled();
 
-    const retranslateButton = screen.getByRole("button", { name: /retranslate region/i });
+    const retranslateButton = screen.getByRole("button", { name: /translate region/i });
     expect(retranslateButton).toBeDisabled();
-    expect(retranslateButton).toHaveAttribute("title", "Approved regions cannot be retranslated.");
+    expect(retranslateButton).toHaveAttribute("title", "Approved regions cannot be translated.");
     fireEvent.click(retranslateButton);
 
     expect(onSave).not.toHaveBeenCalled();
@@ -248,19 +251,26 @@ describe("RegionPanel", () => {
     expect(await screen.findByText("Color pick cancelled.")).toBeInTheDocument();
   });
 
-  it("uses a clear retranslate action and sends OCR source text", () => {
+  it("uses clear OCR and translate actions with editable source text", () => {
+    const onRunOcr = vi.fn();
     const onRetranslate = vi.fn();
-    renderRegionPanel({ onRetranslate });
+    renderRegionPanel({ onRunOcr, onRetranslate });
 
-    const button = screen.getByRole("button", { name: /retranslate region/i });
+    const sourceInput = screen.getByLabelText(/source/i);
+    const translateButton = screen.getByRole("button", { name: /translate region/i });
 
-    expect(button).toHaveTextContent("Retranslate");
+    expect(screen.getByRole("button", { name: /run ocr/i })).toHaveTextContent("Run OCR");
+    expect(translateButton).toHaveTextContent("Retranslate");
     expect(screen.queryByText(/^AI$/)).not.toBeInTheDocument();
-    expect(screen.getByText("Input: OCR source text")).toBeInTheDocument();
+    expect(screen.getByText("Input: source text")).toBeInTheDocument();
+    expect(sourceInput).toHaveValue("source text");
 
-    fireEvent.click(button);
+    fireEvent.click(screen.getByRole("button", { name: /run ocr/i }));
+    fireEvent.change(sourceInput, { target: { value: "manual source" } });
+    fireEvent.click(translateButton);
 
-    expect(onRetranslate).toHaveBeenCalledWith("region-1", "source text", "detected_text");
+    expect(onRunOcr).toHaveBeenCalledWith("region-1");
+    expect(onRetranslate).toHaveBeenCalledWith("region-1", "manual source", "detected_text");
   });
 
   it("selects and rejects regions from the translation card list", () => {
@@ -282,6 +292,7 @@ describe("RegionPanel", () => {
         selectedRegionId="region-1"
         onSelect={onSelect}
         onSave={vi.fn()}
+        onRunOcr={vi.fn()}
         onRetranslate={vi.fn()}
         onDelete={onDelete}
       />,
@@ -295,7 +306,7 @@ describe("RegionPanel", () => {
     expect(screen.getAllByText("Approved").length).toBeGreaterThan(0);
   });
 
-  it("makes the target draft fallback visible before retranslating", () => {
+  it("does not translate from the target draft when source text is blank", () => {
     const onRetranslate = vi.fn();
     renderRegionPanel(
       { onRetranslate },
@@ -306,14 +317,14 @@ describe("RegionPanel", () => {
       },
     );
 
-    expect(screen.getByText("Input: current target draft")).toBeInTheDocument();
+    expect(screen.getByText("Add source text or run OCR before translating.")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: /retranslate region/i }));
+    fireEvent.click(screen.getByRole("button", { name: /translate region/i }));
 
-    expect(onRetranslate).toHaveBeenCalledWith("region-1", "Existing target draft", "target_draft");
+    expect(onRetranslate).not.toHaveBeenCalled();
   });
 
-  it("disables retranslation when there is no source or draft text", () => {
+  it("disables translation when there is no source text", () => {
     const onRetranslate = vi.fn();
     renderRegionPanel(
       { onRetranslate },
@@ -324,28 +335,43 @@ describe("RegionPanel", () => {
       },
     );
 
-    const button = screen.getByRole("button", { name: /retranslate region/i });
+    const button = screen.getByRole("button", { name: /translate region/i });
 
     expect(button).toBeDisabled();
-    expect(button.getAttribute("title")).toMatch(/Add OCR source text/);
-    expect(screen.getByText("Add OCR source text or a target draft before retranslating.")).toBeInTheDocument();
+    expect(button.getAttribute("title")).toMatch(/Add source text/);
+    expect(screen.getByText("Add source text or run OCR before translating.")).toBeInTheDocument();
+    expect(screen.getByText("Untranslated")).toBeInTheDocument();
+    expect(screen.getByLabelText(/target/i)).toHaveAttribute("placeholder", "Enter target text");
 
     fireEvent.click(button);
 
     expect(onRetranslate).not.toHaveBeenCalled();
   });
 
-  it("shows retranslation pending feedback on the action", () => {
+  it("shows OCR pending feedback on the action", () => {
+    renderRegionPanel({
+      ocrFeedback: {
+        regionId: "region-1",
+        status: "pending",
+        message: "Running OCR on highlighted region.",
+      },
+    });
+
+    expect(screen.getByRole("button", { name: /running ocr/i })).toBeDisabled();
+    expect(screen.getByRole("status")).toHaveTextContent("Running OCR on highlighted region.");
+  });
+
+  it("shows translation pending feedback on the action", () => {
     renderRegionPanel({
       retranslateFeedback: {
         regionId: "region-1",
         status: "pending",
-        message: "Translating from OCR source text.",
+        message: "Translating from source text.",
       },
     });
 
     expect(screen.getByRole("button", { name: /translating region/i })).toBeDisabled();
-    expect(screen.getByRole("status")).toHaveTextContent("Translating from OCR source text.");
+    expect(screen.getByRole("status")).toHaveTextContent("Translating from source text.");
   });
 
   it("shows retranslation success and error feedback", () => {

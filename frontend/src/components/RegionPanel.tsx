@@ -1,6 +1,6 @@
 import { useEffect, useId, useMemo, useReducer, useRef, useState } from "react";
 import type { CSSProperties, KeyboardEvent, PointerEvent } from "react";
-import { Languages, Pipette, Save, Sparkles, Trash2 } from "lucide-react";
+import { Languages, Pipette, Save, ScanText, Sparkles, Trash2 } from "lucide-react";
 
 import { statusLabel } from "../lib/routing";
 import { fillOpacityFromStyle, fillOpacityPercent } from "../lib/renderStyle";
@@ -46,6 +46,14 @@ export interface RegionRetranslateFeedback {
   message: string;
 }
 
+type RegionOcrStatus = "pending" | "success" | "error";
+
+export interface RegionOcrFeedback {
+  regionId: string;
+  status: RegionOcrStatus;
+  message: string;
+}
+
 const DEFAULT_TEXT_COLOR = "#0f172a";
 const DEFAULT_FILL_COLOR = "#ffffff";
 const REGION_PANEL_WIDTH_STORAGE_KEY = "imageTranslator.editor.regionPanelWidth";
@@ -84,6 +92,7 @@ interface PanelHeightResizeDrag {
 }
 
 interface RegionPanelState {
+  sourceDraft: string;
   draft: string;
   styleDraft: StyleDraft;
   styleNotice: string | null;
@@ -91,12 +100,14 @@ interface RegionPanelState {
 
 type RegionPanelAction =
   | { type: "reset"; region?: TextRegionRead }
+  | { type: "setSourceDraft"; sourceDraft: string }
   | { type: "setDraft"; draft: string }
   | { type: "setStyle"; styleDraft: StyleDraft }
   | { type: "setStyleNotice"; styleNotice: string | null };
 
 function stateForRegion(region?: TextRegionRead): RegionPanelState {
   return {
+    sourceDraft: region?.detected_text || "",
     draft: region?.user_text || region?.translated_text || "",
     styleDraft: { ...(region?.render_style ?? {}) },
     styleNotice: null,
@@ -107,6 +118,8 @@ function regionPanelReducer(state: RegionPanelState, action: RegionPanelAction):
   switch (action.type) {
     case "reset":
       return stateForRegion(action.region);
+    case "setSourceDraft":
+      return { ...state, sourceDraft: action.sourceDraft };
     case "setDraft":
       return { ...state, draft: action.draft };
     case "setStyle":
@@ -242,11 +255,13 @@ export function RegionPanel({
   selectedRegionId,
   onSelect,
   onSave,
+  onRunOcr,
   onRetranslate,
   onDelete,
   onStyleDraftChange,
   onDraftChange,
   saveFeedback = null,
+  ocrFeedback = null,
   retranslateFeedback = null,
   isDeleting = false,
 }: {
@@ -254,11 +269,13 @@ export function RegionPanel({
   selectedRegionId?: string;
   onSelect: (regionId: string) => void;
   onSave: (regionId: string, payload: TextRegionUpdate, action: RegionSaveAction) => void;
+  onRunOcr: (regionId: string) => void;
   onRetranslate: (regionId: string, sourceText: string, source: RegionRetranslateSource) => void;
   onDelete: (regionId: string) => void;
   onStyleDraftChange?: (regionId: string, renderStyle: StyleDraft) => void;
   onDraftChange?: (regionId: string) => void;
   saveFeedback?: RegionSaveFeedback | null;
+  ocrFeedback?: RegionOcrFeedback | null;
   retranslateFeedback?: RegionRetranslateFeedback | null;
   isDeleting?: boolean;
 }) {
@@ -266,11 +283,12 @@ export function RegionPanel({
     () => regions.find((region) => region.id === selectedRegionId) ?? regions[0],
     [regions, selectedRegionId],
   );
-  const [{ draft, styleDraft, styleNotice }, dispatchPanel] = useReducer(
+  const [{ sourceDraft, draft, styleDraft, styleNotice }, dispatchPanel] = useReducer(
     regionPanelReducer,
     selectedRegion,
     stateForRegion,
   );
+  const ocrFeedbackId = useId();
   const retranslateHintId = useId();
   const retranslateFeedbackId = useId();
   const resizeDragRef = useRef<PanelResizeDrag | null>(null);
@@ -360,39 +378,51 @@ export function RegionPanel({
   }, [selectedRegionHeight]);
 
   const selectedSaveFeedback = selectedRegion && saveFeedback?.regionId === selectedRegion.id ? saveFeedback : null;
+  const selectedOcrFeedback = selectedRegion && ocrFeedback?.regionId === selectedRegion.id ? ocrFeedback : null;
   const selectedRetranslateFeedback = selectedRegion && retranslateFeedback?.regionId === selectedRegion.id ? retranslateFeedback : null;
   const isSavePending = selectedSaveFeedback?.status === "pending" && selectedSaveFeedback.action === "save";
   const isApprovePending = selectedSaveFeedback?.status === "pending" && selectedSaveFeedback.action === "approve";
   const isSaveActionPending = selectedSaveFeedback?.status === "pending";
+  const isOcrPending = selectedOcrFeedback?.status === "pending";
   const isRetranslatePending = selectedRetranslateFeedback?.status === "pending";
-  const canEditSelectedRegion = selectedRegion?.editable !== false && !isSaveActionPending && !isRetranslatePending;
+  const canEditSelectedRegion = selectedRegion?.editable !== false && !isSaveActionPending && !isOcrPending && !isRetranslatePending;
   const textColor = colorValue(styleDraft, ["textColor", "text_color", "color"], DEFAULT_TEXT_COLOR);
   const backgroundColor = colorValue(styleDraft, ["backgroundColor", "background_color", "fillColor", "fill"], DEFAULT_FILL_COLOR);
   const fillOpacity = fillOpacityFromStyle(styleDraft);
   const fillOpacityLabel = fillOpacityPercent(fillOpacity);
   const fontSize = Math.max(8, Math.min(72, Math.round(numberValue(styleDraft, "fontSize", 24))));
-  const detectedSourceText = selectedRegion?.detected_text?.trim() ?? "";
+  const sourceDraftText = sourceDraft.trim();
   const targetDraftText = draft.trim();
-  const retranslateSource: RegionRetranslateSource | null = detectedSourceText ? "detected_text" : targetDraftText ? "target_draft" : null;
-  const retranslateSourceText = detectedSourceText || targetDraftText;
-  const retranslateInputHint =
-    retranslateSource === "detected_text"
-      ? "Input: OCR source text"
-      : retranslateSource === "target_draft"
-        ? "Input: current target draft"
-        : "Add OCR source text or a target draft before retranslating.";
+  const retranslateSource: RegionRetranslateSource | null = sourceDraftText ? "detected_text" : null;
+  const retranslateInputHint = sourceDraftText ? "Input: source text" : "Add source text or run OCR before translating.";
+  const ocrDisabledReason =
+    selectedRegion?.editable === false
+      ? "Approved regions cannot run OCR."
+      : isSaveActionPending
+        ? "Finish saving before running OCR."
+        : isOcrPending
+          ? "OCR is in progress."
+          : isRetranslatePending
+            ? "Finish translating before running OCR."
+            : undefined;
   const retranslateDisabledReason =
     selectedRegion?.editable === false
-      ? "Approved regions cannot be retranslated."
+      ? "Approved regions cannot be translated."
       : isSaveActionPending
-        ? "Finish saving before retranslating."
-        : isRetranslatePending
-          ? "Translation is in progress."
-          : retranslateSource
-            ? undefined
-            : "Add OCR source text or a target draft before retranslating.";
-  const canRetranslateSelectedRegion = selectedRegion?.editable !== false && !isSaveActionPending && !isRetranslatePending && Boolean(retranslateSource);
-  const retranslateTitle = retranslateDisabledReason ?? "Translate the source text for this region again";
+        ? "Finish saving before translating."
+        : isOcrPending
+          ? "Finish OCR before translating."
+          : isRetranslatePending
+            ? "Translation is in progress."
+            : retranslateSource
+              ? undefined
+              : "Add source text or run OCR before translating.";
+  const canRunOcrSelectedRegion = selectedRegion?.editable !== false && !isSaveActionPending && !isOcrPending && !isRetranslatePending;
+  const canRetranslateSelectedRegion =
+    selectedRegion?.editable !== false && !isSaveActionPending && !isOcrPending && !isRetranslatePending && Boolean(retranslateSource);
+  const ocrTitle = ocrDisabledReason ?? "Run OCR on this highlighted region";
+  const retranslateTitle = retranslateDisabledReason ?? "Translate the source text for this region";
+  const translateButtonLabel = targetDraftText ? "Retranslate" : "Translate";
 
   function updateStyle(patch: StyleDraft) {
     if (!selectedRegion || !canEditSelectedRegion) {
@@ -760,32 +790,72 @@ export function RegionPanel({
           </div>
           <div className="mb-3">
             <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="text-xs font-bold uppercase text-text-muted">Source</p>
-                <p className="mt-1 break-words text-sm text-text-main">{selectedRegion.detected_text || "No OCR text"}</p>
+              <label className="min-w-0 flex-1">
+                <span className="text-xs font-bold uppercase text-text-muted">Source</span>
+                <textarea
+                  value={sourceDraft}
+                  onChange={(event) => {
+                    dispatchPanel({ type: "setSourceDraft", sourceDraft: event.target.value });
+                    onDraftChange?.(selectedRegion.id);
+                  }}
+                  disabled={!canEditSelectedRegion}
+                  aria-label="Source"
+                  placeholder="No source text"
+                  className="mt-2 min-h-16 w-full resize-y rounded-instrument border border-ink-border bg-background p-3 text-sm text-text-main outline-none transition focus:border-secondary focus:ring-1 focus:ring-secondary disabled:cursor-not-allowed disabled:opacity-65"
+                />
+              </label>
+              <div className="flex shrink-0 flex-col gap-2">
+                <button
+                  type="button"
+                  aria-label={isOcrPending ? "Running OCR" : "Run OCR"}
+                  aria-busy={isOcrPending}
+                  aria-describedby={selectedOcrFeedback ? ocrFeedbackId : undefined}
+                  title={ocrTitle}
+                  onClick={() => onRunOcr(selectedRegion.id)}
+                  disabled={!canRunOcrSelectedRegion}
+                  className="inline-flex min-w-32 items-center justify-center gap-2 rounded-instrument border border-tertiary/40 px-3 py-2 text-xs font-bold text-tertiary transition hover:bg-tertiary/10 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <ScanText className="h-4 w-4" />
+                  {isOcrPending ? "Running OCR" : "Run OCR"}
+                </button>
+                <button
+                  type="button"
+                  aria-label={isRetranslatePending ? "Translating region" : "Translate region"}
+                  aria-busy={isRetranslatePending}
+                  aria-describedby={`${retranslateHintId}${selectedRetranslateFeedback ? ` ${retranslateFeedbackId}` : ""}`}
+                  title={retranslateTitle}
+                  onClick={() => {
+                    if (!retranslateSource) {
+                      return;
+                    }
+                    onRetranslate(selectedRegion.id, sourceDraftText, retranslateSource);
+                  }}
+                  disabled={!canRetranslateSelectedRegion}
+                  className="inline-flex min-w-32 items-center justify-center gap-2 rounded-instrument border border-primary/40 px-3 py-2 text-xs font-bold text-primary-soft transition hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <Languages className="h-4 w-4" />
+                  {isRetranslatePending ? "Translating" : translateButtonLabel}
+                </button>
               </div>
-              <button
-                type="button"
-                aria-label={isRetranslatePending ? "Translating region" : "Retranslate region"}
-                aria-busy={isRetranslatePending}
-                aria-describedby={`${retranslateHintId}${selectedRetranslateFeedback ? ` ${retranslateFeedbackId}` : ""}`}
-                title={retranslateTitle}
-                onClick={() => {
-                  if (!retranslateSource) {
-                    return;
-                  }
-                  onRetranslate(selectedRegion.id, retranslateSourceText, retranslateSource);
-                }}
-                disabled={!canRetranslateSelectedRegion}
-                className="inline-flex min-w-32 items-center justify-center gap-2 rounded-instrument border border-primary/40 px-3 py-2 text-xs font-bold text-primary-soft transition hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                <Languages className="h-4 w-4" />
-                {isRetranslatePending ? "Translating" : "Retranslate"}
-              </button>
             </div>
             <p id={retranslateHintId} className="mt-2 text-xs font-semibold text-text-muted">
               {retranslateInputHint}
             </p>
+            {selectedOcrFeedback ? (
+              <p
+                id={ocrFeedbackId}
+                role={selectedOcrFeedback.status === "error" ? "alert" : "status"}
+                className={`mt-2 text-xs font-semibold ${
+                  selectedOcrFeedback.status === "error"
+                    ? "text-danger"
+                    : selectedOcrFeedback.status === "success"
+                      ? "text-emerald-300"
+                      : "text-secondary"
+                }`}
+              >
+                {selectedOcrFeedback.message}
+              </p>
+            ) : null}
             {selectedRetranslateFeedback ? (
               <p
                 id={retranslateFeedbackId}
@@ -813,6 +883,7 @@ export function RegionPanel({
             </span>
             <textarea
               value={draft}
+              placeholder="Enter target text"
               onChange={(event) => {
                 dispatchPanel({ type: "setDraft", draft: event.target.value });
                 onDraftChange?.(selectedRegion.id);
@@ -903,7 +974,13 @@ export function RegionPanel({
           </div>
           <div className="mt-3 grid grid-cols-3 gap-3">
             <button
-              onClick={() => onSave(selectedRegion.id, { user_text: draft, render_style: styleDraft, auto_rerender: true }, "save")}
+              onClick={() =>
+                onSave(
+                  selectedRegion.id,
+                  { detected_text: sourceDraft, user_text: draft, render_style: styleDraft, auto_rerender: true },
+                  "save",
+                )
+              }
               disabled={!canEditSelectedRegion}
               aria-busy={isSavePending}
               className="inline-flex items-center justify-center gap-2 rounded-instrument bg-primary px-3 py-2 text-sm font-bold text-white shadow-glow transition hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-60"
@@ -912,7 +989,13 @@ export function RegionPanel({
               {isSavePending ? "Saving" : "Save"}
             </button>
             <button
-              onClick={() => onSave(selectedRegion.id, { user_text: draft, render_style: styleDraft, editable: false, auto_rerender: true }, "approve")}
+              onClick={() =>
+                onSave(
+                  selectedRegion.id,
+                  { detected_text: sourceDraft, user_text: draft, render_style: styleDraft, editable: false, auto_rerender: true },
+                  "approve",
+                )
+              }
               disabled={!canEditSelectedRegion}
               aria-busy={isApprovePending}
               className="inline-flex items-center justify-center gap-2 rounded-instrument border border-ink-border px-3 py-2 text-sm font-bold text-text-main transition hover:bg-surface-high disabled:cursor-not-allowed disabled:opacity-60"

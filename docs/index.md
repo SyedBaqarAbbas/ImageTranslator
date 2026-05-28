@@ -32,6 +32,7 @@ No external provider API keys are required for the default local run, but OPUS-M
 ## Start Here
 
 - Try the deployed prototype: <http://158.101.11.4:5173>
+- Latest release: [v0.0.2 release notes](release-notes.md#v002-editor-workflow-and-deployment-automation-may-28-2026).
 - New user: follow [Getting Started](getting-started.md), then [Using the App](using-the-app.md).
 - Local developer: use [Local Setup](local-setup.md) or [Docker](docker.md).
 - Coding agent: read [Architecture](architecture.md), [Backend API](backend-api.md), [Frontend](frontend.md), and [Contributing](contributing.md).

@@ -11,9 +11,7 @@ the local real-provider workflow and deterministic mock test path stable.
   [RELEASE_TEST_MATRIX.md](RELEASE_TEST_MATRIX.md) for the current workflow and
   release-gate expectations.
 - Follow the [Code of Conduct](CODE_OF_CONDUCT.md).
-- Open or link an issue before broad changes. Internal project work should link
-  the Linear issue ID, for example `IMA-32`; external contributors can use
-  GitHub issues.
+- Open or link an issue before broad changes. Planned project work is tracked in Linear; contributors can [join the Linear workspace](https://linear.app/imagetranslator/join/04b6855f48853e2a06da14596e999f09?s=5) and reference the issue ID in branches and pull requests, for example `IMA-32`. Public bug reports and feature suggestions may also be submitted through [GitHub Issues](https://github.com/SyedBaqarAbbas/ImageTranslator/issues).
 - Do not commit secrets, `.env` files, local databases, uploaded images,
   rendered outputs, model files, provider keys, or production configuration.
 - Use synthetic, licensed, public-domain, or redacted images in issues, tests,

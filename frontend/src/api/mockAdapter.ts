@@ -18,6 +18,7 @@ import type {
   ProjectUpdate,
   RetranslateRequest,
   RuntimeLanguageRead,
+  TextRegionCreate,
   TextRegionRead,
   TextRegionUpdate,
   TranslationSettingsRead,
@@ -63,6 +64,14 @@ function findRegion(regionId: string): TextRegionRead {
     throw new Error("Text region not found.");
   }
   return region;
+}
+
+function findPage(pageId: string): PageRead {
+  const page = store.pages.find((item) => item.id === pageId);
+  if (!page) {
+    throw new Error("Page not found.");
+  }
+  return page;
 }
 
 function findJob(jobId: string): ProcessingJobRead {
@@ -368,18 +377,76 @@ export const mockApi: ApiAdapter = {
     return delay(store.regions.filter((region) => region.page_id === pageId).sort((a, b) => a.region_index - b.region_index));
   },
 
+  async createRegion(pageId: string, payload: TextRegionCreate): Promise<TextRegionRead> {
+    const page = findPage(pageId);
+    const now = iso();
+    const pageRegions = store.regions.filter((region) => region.page_id === pageId);
+    const nextRegionIndex = Math.max(0, ...pageRegions.map((region) => region.region_index)) + 1;
+    const region: TextRegionRead = {
+      id: id("region"),
+      page_id: pageId,
+      region_index: nextRegionIndex,
+      region_type: payload.region_type ?? "unknown",
+      bounding_box: payload.bounding_box,
+      polygon: null,
+      detected_text: payload.detected_text ?? null,
+      detected_language: null,
+      translated_text: payload.translated_text ?? null,
+      user_text: payload.user_text ?? null,
+      ocr_confidence: null,
+      translation_confidence: null,
+      render_style: payload.render_style ?? { align: "center", padding: 6 },
+      editable: payload.editable ?? true,
+      status: payload.user_text?.trim() ? "user_edited" : payload.detected_text?.trim() ? "detected" : "needs_review",
+      failure_reason: null,
+      created_at: now,
+      updated_at: now,
+    };
+    store.regions.push(region);
+    if (payload.auto_rerender) {
+      const pageAsset = page.original_asset ?? page.preview_asset ?? page.final_asset;
+      if (pageAsset) {
+        page.preview_asset = { ...pageAsset, kind: "preview" };
+        page.preview_asset_id = page.preview_asset.id;
+        page.final_asset = { ...pageAsset, kind: "final" };
+        page.final_asset_id = page.final_asset.id;
+      }
+      page.updated_at = now;
+    }
+    return delay(region);
+  },
+
   async updateRegion(regionId: string, payload: TextRegionUpdate): Promise<TextRegionRead> {
     const region = findRegion(regionId);
-    Object.assign(region, payload, {
+    const { auto_rerender: autoRerender, ...regionPayload } = payload;
+    const now = iso();
+    Object.assign(region, regionPayload, {
       status:
-        payload.user_text !== undefined ||
-        payload.translated_text !== undefined ||
-        payload.bounding_box !== undefined ||
-        payload.render_style !== undefined
+        regionPayload.user_text !== undefined ||
+        regionPayload.translated_text !== undefined ||
+        regionPayload.bounding_box !== undefined ||
+        regionPayload.render_style !== undefined
           ? "user_edited"
-          : region.status,
-      updated_at: iso(),
+          : regionPayload.detected_text !== undefined
+            ? regionPayload.detected_text?.trim()
+              ? "detected"
+              : "needs_review"
+            : region.status,
+      ocr_confidence: regionPayload.detected_text !== undefined ? null : region.ocr_confidence,
+      failure_reason: regionPayload.detected_text !== undefined ? null : region.failure_reason,
+      updated_at: now,
     });
+    if (autoRerender) {
+      const page = store.pages.find((item) => item.id === region.page_id);
+      const pageAsset = page?.original_asset ?? page?.preview_asset ?? page?.final_asset;
+      if (page && pageAsset) {
+        page.preview_asset = { ...pageAsset, kind: "preview", updated_at: now };
+        page.preview_asset_id = page.preview_asset.id;
+        page.final_asset = { ...pageAsset, kind: "final", updated_at: now };
+        page.final_asset_id = page.final_asset.id;
+        page.updated_at = now;
+      }
+    }
     return delay(region);
   },
 
@@ -400,6 +467,42 @@ export const mockApi: ApiAdapter = {
       job.completed_at = iso();
       page.updated_at = iso();
     }, 400);
+    return delay(job);
+  },
+
+  async ocrRegion(regionId: string): Promise<ProcessingJobRead> {
+    const region = findRegion(regionId);
+    const page = store.pages.find((item) => item.id === region.page_id);
+    if (!page) {
+      throw new Error("Page not found.");
+    }
+    const job = buildJob(page.project_id, "ocr_region", { region_id: region.id });
+    job.page_id = page.id;
+    job.region_id = region.id;
+    jobs.unshift(job);
+    window.setTimeout(() => {
+      job.status = "running";
+      job.progress = 35;
+      job.stage = "ocr_region";
+      job.started_at = iso();
+      job.updated_at = iso();
+      region.status = "detected";
+      region.failure_reason = null;
+      region.updated_at = iso();
+    }, 250);
+    window.setTimeout(() => {
+      job.status = "succeeded";
+      job.progress = 100;
+      job.stage = "ocr_complete";
+      job.completed_at = iso();
+      job.updated_at = iso();
+      region.detected_text = "Manual OCR detected text";
+      region.detected_language = "ja";
+      region.ocr_confidence = 0.92;
+      region.status = "ocr_complete";
+      region.failure_reason = null;
+      region.updated_at = iso();
+    }, 800);
     return delay(job);
   },
 
@@ -428,6 +531,11 @@ export const mockApi: ApiAdapter = {
       job.stage = "complete";
       job.completed_at = iso();
       job.updated_at = iso();
+      if (payload.source_text !== undefined) {
+        region.detected_text = payload.source_text;
+        region.detected_language = "ja";
+        region.ocr_confidence = null;
+      }
       region.translated_text = payload.source_text ? `${payload.source_text} (AI polished)` : `${region.translated_text ?? ""} (refined)`;
       region.translation_confidence = 0.91;
       region.status = "translated";

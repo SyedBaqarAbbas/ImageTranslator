@@ -55,6 +55,7 @@ class JobStatus(StrEnum):
 class JobType(StrEnum):
     PROCESS_PROJECT = "process_project"
     PROCESS_PAGE = "process_page"
+    OCR_REGION = "ocr_region"
     RETRANSLATE_REGION = "retranslate_region"
     RERENDER_PAGE = "rerender_page"
     EXPORT_PROJECT = "export_project"

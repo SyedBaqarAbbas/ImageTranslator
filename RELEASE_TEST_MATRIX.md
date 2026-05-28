@@ -61,6 +61,23 @@ requests and pushes to `dev` run `mkdocs build --strict`; pushes to `main` also
 upload the generated `site/` artifact and deploy it through GitHub Pages
 Actions.
 
+The GitHub `Deploy OCI` workflow deploys the current Compose prototype to the
+`production-oci` environment. It is triggered by `workflow_run` after the `CI`
+workflow completes on `main`, but the deploy job only runs when the upstream run
+was a successful `push` to `main`; pull request CI runs must never deploy or
+receive OCI secrets. Manual `workflow_dispatch` runs from `main` also deploy.
+The workflow uses environment-scoped OCI SSH secrets, pinned known hosts,
+serialized `production-oci` concurrency, safe fast-forward Git updates, `docker
+compose config --quiet`, `docker compose up --build -d --remove-orphans`, and
+frontend plus API health checks. Automatic runs verify that fetched
+`origin/main` matches the successful CI run's commit before changing the
+bind-mounted server checkout, so an older CI completion cannot update the
+running prototype to a newer unverified `main` push. It must not delete server
+`.env` files, OPUS-MT models, asset storage, or Postgres/Docker volumes. This
+deployment workflow depends on hosted `CI` for tested application state,
+complements CodeQL security scanning, and is separate from the GitHub Pages docs
+deployment.
+
 The local `./up-and-test.sh` release gate remains broader than hosted CI and
 should still be run before release-sensitive merges.
 
@@ -81,7 +98,7 @@ should still be run before release-sensitive merges.
 | `/support` | Support tests | Empty validation, drafted request | Button audit |
 | `/projects/:id/processing` | Processing tests | Running, success, failed, cancel/rerun | Full-stack workflow |
 | `/projects/:id/review` | Review tests | No regions, approve, API error | Full-stack workflow |
-| `/projects/:id/editor` | Editor tests | Missing project/page, save, retranslate, reject, drag/resize | Editor E2E |
+| `/projects/:id/editor` | Editor tests | Missing project/page, add text box, manual OCR region create/OCR, save, translate, reject, drag/resize | Editor E2E |
 | `/projects/:id/export` | Export tests | PDF/ZIP/images, no pages, failed export | Full-stack export workflow |
 | `*` | Redirect test | Unknown routes redirect to `/projects` | Route coverage |
 
@@ -93,7 +110,7 @@ should still be run before release-sensitive merges.
 | Projects/settings | Create/list/detail/update/delete/settings | Validation, missing project, deleted project |
 | Pages/upload | Multi-image upload, ZIP upload, page detail/list | Empty upload, unsupported type, corrupt image, too many pages, missing page |
 | Processing/jobs | Project process, page reprocess, rerender, job list/detail | No pages, OCR no text, provider failure, missing job |
-| Regions | List/update/delete/rerender/retranslate | Missing region/page, translation failure, rerender failure |
+| Regions | List/create/update/delete/region OCR/rerender/retranslate | Missing region/page, OCR no text, translation failure, rerender failure |
 | Exports/assets | PDF, full ZIP, image ZIP, include originals, downloads | No pages, no rendered pages, missing export/asset/key |
 | Events | Project event stream first payload | Missing project |
 

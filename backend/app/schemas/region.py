@@ -32,7 +32,19 @@ class TextRegionRead(Timestamped):
     failure_reason: str | None
 
 
+class TextRegionCreate(BaseModel):
+    region_type: RegionType = RegionType.UNKNOWN
+    bounding_box: BoundingBox
+    detected_text: str | None = Field(default=None, max_length=5000)
+    translated_text: str | None = Field(default=None, max_length=5000)
+    user_text: str | None = Field(default=None, max_length=5000)
+    render_style: dict | None = None
+    editable: bool = True
+    auto_rerender: bool = False
+
+
 class TextRegionUpdate(BaseModel):
+    detected_text: str | None = Field(default=None, max_length=5000)
     translated_text: str | None = Field(default=None, max_length=5000)
     user_text: str | None = Field(default=None, max_length=5000)
     region_type: RegionType | None = None

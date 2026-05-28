@@ -181,7 +181,19 @@ export interface TextRegionRead extends Timestamped {
   failure_reason: string | null;
 }
 
+export interface TextRegionCreate {
+  region_type?: RegionType;
+  bounding_box: BoundingBox;
+  detected_text?: string | null;
+  translated_text?: string | null;
+  user_text?: string | null;
+  render_style?: Record<string, unknown> | null;
+  editable?: boolean;
+  auto_rerender?: boolean;
+}
+
 export interface TextRegionUpdate {
+  detected_text?: string | null;
   translated_text?: string | null;
   user_text?: string | null;
   region_type?: RegionType;
@@ -255,8 +267,10 @@ export interface ApiAdapter {
   listPages(projectId: string): Promise<PageRead[]>;
   getPage(projectId: string, pageId: string): Promise<PageRead>;
   listRegions(pageId: string): Promise<TextRegionRead[]>;
+  createRegion(pageId: string, payload: TextRegionCreate): Promise<TextRegionRead>;
   updateRegion(regionId: string, payload: TextRegionUpdate): Promise<TextRegionRead>;
   deleteRegion(regionId: string): Promise<ProcessingJobRead>;
+  ocrRegion(regionId: string): Promise<ProcessingJobRead>;
   retranslateRegion(regionId: string, payload: RetranslateRequest): Promise<ProcessingJobRead>;
   getProcessingJob(jobId: string, options?: { signal?: AbortSignal }): Promise<ProcessingJobRead>;
   processProject(projectId: string, payload: ProcessProjectRequest): Promise<ProcessingJobRead>;

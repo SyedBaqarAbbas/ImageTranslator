@@ -39,11 +39,32 @@ describe("mockApi", () => {
     await expect(mockApi.getProject("project-cyber")).rejects.toThrow("Project not found.");
   });
 
-  it("reports completed retranslation jobs with updated region text", async () => {
+  it("creates manual regions and reports completed OCR and retranslation jobs with updated region text", async () => {
     vi.useFakeTimers();
     const mockApi = await loadMockApi();
     const pages = await resolveDelayed(mockApi.listPages("project-cyber"));
     const regions = await resolveDelayed(mockApi.listRegions(pages[0].id));
+    const manualRegion = await resolveDelayed(
+      mockApi.createRegion(pages[0].id, {
+        bounding_box: { x: 12, y: 24, width: 80, height: 60 },
+      }),
+    );
+
+    expect(manualRegion).toMatchObject({
+      page_id: pages[0].id,
+      region_type: "unknown",
+      status: "needs_review",
+    });
+
+    const ocrJob = await resolveDelayed(mockApi.ocrRegion(manualRegion.id));
+    expect(ocrJob.status).toBe("queued");
+
+    await vi.advanceTimersByTimeAsync(800);
+    const completedOcrJob = await resolveDelayed(mockApi.getProcessingJob(ocrJob.id));
+    const ocrRegions = await resolveDelayed(mockApi.listRegions(pages[0].id));
+
+    expect(completedOcrJob).toMatchObject({ status: "succeeded", job_type: "ocr_region" });
+    expect(ocrRegions.find((item) => item.id === manualRegion.id)?.detected_text).toBe("Manual OCR detected text");
 
     const acceptedJob = await resolveDelayed(
       mockApi.retranslateRegion(regions[0].id, {
@@ -59,6 +80,7 @@ describe("mockApi", () => {
 
     expect(completedJob.status).toBe("succeeded");
     expect(updatedRegions.find((item) => item.id === regions[0].id)?.translated_text).toBe("Fresh source (AI polished)");
+    expect(updatedRegions.find((item) => item.id === regions[0].id)?.detected_text).toBe("Fresh source");
   });
 
   it("creates projects, uploads archive placeholders, processes pages, and manages settings", async () => {
@@ -128,6 +150,33 @@ describe("mockApi", () => {
       mockApi.uploadPages(project.id, [new File(["page"], "page.png", { type: "text/plain" })]),
     );
     const regions = await resolveDelayed(mockApi.listRegions(pages[0].id));
+    const blankRegion = await resolveDelayed(
+      mockApi.createRegion(pages[0].id, {
+        bounding_box: { x: 12, y: 24, width: 120, height: 80 },
+      }),
+    );
+    const manualRegion = await resolveDelayed(
+      mockApi.createRegion(pages[0].id, {
+        region_type: "caption",
+        bounding_box: { x: 20, y: 30, width: 140, height: 90 },
+        user_text: "Manual mock caption",
+      }),
+    );
+
+    expect(blankRegion).toMatchObject({
+      region_index: regions.length + 1,
+      region_type: "unknown",
+      status: "needs_review",
+      user_text: null,
+    });
+    expect(manualRegion).toMatchObject({
+      region_index: regions.length + 2,
+      region_type: "caption",
+      status: "user_edited",
+      user_text: "Manual mock caption",
+    });
+    await expect(resolveDelayed(mockApi.listRegions(pages[0].id))).resolves.toHaveLength(regions.length + 2);
+
     const deleteJob = await resolveDelayed(mockApi.deleteRegion(regions[0].id));
     await vi.advanceTimersByTimeAsync(500);
     expect(await resolveDelayed(mockApi.getProcessingJob(deleteJob.id))).toMatchObject({
@@ -165,6 +214,9 @@ describe("mockApi", () => {
     await expect(mockApi.getProject("missing")).rejects.toThrow("Project not found.");
     await expect(mockApi.listPages("missing")).rejects.toThrow("Project not found.");
     await expect(mockApi.getPage("project-cyber", "missing")).rejects.toThrow("Page not found.");
+    await expect(mockApi.createRegion("missing-page", { bounding_box: { x: 1, y: 2, width: 3, height: 4 } })).rejects.toThrow(
+      "Page not found.",
+    );
     await expect(mockApi.listRegions("missing-page")).resolves.toEqual([]);
     await expect(mockApi.deleteRegion("missing-region")).rejects.toThrow("Text region not found.");
     await expect(mockApi.getProcessingJob("missing-job")).rejects.toThrow("Job not found.");
