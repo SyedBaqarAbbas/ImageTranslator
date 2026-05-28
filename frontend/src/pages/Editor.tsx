@@ -170,6 +170,7 @@ interface RetranslateRegionVariables {
 
 interface UndoEntry {
   order: number;
+  projectId: string;
   regionId: string;
   pageId: string;
   payload: TextRegionUpdate;
@@ -219,13 +220,14 @@ function undoPayloadForRegion(region: TextRegionRead, payload: TextRegionUpdate)
   return undoPayload;
 }
 
-function undoEntryForUpdate(region: TextRegionRead | undefined, payload: TextRegionUpdate, order: number): UndoEntry | undefined {
+function undoEntryForUpdate(region: TextRegionRead | undefined, payload: TextRegionUpdate, order: number, projectId: string): UndoEntry | undefined {
   const undoPayload = region ? undoPayloadForRegion(region, payload) : undefined;
   if (!region || !undoPayload) {
     return undefined;
   }
   return {
     order,
+    projectId,
     regionId: region.id,
     pageId: region.page_id,
     payload: undoPayload,
@@ -254,6 +256,10 @@ function projectBackFallback(projectId: string, status?: string): string {
 
 export function Editor() {
   const { projectId = "" } = useParams();
+  return <EditorWorkspace key={projectId} projectId={projectId} />;
+}
+
+function EditorWorkspace({ projectId }: { projectId: string }) {
   const navigate = useNavigate();
   const location = useLocation();
   const queryClient = useQueryClient();
@@ -319,6 +325,9 @@ export function Editor() {
     if (!entry) {
       return;
     }
+    if (entry.projectId !== projectId) {
+      return;
+    }
     setUndoStack((current) => [...current, entry].sort((left, right) => left.order - right.order).slice(-25));
   }
 
@@ -344,8 +353,20 @@ export function Editor() {
     const undoEntry =
       action === "workspace"
         ? undefined
-        : undoEntryForUpdate(regions.find((region) => region.id === regionId), payload, nextUndoOrder());
+        : undoEntryForUpdate(regions.find((region) => region.id === regionId), payload, nextUndoOrder(), projectId);
     saveMutation.mutate({ regionId, payload, action, undoEntry });
+  }
+
+  function workspaceSavePayload(regionId: string): TextRegionUpdate {
+    const styleDraft = styleDrafts[regionId];
+    if (!styleDraft) {
+      return { auto_rerender: true };
+    }
+    const region = regions.find((item) => item.id === regionId);
+    return {
+      render_style: { ...(region?.render_style ?? {}), ...styleDraft },
+      auto_rerender: true,
+    };
   }
 
   useEffect(() => {
@@ -481,6 +502,7 @@ export function Editor() {
           auto_rerender: true,
         },
         undoOrder,
+        projectId,
       );
       queryClient.setQueryData<TextRegionRead[]>(
         key,
@@ -510,6 +532,8 @@ export function Editor() {
       const key = queryKeys.regions(entry.pageId);
       await queryClient.cancelQueries({ queryKey: key });
       const previous = queryClient.getQueryData<TextRegionRead[]>(key);
+      const hadStyleDraft = restoresRenderStyle(entry.payload) && Object.prototype.hasOwnProperty.call(styleDrafts, entry.regionId);
+      const previousStyleDraft = hadStyleDraft ? cloneJson(styleDrafts[entry.regionId]) : undefined;
       queryClient.setQueryData<TextRegionRead[]>(
         key,
         (current) => current?.map((region) => (region.id === entry.regionId ? regionWithPayload(region, entry.payload) : region)) ?? current,
@@ -519,7 +543,7 @@ export function Editor() {
       }
       dispatchEditor({ type: "setRegionSaveFeedback", feedback: null });
       dispatchEditor({ type: "patch", patch: { selectedPageId: entry.pageId, selectedRegionId: entry.regionId, workspaceStatus: "Undoing..." } });
-      return { key, previous };
+      return { key, previous, hadStyleDraft, previousStyleDraft };
     },
     onSuccess: async (updatedRegion, entry) => {
       queryClient.setQueryData<TextRegionRead[]>(queryKeys.regions(updatedRegion.page_id), (current) =>
@@ -539,6 +563,9 @@ export function Editor() {
     onError: (error, entry, context) => {
       if (context?.previous) {
         queryClient.setQueryData(context.key, context.previous);
+      }
+      if (context?.hadStyleDraft) {
+        dispatchEditor({ type: "setStyleDraft", regionId: entry.regionId, renderStyle: context.previousStyleDraft ?? {} });
       }
       insertUndoEntry(entry);
       dispatchEditor({ type: "patch", patch: { workspaceStatus: `Undo failed: ${errorMessage(error, "The request failed.")}` } });
@@ -836,7 +863,7 @@ export function Editor() {
             <CanvasWorkspace
               imageUrl={assetUrlForPage(selectedPage, mode === "original" ? "original" : "editable")}
               comparisonOriginalImageUrl={assetUrlForPage(selectedPage, "original")}
-              comparisonTranslatedImageUrl={assetUrlForPage(selectedPage, "final")}
+              comparisonTranslatedImageUrl={assetUrlForPage(selectedPage, "cleaned")}
               comparisonSplit={comparisonSplit}
               onComparisonSplitChange={(split) => dispatchEditor({ type: "patch", patch: { comparisonSplit: split } })}
               width={selectedPage.width}
@@ -886,7 +913,7 @@ export function Editor() {
               disabled={!selectedRegionId || saveMutation.isPending}
               onClick={() => {
                 if (selectedRegionId) {
-                  handleSaveRegion(selectedRegionId, { auto_rerender: true }, "workspace");
+                  handleSaveRegion(selectedRegionId, workspaceSavePayload(selectedRegionId), "workspace");
                 }
               }}
               className="inline-flex shrink-0 items-center gap-2 rounded-instrument border border-ink-border px-3 py-1.5 text-text-main transition hover:bg-surface-high disabled:cursor-not-allowed disabled:opacity-60"

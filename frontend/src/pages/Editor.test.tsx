@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { MemoryRouter, Route, Routes, useNavigate } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { PageRead, ProcessingJobRead, ProjectDetail, TextRegionCreate, TextRegionRead, TextRegionUpdate } from "../types/api";
@@ -144,6 +144,30 @@ const region: TextRegionRead = {
   failure_reason: null,
   created_at: now,
   updated_at: now,
+};
+
+const secondProject: ProjectDetail = {
+  ...project,
+  id: "project-editor-2",
+  name: "Second Editor Project",
+  status: "processing",
+};
+
+const secondPage: PageRead = {
+  ...page,
+  id: "page-editor-2",
+  project_id: secondProject.id,
+  original_asset_id: "asset-original-2",
+  final_asset_id: "asset-final-2",
+  original_asset: page.original_asset ? { ...page.original_asset, id: "asset-original-2", project_id: secondProject.id, page_id: "page-editor-2" } : null,
+  final_asset: page.final_asset ? { ...page.final_asset, id: "asset-final-2", project_id: secondProject.id, page_id: "page-editor-2" } : null,
+};
+
+const secondRegion: TextRegionRead = {
+  ...region,
+  id: "region-editor-second",
+  page_id: secondPage.id,
+  translated_text: "Second project translation",
 };
 
 const job: ProcessingJobRead = {
@@ -338,6 +362,28 @@ describe("Editor", () => {
     expect(await screen.findByText(/Saved/)).toBeInTheDocument();
   });
 
+  it("persists selected style drafts when saving the workspace", async () => {
+    renderEditor();
+    await screen.findByText(project.name);
+    await screen.findByDisplayValue("Machine translation");
+
+    fireEvent.change(screen.getByLabelText("Text size"), { target: { value: "32" } });
+    await waitFor(() => {
+      expect(screen.getByLabelText("Text size")).toHaveValue("32");
+    });
+    fireEvent.click(screen.getByRole("button", { name: /save workspace/i }));
+
+    await waitFor(() => {
+      expect(mocks.api.updateRegion).toHaveBeenCalledWith(
+        region.id,
+        expect.objectContaining({
+          render_style: expect.objectContaining({ fontSize: 32 }),
+          auto_rerender: true,
+        }),
+      );
+    });
+  });
+
   it("routes Back to the project review fallback when no editor history is available", async () => {
     renderEditor();
     await screen.findByText(project.name);
@@ -357,6 +403,56 @@ describe("Editor", () => {
     fireEvent.click(screen.getByRole("button", { name: /back/i }));
 
     expect(await screen.findByRole("heading", { name: /projects/i })).toBeInTheDocument();
+  });
+
+  it("clears undo history when navigating to a different editor project", async () => {
+    function ProjectSwitcher() {
+      const navigate = useNavigate();
+      return (
+        <>
+          <button type="button" onClick={() => navigate(`/projects/${secondProject.id}/editor`)}>
+            Open second project
+          </button>
+          <Routes>
+            <Route path="/projects/:projectId/editor" element={<Editor />} />
+          </Routes>
+        </>
+      );
+    }
+
+    const queryClient = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false },
+        mutations: { retry: false },
+      },
+    });
+    mocks.api.getProject.mockImplementation((projectId: string) => Promise.resolve(projectId === secondProject.id ? secondProject : project));
+    mocks.api.listPages.mockImplementation((projectId: string) => Promise.resolve(projectId === secondProject.id ? [secondPage] : [page]));
+    mocks.api.listRegions.mockImplementation((pageId: string) => Promise.resolve(pageId === secondPage.id ? [secondRegion] : currentRegions));
+
+    render(
+      <MemoryRouter initialEntries={[`/projects/${project.id}/editor`]}>
+        <QueryClientProvider client={queryClient}>
+          <ProjectSwitcher />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    );
+    await screen.findByText(project.name);
+
+    fireEvent.change(await screen.findByDisplayValue("Machine translation"), {
+      target: { value: "Human edited translation" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /undo/i })).not.toHaveAttribute("aria-disabled", "true");
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /open second project/i }));
+
+    expect(await screen.findByText(secondProject.name)).toBeInTheDocument();
+    await screen.findByDisplayValue("Second project translation");
+    expect(screen.getByRole("button", { name: /undo/i })).toHaveAttribute("aria-disabled", "true");
   });
 
   it("saves and approves selected region edits", async () => {
@@ -495,6 +591,42 @@ describe("Editor", () => {
     await waitFor(() => {
       expect(screen.getByRole("button", { name: /undo/i })).not.toHaveAttribute("aria-disabled", "true");
     });
+  });
+
+  it("restores unsaved style drafts when a style undo fails", async () => {
+    renderEditor();
+    await screen.findByText(project.name);
+    await screen.findByDisplayValue("Machine translation");
+
+    fireEvent.change(screen.getByLabelText("Text size"), { target: { value: "32" } });
+    await waitFor(() => {
+      expect(screen.getByLabelText("Text size")).toHaveValue("32");
+    });
+    fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
+
+    await waitFor(() => {
+      expect(mocks.api.updateRegion).toHaveBeenCalledWith(
+        region.id,
+        expect.objectContaining({
+          render_style: expect.objectContaining({ fontSize: 32 }),
+          auto_rerender: true,
+        }),
+      );
+    });
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /undo/i })).not.toHaveAttribute("aria-disabled", "true");
+    });
+
+    fireEvent.change(screen.getByLabelText("Text size"), { target: { value: "40" } });
+    await waitFor(() => {
+      expect(screen.getByLabelText("Text size")).toHaveValue("40");
+    });
+    mocks.api.updateRegion.mockRejectedValueOnce(new Error("undo write failed"));
+
+    fireEvent.click(screen.getByRole("button", { name: /undo/i }));
+
+    expect(await screen.findByText(/Undo failed: undo write failed/)).toBeInTheDocument();
+    expect(screen.getByLabelText("Text size")).toHaveValue("40");
   });
 
   it("creates a manual text box from canvas add mode and selects it", async () => {

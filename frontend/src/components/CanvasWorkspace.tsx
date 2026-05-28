@@ -724,29 +724,61 @@ export function CanvasWorkspace({
             <PagePreview imageUrl={imageUrl} />
           )}
 
-          {regions.map((region) => {
-            const active = region.id === selectedRegionId;
-            const boundingBox = drag?.regionId === region.id ? drag.box : region.bounding_box;
-            return (
-              <CanvasRegion
-                key={region.id}
-                region={region}
-                active={active}
-                boundingBox={boundingBox}
-                canvasWidth={canvasWidth}
-                canvasHeight={canvasHeight}
-                displaySize={displaySize}
-                mode={comparison ? "original" : mode}
-                onSelectRegion={onSelectRegion}
-                onStartDrag={startDrag}
-                onStartResize={startResize}
-                onUpdateDrag={updateDrag}
-                onFinishDrag={finishDrag}
-                onCancelDrag={() => setDrag(null)}
-                interactive={tool === "select" && !comparison}
-              />
-            );
-          })}
+          {comparison ? (
+            <div
+              data-testid="comparison-translated-region-layer"
+              className="pointer-events-none absolute inset-0 z-20 overflow-hidden rounded-instrument"
+              style={{ clipPath: `inset(0 0 0 ${activeComparisonSplit}%)` }}
+            >
+              {regions.map((region) => {
+                const active = region.id === selectedRegionId;
+                const boundingBox = drag?.regionId === region.id ? drag.box : region.bounding_box;
+                return (
+                  <CanvasRegion
+                    key={region.id}
+                    region={region}
+                    active={active}
+                    boundingBox={boundingBox}
+                    canvasWidth={canvasWidth}
+                    canvasHeight={canvasHeight}
+                    displaySize={displaySize}
+                    mode="translated"
+                    onSelectRegion={onSelectRegion}
+                    onStartDrag={startDrag}
+                    onStartResize={startResize}
+                    onUpdateDrag={updateDrag}
+                    onFinishDrag={finishDrag}
+                    onCancelDrag={() => setDrag(null)}
+                    interactive={false}
+                  />
+                );
+              })}
+            </div>
+          ) : (
+            regions.map((region) => {
+              const active = region.id === selectedRegionId;
+              const boundingBox = drag?.regionId === region.id ? drag.box : region.bounding_box;
+              return (
+                <CanvasRegion
+                  key={region.id}
+                  region={region}
+                  active={active}
+                  boundingBox={boundingBox}
+                  canvasWidth={canvasWidth}
+                  canvasHeight={canvasHeight}
+                  displaySize={displaySize}
+                  mode={mode}
+                  onSelectRegion={onSelectRegion}
+                  onStartDrag={startDrag}
+                  onStartResize={startResize}
+                  onUpdateDrag={updateDrag}
+                  onFinishDrag={finishDrag}
+                  onCancelDrag={() => setDrag(null)}
+                  interactive={tool === "select"}
+                />
+              );
+            })
+          )}
 
           {createDrag ? (
             <div

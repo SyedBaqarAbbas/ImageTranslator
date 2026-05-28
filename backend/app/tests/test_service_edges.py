@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import zipfile
 from collections.abc import AsyncGenerator
 from pathlib import Path
 
@@ -40,6 +41,7 @@ from app.models import (
     User,
 )
 from app.providers.ocr import OCRRegion
+from app.providers.rendering import PillowRenderEngine
 from app.providers.translation import TranslationResult
 from app.schemas.job import ExportRequest, ProcessProjectRequest, ReprocessPageRequest
 from app.schemas.project import ProjectCreate, ProjectUpdate
@@ -959,6 +961,61 @@ async def test_export_service_direct_success_and_failure_edges(
     assert missing_project_export.status == JobStatus.FAILED.value
 
     await execute_export_job("missing-export-id")
+
+
+@pytest.mark.asyncio
+async def test_export_rerenders_current_region_styles(
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    user, project, page, regions = await _processed_project_fixture(db_session, monkeypatch)
+    region = regions[0]
+    region.bounding_box = {"x": 1, "y": 2, "width": 20, "height": 12}
+    region.detected_text = "source"
+    region.translated_text = "Styled"
+    region.user_text = "Styled"
+    region.render_style = {
+        "backgroundColor": "#000000",
+        "fillOpacity": 1,
+        "fontSize": 10,
+        "padding": 1,
+        "textColor": "#ffffff",
+    }
+    await db_session.commit()
+    monkeypatch.setattr(processing_service_module, "get_render_engine", lambda: PillowRenderEngine())
+
+    export = ExportJob(
+        user_id=user.id,
+        project_id=project.id,
+        format=ExportFormat.IMAGES.value,
+        settings={
+            "format": ExportFormat.IMAGES.value,
+            "include_originals": False,
+            "page_ids": [page.id],
+            "filename": "current-style-export",
+        },
+    )
+    db_session.add(export)
+    await db_session.commit()
+    await db_session.refresh(export)
+
+    await execute_export_job(export.id)
+
+    await db_session.refresh(export)
+    asset = await db_session.get(FileAsset, export.asset_id)
+    assert export.status == JobStatus.SUCCEEDED.value
+    assert asset is not None
+    data = await AssetService(db_session).read_asset_bytes(asset)
+    with zipfile.ZipFile(io.BytesIO(data)) as archive:
+        rendered_bytes = archive.read("page-0001.png")
+
+    rendered = Image.open(io.BytesIO(rendered_bytes)).convert("RGB")
+    region_pixels = [
+        rendered.getpixel((x, y))
+        for x in range(1, 21)
+        for y in range(2, 14)
+    ]
+    assert (0, 0, 0) in region_pixels
 
 
 @pytest.mark.asyncio

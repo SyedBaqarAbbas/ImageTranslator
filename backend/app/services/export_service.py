@@ -17,6 +17,7 @@ from app.db.session import AsyncSessionLocal
 from app.models import ExportJob, FileAsset, Page, Project
 from app.schemas.job import ExportRequest
 from app.services.asset_service import AssetService
+from app.services.processing_service import _rerender_page
 from app.services.project_service import ProjectService
 from app.utils.files import safe_filename
 
@@ -102,6 +103,10 @@ async def execute_export_job(export_id: str, *, raise_on_failure: bool = True) -
             include_originals = bool(payload.get("include_originals"))
             for index, page in enumerate(pages, start=1):
                 rendered_asset_id = page.final_asset_id or page.preview_asset_id
+                if rendered_asset_id:
+                    await _rerender_page(session, project, page)
+                    await session.refresh(page)
+                    rendered_asset_id = page.final_asset_id or page.preview_asset_id
                 if rendered_asset_id:
                     rendered_asset = await session.get(FileAsset, rendered_asset_id)
                     if rendered_asset is not None:
