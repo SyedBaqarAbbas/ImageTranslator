@@ -139,6 +139,47 @@ async def test_render_page_defaults_region_fill_opacity() -> None:
 
 
 @pytest.mark.asyncio
+async def test_render_page_applies_region_font_size() -> None:
+    image = Image.new("RGB", (420, 220), "white")
+    buffer = io.BytesIO()
+    image.save(buffer, format="PNG")
+
+    engine = PillowRenderEngine()
+
+    async def render_dark_pixel_count(font_size: int) -> int:
+        output = await engine.render_page(
+            buffer.getvalue(),
+            [
+                RenderRegion(
+                    bounding_box={"x": 20, "y": 20, "width": 360, "height": 150},
+                    original_text=None,
+                    translated_text="BIG",
+                    render_style={
+                        "backgroundColor": "#ffffff",
+                        "fillOpacity": 1,
+                        "fontSize": font_size,
+                        "padding": 2,
+                        "textColor": "#000000",
+                    },
+                )
+            ],
+            ReplacementMode.REPLACE.value,
+        )
+        rendered = Image.open(io.BytesIO(output)).convert("RGB")
+        return sum(
+            1
+            for x in range(20, 380)
+            for y in range(20, 170)
+            if all(channel < 80 for channel in rendered.getpixel((x, y)))
+        )
+
+    small_text_pixels = await render_dark_pixel_count(12)
+    large_text_pixels = await render_dark_pixel_count(48)
+
+    assert large_text_pixels > small_text_pixels * 4
+
+
+@pytest.mark.asyncio
 async def test_translucent_fill_composites_only_region_bounds(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

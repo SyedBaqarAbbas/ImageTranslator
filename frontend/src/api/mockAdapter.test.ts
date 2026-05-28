@@ -194,6 +194,14 @@ describe("mockApi", () => {
     const processJob = await resolveDelayed(mockApi.processProject(project.id, { force: true }));
     await vi.advanceTimersByTimeAsync(2_800);
     await resolveDelayed(mockApi.getProcessingJob(processJob.id));
+    const processedRegions = await resolveDelayed(mockApi.listRegions(pages[0].id));
+    await resolveDelayed(
+      mockApi.updateRegion(processedRegions[0].id, {
+        user_text: "Styled export text",
+        render_style: { fillOpacity: 0.35, fontSize: 48 },
+        auto_rerender: true,
+      }),
+    );
     const successExport = await resolveDelayed(
       mockApi.createExport(project.id, {
         format: "images",
@@ -202,10 +210,15 @@ describe("mockApi", () => {
       }),
     );
     await vi.advanceTimersByTimeAsync(1_700);
-    expect(await resolveDelayed(mockApi.getExportJob(successExport.id))).toMatchObject({
+    const completedExport = await resolveDelayed(mockApi.getExportJob(successExport.id));
+    expect(completedExport).toMatchObject({
       status: "succeeded",
       asset: expect.objectContaining({ filename: "custom.images.zip" }),
     });
+    const exportPayload = decodeURIComponent(completedExport.asset?.url?.split(",", 2)[1] ?? "");
+    expect(exportPayload).toContain("\"user_text\":\"Styled export text\"");
+    expect(exportPayload).toContain("\"fillOpacity\":0.35");
+    expect(exportPayload).toContain("\"fontSize\":48");
   });
 
   it("throws clear errors for missing mock resources", async () => {

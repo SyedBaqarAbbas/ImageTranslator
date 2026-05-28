@@ -98,6 +98,11 @@ interface RegionPanelState {
   styleNotice: string | null;
 }
 
+export interface RegionTextDraft {
+  detected_text: string;
+  user_text: string;
+}
+
 type RegionPanelAction =
   | { type: "reset"; region?: TextRegionRead }
   | { type: "setSourceDraft"; sourceDraft: string }
@@ -273,7 +278,7 @@ export function RegionPanel({
   onRetranslate: (regionId: string, sourceText: string, source: RegionRetranslateSource) => void;
   onDelete: (regionId: string) => void;
   onStyleDraftChange?: (regionId: string, renderStyle: StyleDraft) => void;
-  onDraftChange?: (regionId: string) => void;
+  onDraftChange?: (regionId: string, draft: RegionTextDraft) => void;
   saveFeedback?: RegionSaveFeedback | null;
   ocrFeedback?: RegionOcrFeedback | null;
   retranslateFeedback?: RegionRetranslateFeedback | null;
@@ -431,6 +436,22 @@ export function RegionPanel({
     const next = { ...styleDraft, ...patch };
     dispatchPanel({ type: "setStyle", styleDraft: next });
     onStyleDraftChange?.(selectedRegion.id, next);
+  }
+
+  function updateSourceDraft(value: string) {
+    if (!selectedRegion) {
+      return;
+    }
+    dispatchPanel({ type: "setSourceDraft", sourceDraft: value });
+    onDraftChange?.(selectedRegion.id, { detected_text: value, user_text: draft });
+  }
+
+  function updateTargetDraft(value: string) {
+    if (!selectedRegion) {
+      return;
+    }
+    dispatchPanel({ type: "setDraft", draft: value });
+    onDraftChange?.(selectedRegion.id, { detected_text: sourceDraft, user_text: value });
   }
 
   function updatePanelHeight(nextHeight: number) {
@@ -794,10 +815,7 @@ export function RegionPanel({
                 <span className="text-xs font-bold uppercase text-text-muted">Source</span>
                 <textarea
                   value={sourceDraft}
-                  onChange={(event) => {
-                    dispatchPanel({ type: "setSourceDraft", sourceDraft: event.target.value });
-                    onDraftChange?.(selectedRegion.id);
-                  }}
+                  onChange={(event) => updateSourceDraft(event.target.value)}
                   disabled={!canEditSelectedRegion}
                   aria-label="Source"
                   placeholder="No source text"
@@ -884,10 +902,7 @@ export function RegionPanel({
             <textarea
               value={draft}
               placeholder="Enter target text"
-              onChange={(event) => {
-                dispatchPanel({ type: "setDraft", draft: event.target.value });
-                onDraftChange?.(selectedRegion.id);
-              }}
+              onChange={(event) => updateTargetDraft(event.target.value)}
               disabled={!canEditSelectedRegion}
               className="mt-2 min-h-20 w-full resize-y rounded-instrument border border-ink-border bg-background p-3 text-sm text-text-main outline-none transition focus:border-secondary focus:ring-1 focus:ring-secondary disabled:cursor-not-allowed disabled:opacity-65 lg:min-h-28"
             />

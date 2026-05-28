@@ -50,6 +50,24 @@ function exportFilename(projectName: string, format: ExportRequest["format"], re
   return base.toLowerCase().endsWith(`.${extension}`) ? base : `${base}.${extension}`;
 }
 
+function exportSnapshot(projectId: string, format: ExportRequest["format"]): string {
+  const pageIds = new Set(store.pages.filter((page) => page.project_id === projectId).map((page) => page.id));
+  const regions = store.regions
+    .filter((region) => pageIds.has(region.page_id))
+    .sort((left, right) => left.page_id.localeCompare(right.page_id) || left.region_index - right.region_index);
+  const regionLines = regions.map((region) =>
+    JSON.stringify({
+      region_id: region.id,
+      page_id: region.page_id,
+      user_text: region.user_text,
+      translated_text: region.translated_text,
+      editable: region.editable,
+      render_style: region.render_style,
+    }),
+  );
+  return [`Mock ${format.toUpperCase()} export`, ...regionLines].join("\n");
+}
+
 function findProject(projectId: string): ProjectDetail {
   const project = store.projects.find((item) => item.id === projectId && item.status !== "deleted");
   if (!project) {
@@ -612,7 +630,7 @@ export const mockApi: ApiAdapter = {
         projectId,
         kind: "export",
         filename: exportFilename(project.name, payload.format, payload.filename),
-        url: `data:text/plain;charset=utf-8,${encodeURIComponent(`Mock ${payload.format.toUpperCase()} export for ${project.name}`)}`,
+        url: `data:text/plain;charset=utf-8,${encodeURIComponent(exportSnapshot(projectId, payload.format))}`,
       });
       project.status = "export_ready";
       project.updated_at = iso();

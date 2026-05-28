@@ -140,12 +140,14 @@ describe("RegionPanel", () => {
     expect(screen.getByText("27%")).toBeInTheDocument();
 
     fireEvent.change(fillOpacity, { target: { value: "0.5" } });
+    fireEvent.change(screen.getByLabelText("Text size"), { target: { value: "32" } });
 
     expect(onStyleDraftChange).toHaveBeenLastCalledWith(
       "region-1",
       expect.objectContaining({
         backgroundColor: "#ffeeaa",
         fillOpacity: 0.5,
+        fontSize: 32,
       }),
     );
     expect(screen.getByText("50%")).toBeInTheDocument();
@@ -158,9 +160,25 @@ describe("RegionPanel", () => {
         render_style: expect.objectContaining({
           backgroundColor: "#ffeeaa",
           fillOpacity: 0.5,
+          fontSize: 32,
         }),
       }),
       "save",
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /approve/i }));
+
+    expect(onSave).toHaveBeenLastCalledWith(
+      "region-1",
+      expect.objectContaining({
+        editable: false,
+        render_style: expect.objectContaining({
+          backgroundColor: "#ffeeaa",
+          fillOpacity: 0.5,
+          fontSize: 32,
+        }),
+      }),
+      "approve",
     );
   });
 

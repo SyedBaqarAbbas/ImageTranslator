@@ -121,7 +121,7 @@ def test_pages_jobs_regions_and_rerender_release_flow(
         json={
             "user_text": "Manual translation edit",
             "bounding_box": {"x": 8, "y": 8, "width": 32, "height": 20},
-            "render_style": {"fill": "#ffffff", "fillOpacity": 0.5},
+            "render_style": {"fill": "#ffffff", "fillOpacity": 0.35, "fontSize": 48},
             "auto_rerender": True,
         },
     )
@@ -129,6 +129,11 @@ def test_pages_jobs_regions_and_rerender_release_flow(
     updated_region = update_response.json()
     assert updated_region["status"] == "user_edited"
     assert updated_region["user_text"] == "Manual translation edit"
+    assert updated_region["render_style"] == {
+        "fill": "#ffffff",
+        "fillOpacity": 0.35,
+        "fontSize": 48,
+    }
 
     rerender_region_response = client.post(f"/api/v1/regions/{region_id}/rerender")
     assert rerender_region_response.status_code == 202
@@ -160,7 +165,13 @@ def test_pages_jobs_regions_and_rerender_release_flow(
 
     jobs = client.get(f"/api/v1/projects/{project_id}/jobs").json()
     job_types = {job["job_type"] for job in jobs}
-    assert {"process_project", "process_page", "ocr_region", "retranslate_region", "rerender_page"} <= job_types
+    assert {
+        "process_project",
+        "process_page",
+        "ocr_region",
+        "retranslate_region",
+        "rerender_page",
+    } <= job_types
 
 
 def test_release_api_error_paths_return_contract_errors(

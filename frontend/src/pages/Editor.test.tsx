@@ -260,6 +260,7 @@ function renderEditor({
           <Route path="/projects" element={<h1>Projects</h1>} />
           <Route path="/projects/:projectId/review" element={<h1>Review Page</h1>} />
           <Route path="/projects/:projectId/editor" element={<Editor />} />
+          <Route path="/projects/:projectId/export" element={<h1>Export Page</h1>} />
         </Routes>
       </QueryClientProvider>
     </MemoryRouter>,
@@ -400,6 +401,64 @@ describe("Editor", () => {
     ]);
     expect(await screen.findByText(/Undo applied/)).toBeInTheDocument();
     expect(screen.getByLabelText("Text size")).toHaveValue("24");
+  });
+
+  it("blocks export navigation while style drafts are unsaved", async () => {
+    renderEditor();
+    await screen.findByText(project.name);
+    await screen.findByDisplayValue("Machine translation");
+
+    fireEvent.change(screen.getByLabelText("Fill opacity"), { target: { value: "0.35" } });
+    fireEvent.change(screen.getByLabelText("Text size"), { target: { value: "48" } });
+    fireEvent.click(screen.getByRole("link", { name: /export/i }));
+
+    expect(screen.queryByRole("heading", { name: /export page/i })).not.toBeInTheDocument();
+    expect(screen.getByText(/Save or approve pending region edits before exporting/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
+    await waitFor(() => {
+      expect(mocks.api.updateRegion).toHaveBeenCalledWith(
+        region.id,
+        expect.objectContaining({
+          render_style: expect.objectContaining({ fillOpacity: 0.35, fontSize: 48 }),
+          auto_rerender: true,
+        }),
+      );
+    });
+    await waitFor(() => {
+      expect(screen.getAllByText(/Saved/).length).toBeGreaterThan(0);
+    });
+
+    fireEvent.click(screen.getByRole("link", { name: /export/i }));
+    expect(await screen.findByRole("heading", { name: /export page/i })).toBeInTheDocument();
+  });
+
+  it("saves text and style drafts through Save workspace before export", async () => {
+    renderEditor();
+    await screen.findByText(project.name);
+
+    fireEvent.change(await screen.findByDisplayValue("Machine translation"), {
+      target: { value: "Workspace saved translation" },
+    });
+    fireEvent.change(screen.getByLabelText("Fill opacity"), { target: { value: "0.4" } });
+    fireEvent.click(screen.getByRole("button", { name: /save workspace/i }));
+
+    await waitFor(() => {
+      expect(mocks.api.updateRegion).toHaveBeenCalledWith(
+        region.id,
+        expect.objectContaining({
+          user_text: "Workspace saved translation",
+          render_style: expect.objectContaining({ fillOpacity: 0.4 }),
+          auto_rerender: true,
+        }),
+      );
+    });
+    await waitFor(() => {
+      expect(screen.getAllByText(/Saved/).length).toBeGreaterThan(0);
+    });
+
+    fireEvent.click(screen.getByRole("link", { name: /export/i }));
+    expect(await screen.findByRole("heading", { name: /export page/i })).toBeInTheDocument();
   });
 
   it("routes Back to the project review fallback when no editor history is available", async () => {

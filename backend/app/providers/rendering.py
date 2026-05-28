@@ -92,7 +92,10 @@ def _font(size: int) -> ImageFont.ImageFont:
     try:
         return ImageFont.truetype("DejaVuSans.ttf", size)
     except OSError:
-        return ImageFont.load_default()
+        try:
+            return ImageFont.load_default(size=size)
+        except TypeError:
+            return ImageFont.load_default()
 
 
 def _wrap_text(text: str, max_chars: int) -> str:

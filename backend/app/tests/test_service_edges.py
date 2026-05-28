@@ -977,8 +977,8 @@ async def test_export_rerenders_current_region_styles(
     region.status = TextRegionStatus.NEEDS_REVIEW.value
     region.render_style = {
         "backgroundColor": "#000000",
-        "fillOpacity": 1,
-        "fontSize": 10,
+        "fillOpacity": 0.35,
+        "fontSize": 12,
         "padding": 1,
         "textColor": "#ffffff",
     }
@@ -1021,7 +1021,7 @@ async def test_export_rerenders_current_region_styles(
         for x in range(1, 21)
         for y in range(2, 14)
     ]
-    assert (0, 0, 0) in region_pixels
+    assert any(all(155 <= channel <= 175 for channel in pixel) for pixel in region_pixels)
 
 
 @pytest.mark.asyncio

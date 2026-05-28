@@ -1,12 +1,20 @@
 import { ArrowLeft, Columns2, Download, Minus, Plus, RotateCcw, Save, ScanText, SquarePlus, Undo2 } from "lucide-react";
 import { useEffect, useMemo, useReducer, useRef, useState } from "react";
+import type { MouseEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 
 import { api, queryKeys } from "../api";
 import { CanvasWorkspace } from "../components/CanvasWorkspace";
 import { RegionPanel } from "../components/RegionPanel";
-import type { RegionOcrFeedback, RegionRetranslateFeedback, RegionRetranslateSource, RegionSaveAction, RegionSaveFeedback } from "../components/RegionPanel";
+import type {
+  RegionOcrFeedback,
+  RegionRetranslateFeedback,
+  RegionRetranslateSource,
+  RegionSaveAction,
+  RegionSaveFeedback,
+  RegionTextDraft,
+} from "../components/RegionPanel";
 import { ErrorState, LoadingState } from "../components/States";
 import { WorkspaceShell } from "../components/WorkspaceShell";
 import { assetUrlForPage } from "../lib/assets";
@@ -34,6 +42,7 @@ interface EditorState {
   zoom: number;
   workspaceStatus: string;
   styleDrafts: Record<string, Record<string, unknown>>;
+  textDrafts: Record<string, RegionTextDraft>;
   regionSaveFeedback: RegionSaveFeedback | null;
   regionOcrFeedback: RegionOcrFeedback | null;
   regionRetranslateFeedback: RegionRetranslateFeedback | null;
@@ -44,7 +53,8 @@ type EditorAction =
   | { type: "toggleComparison" }
   | { type: "setStyleDraft"; regionId: string; renderStyle: Record<string, unknown> }
   | { type: "clearStyleDraft"; regionId: string }
-  | { type: "markRegionDirty"; regionId: string }
+  | { type: "setTextDraft"; regionId: string; draft: RegionTextDraft }
+  | { type: "clearTextDraft"; regionId: string }
   | { type: "setRegionSaveFeedback"; feedback: RegionSaveFeedback | null }
   | { type: "setRegionOcrFeedback"; feedback: RegionOcrFeedback | null }
   | { type: "setRegionRetranslateFeedback"; feedback: RegionRetranslateFeedback | null };
@@ -61,6 +71,7 @@ const initialEditorState: EditorState = {
   zoom: 1,
   workspaceStatus: "Unsaved",
   styleDrafts: {},
+  textDrafts: {},
   regionSaveFeedback: null,
   regionOcrFeedback: null,
   regionRetranslateFeedback: null,
@@ -89,7 +100,7 @@ function editorReducer(state: EditorState, action: EditorAction): EditorState {
     return { ...state, styleDrafts };
   }
 
-  if (action.type === "markRegionDirty") {
+  if (action.type === "setTextDraft") {
     return {
       ...state,
       workspaceStatus: "Unsaved",
@@ -97,7 +108,14 @@ function editorReducer(state: EditorState, action: EditorAction): EditorState {
       regionOcrFeedback: state.regionOcrFeedback?.regionId === action.regionId ? null : state.regionOcrFeedback,
       regionRetranslateFeedback:
         state.regionRetranslateFeedback?.regionId === action.regionId ? null : state.regionRetranslateFeedback,
+      textDrafts: { ...state.textDrafts, [action.regionId]: action.draft },
     };
+  }
+
+  if (action.type === "clearTextDraft") {
+    const textDrafts = { ...state.textDrafts };
+    delete textDrafts[action.regionId];
+    return { ...state, textDrafts };
   }
 
   if (action.type === "setRegionSaveFeedback") {
@@ -276,6 +294,7 @@ function EditorWorkspace({ projectId }: { projectId: string }) {
       zoom,
       workspaceStatus,
       styleDrafts,
+      textDrafts,
       regionSaveFeedback,
       regionOcrFeedback,
       regionRetranslateFeedback,
@@ -310,10 +329,19 @@ function EditorWorkspace({ projectId }: { projectId: string }) {
   const displayRegions = useMemo(
     () =>
       regions.map((region) => {
-        const draft = styleDrafts[region.id];
-        return draft ? { ...region, render_style: { ...(region.render_style ?? {}), ...draft } } : region;
+        const styleDraft = styleDrafts[region.id];
+        const textDraft = textDrafts[region.id];
+        if (!styleDraft && !textDraft) {
+          return region;
+        }
+        return {
+          ...region,
+          detected_text: textDraft ? textDraft.detected_text : region.detected_text,
+          user_text: textDraft ? textDraft.user_text : region.user_text,
+          render_style: styleDraft ? { ...(region.render_style ?? {}), ...styleDraft } : region.render_style,
+        };
       }),
-    [regions, styleDrafts],
+    [regions, styleDrafts, textDrafts],
   );
 
   function nextUndoOrder(): number {
@@ -354,16 +382,58 @@ function EditorWorkspace({ projectId }: { projectId: string }) {
     saveMutation.mutate({ regionId, payload, action, undoEntry });
   }
 
+  function handleTextDraftChange(regionId: string, draft: RegionTextDraft) {
+    const region = regions.find((item) => item.id === regionId);
+    const persistedSource = region?.detected_text ?? "";
+    const persistedTarget = region?.user_text ?? region?.translated_text ?? "";
+    if (draft.detected_text === persistedSource && draft.user_text === persistedTarget) {
+      dispatchEditor({ type: "clearTextDraft", regionId });
+      return;
+    }
+    dispatchEditor({ type: "setTextDraft", regionId, draft });
+  }
+
   function workspaceSavePayload(regionId: string): TextRegionUpdate {
     const styleDraft = styleDrafts[regionId];
-    if (!styleDraft) {
-      return { auto_rerender: true };
-    }
+    const textDraft = textDrafts[regionId];
     const region = regions.find((item) => item.id === regionId);
-    return {
-      render_style: { ...(region?.render_style ?? {}), ...styleDraft },
-      auto_rerender: true,
-    };
+    const payload: TextRegionUpdate = { auto_rerender: true };
+    if (textDraft) {
+      payload.detected_text = textDraft.detected_text;
+      payload.user_text = textDraft.user_text;
+    }
+    if (styleDraft) {
+      payload.render_style = { ...(region?.render_style ?? {}), ...styleDraft };
+    }
+    return payload;
+  }
+
+  function pendingExportRegionId(): string | undefined {
+    return Object.keys(textDrafts)[0] ?? Object.keys(styleDrafts)[0];
+  }
+
+  function handleExportNavigation(event: MouseEvent<HTMLAnchorElement>) {
+    if (saveMutation.isPending) {
+      event.preventDefault();
+      dispatchEditor({ type: "patch", patch: { workspaceStatus: "Wait for the save to finish before exporting" } });
+      return;
+    }
+
+    const pendingRegionId = pendingExportRegionId();
+    if (!pendingRegionId) {
+      return;
+    }
+
+    event.preventDefault();
+    const pendingRegion = regions.find((region) => region.id === pendingRegionId);
+    dispatchEditor({
+      type: "patch",
+      patch: {
+        selectedPageId: pendingRegion?.page_id ?? selectedPageId,
+        selectedRegionId: pendingRegionId,
+        workspaceStatus: "Save or approve pending region edits before exporting",
+      },
+    });
   }
 
   useEffect(() => {
@@ -441,6 +511,9 @@ function EditorWorkspace({ projectId }: { projectId: string }) {
       );
       if (variables.payload.render_style !== undefined) {
         dispatchEditor({ type: "clearStyleDraft", regionId: updatedRegion.id });
+      }
+      if (variables.payload.detected_text !== undefined || variables.payload.user_text !== undefined) {
+        dispatchEditor({ type: "clearTextDraft", regionId: updatedRegion.id });
       }
       if (variables.action === "workspace") {
         dispatchEditor({ type: "patch", patch: { workspaceStatus: "Saved" } });
@@ -830,7 +903,11 @@ function EditorWorkspace({ projectId }: { projectId: string }) {
               >
                 <Plus className="h-4 w-4" />
               </button>
-              <Link to={`/projects/${projectId}/export`} className="inline-flex items-center gap-2 rounded-instrument bg-primary px-3 py-2 text-sm font-bold text-white shadow-glow transition hover:bg-violet-500">
+              <Link
+                to={`/projects/${projectId}/export`}
+                onClick={handleExportNavigation}
+                className="inline-flex items-center gap-2 rounded-instrument bg-primary px-3 py-2 text-sm font-bold text-white shadow-glow transition hover:bg-violet-500"
+              >
                 <Download className="h-4 w-4" />
                 Export
               </Link>
@@ -889,7 +966,7 @@ function EditorWorkspace({ projectId }: { projectId: string }) {
               onRunOcr={(regionId) => ocrMutation.mutate(regionId)}
               onRetranslate={(regionId, sourceText, source) => retranslateMutation.mutate({ regionId, sourceText, source })}
               onDelete={(regionId) => deleteMutation.mutate(regionId)}
-              onDraftChange={(regionId) => dispatchEditor({ type: "markRegionDirty", regionId })}
+              onDraftChange={handleTextDraftChange}
               onStyleDraftChange={(regionId, renderStyle) => {
                 dispatchEditor({ type: "setStyleDraft", regionId, renderStyle });
               }}

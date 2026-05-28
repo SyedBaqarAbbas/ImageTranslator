@@ -126,7 +126,7 @@ describe("CanvasWorkspace", () => {
 
     expect(screen.getByTestId("comparison-translated-region-layer")).toHaveStyle({ clipPath: "inset(0 0 0 40%)" });
     expect(screen.getByTitle("Region 1")).toHaveStyle({ backgroundColor: "rgba(51, 102, 153, 0.5)" });
-    expect(screen.getByText("Machine translation")).toBeInTheDocument();
+    expect(screen.getByText("Machine translation")).toHaveStyle({ fontSize: "60px" });
   });
 
   it("applies saved fill opacity to legacy fill color keys", () => {

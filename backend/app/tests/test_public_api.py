@@ -314,7 +314,7 @@ def test_create_region_adds_manual_text_box_and_rerenders_page(client: TestClien
             "region_type": "caption",
             "bounding_box": {"x": 3, "y": 4, "width": 8, "height": 9},
             "user_text": "Manual note",
-            "render_style": {"fontSize": 18, "backgroundColor": "#ffffff"},
+            "render_style": {"fontSize": 48, "backgroundColor": "#ffffff", "fillOpacity": 0.35},
             "auto_rerender": True,
         },
     )
@@ -327,7 +327,11 @@ def test_create_region_adds_manual_text_box_and_rerenders_page(client: TestClien
     assert created["bounding_box"] == {"x": 3, "y": 4, "width": 8, "height": 9}
     assert created["detected_text"] is None
     assert created["user_text"] == "Manual note"
-    assert created["render_style"] == {"fontSize": 18, "backgroundColor": "#ffffff"}
+    assert created["render_style"] == {
+        "fontSize": 48,
+        "backgroundColor": "#ffffff",
+        "fillOpacity": 0.35,
+    }
     assert created["editable"] is True
     assert created["status"] == "user_edited"
 
