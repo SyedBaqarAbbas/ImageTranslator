@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.config import settings
-from app.core.enums import AssetKind, ExportFormat, JobStatus, ProjectStatus, ReplacementMode, TextRegionStatus
+from app.core.enums import AssetKind, ExportFormat, JobStatus, ProjectStatus, TextRegionStatus
 from app.core.errors import AppError
 from app.db.base import utcnow
 from app.db.session import AsyncSessionLocal
@@ -107,7 +107,11 @@ async def execute_export_job(export_id: str, *, raise_on_failure: bool = True) -
                     data = await _render_current_page_for_export(session, assets, project, page)
                     if data is None:
                         rendered_asset = await session.get(FileAsset, rendered_asset_id)
-                        data = await assets.read_asset_bytes(rendered_asset) if rendered_asset is not None else None
+                        data = (
+                            await assets.read_asset_bytes(rendered_asset)
+                            if rendered_asset is not None
+                            else None
+                        )
                     if data is not None:
                         translated_payloads.append((f"page-{page.page_number:04d}.png", data))
 
@@ -224,12 +228,14 @@ async def _render_current_page_for_export(
         )
         for region in regions
     ]
-    settings = await session.scalar(select(TranslationSettings).where(TranslationSettings.project_id == project.id))
-    replacement_mode = settings.replacement_mode if settings is not None else project.replacement_mode
+    settings = await session.scalar(
+        select(TranslationSettings).where(TranslationSettings.project_id == project.id)
+    )
+    replacement_mode = (
+        settings.replacement_mode if settings is not None else project.replacement_mode
+    )
     renderer = get_render_engine()
-    cleaned = await renderer.clean_page(source_bytes, render_regions)
-    render_source = cleaned if replacement_mode in {ReplacementMode.REPLACE.value, ReplacementMode.BILINGUAL.value} else source_bytes
-    return await renderer.render_page(render_source, render_regions, replacement_mode)
+    return await renderer.render_page(source_bytes, render_regions, replacement_mode)
 
 
 def _build_pdf(image_payloads: list[tuple[str, bytes]]) -> bytes:

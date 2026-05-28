@@ -111,7 +111,9 @@ def _fit_text(
 ) -> tuple[str, ImageFont.ImageFont]:
     start_size = min(42, max(12, height // 3))
     if preferred_size is not None:
-        start_size = min(72, max(9, preferred_size))
+        size = min(72, max(9, preferred_size))
+        avg_char_width = max(1, int(size * 0.58))
+        return _wrap_text(text, max(4, width // avg_char_width)), _font(size)
     for size in range(start_size, 8, -1):
         font = _font(size)
         avg_char_width = max(1, int(size * 0.58))
@@ -207,6 +209,38 @@ def _draw_rounded_fill(
     canvas.paste(composed, (left, top))
 
 
+def _draw_multiline_text_clipped(
+    canvas: Image.Image,
+    clip_box: tuple[int, int, int, int],
+    position: tuple[float, float],
+    text: str,
+    fill: tuple[int, int, int],
+    font: ImageFont.ImageFont,
+    spacing: int,
+) -> None:
+    left = max(0, clip_box[0])
+    top = max(0, clip_box[1])
+    right = min(canvas.width, clip_box[2])
+    bottom = min(canvas.height, clip_box[3])
+    if right <= left or bottom <= top:
+        return
+
+    crop_box = (left, top, right, bottom)
+    base = canvas.crop(crop_box).convert("RGBA")
+    text_layer = Image.new("RGBA", base.size, (0, 0, 0, 0))
+    layer_draw = ImageDraw.Draw(text_layer)
+    layer_draw.multiline_text(
+        (position[0] - left, position[1] - top),
+        text,
+        fill=(*fill, 255),
+        font=font,
+        align="center",
+        spacing=spacing,
+    )
+    composed = Image.alpha_composite(base, text_layer).convert(canvas.mode)
+    canvas.paste(composed, (left, top))
+
+
 def _render_region(
     canvas: Image.Image,
     region: RenderRegion,
@@ -248,7 +282,15 @@ def _render_region(
     text_height = text_bbox[3] - text_bbox[1]
     tx = x1 + ((x2 - x1) - text_width) / 2
     ty = y1 + ((y2 - y1) - text_height) / 2
-    draw.multiline_text((tx, ty), wrapped, fill=text_color, font=font, align="center", spacing=3)
+    _draw_multiline_text_clipped(
+        canvas,
+        (x1 + padding, y1 + padding, x2 - padding, y2 - padding),
+        (tx, ty),
+        wrapped,
+        text_color,
+        font,
+        3,
+    )
 
 
 def _add_side_panel(canvas: Image.Image, regions: list[RenderRegion]) -> Image.Image:

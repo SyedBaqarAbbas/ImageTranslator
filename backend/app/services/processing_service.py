@@ -15,7 +15,6 @@ from app.core.enums import (
     JobType,
     PageStatus,
     ProjectStatus,
-    ReplacementMode,
     TextRegionStatus,
 )
 from app.core.errors import AppError
@@ -422,13 +421,7 @@ async def _process_page_inner(session: AsyncSession, project: Project, page: Pag
 
     renderer = get_render_engine()
     cleaned = await renderer.clean_page(normalized, render_regions)
-    replace_modes = {ReplacementMode.REPLACE.value, ReplacementMode.BILINGUAL.value}
-    render_source = (
-        cleaned
-        if settings.replacement_mode in replace_modes
-        else normalized
-    )
-    final = await renderer.render_page(render_source, render_regions, settings.replacement_mode)
+    final = await renderer.render_page(normalized, render_regions, settings.replacement_mode)
 
     cleaned_asset = await assets.create_asset(
         user_id=project.user_id,
@@ -642,13 +635,7 @@ async def _rerender_page(session: AsyncSession, project: Project, page: Page) ->
     settings = await _settings_for_project(session, project)
     renderer = get_render_engine()
     cleaned = await renderer.clean_page(source_bytes, render_regions)
-    replace_modes = {ReplacementMode.REPLACE.value, ReplacementMode.BILINGUAL.value}
-    render_source = (
-        cleaned
-        if settings.replacement_mode in replace_modes
-        else source_bytes
-    )
-    final = await renderer.render_page(render_source, render_regions, settings.replacement_mode)
+    final = await renderer.render_page(source_bytes, render_regions, settings.replacement_mode)
 
     cleaned_asset = await assets.create_asset(
         user_id=project.user_id,

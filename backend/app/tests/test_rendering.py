@@ -111,6 +111,48 @@ async def test_render_page_applies_region_fill_opacity() -> None:
 
 
 @pytest.mark.asyncio
+async def test_render_page_honors_editor_style_on_original_pixels() -> None:
+    image = Image.new("RGB", (400, 300), "#24364f")
+    buffer = io.BytesIO()
+    image.save(buffer, format="PNG")
+
+    engine = PillowRenderEngine()
+    output = await engine.render_page(
+        buffer.getvalue(),
+        [
+            RenderRegion(
+                bounding_box={"x": 124, "y": 24, "width": 152, "height": 70},
+                original_text=None,
+                translated_text="[en] Sample detected text",
+                render_style={
+                    "backgroundColor": "#ffffff",
+                    "fillOpacity": 0.5,
+                    "textColor": "#000000",
+                    "fontSize": 40,
+                    "padding": 6,
+                },
+            )
+        ],
+        ReplacementMode.REPLACE.value,
+    )
+
+    rendered = Image.open(io.BytesIO(output)).convert("RGB")
+    blended_fill = rendered.getpixel((144, 36))
+    assert 140 <= blended_fill[0] <= 152
+    assert 148 <= blended_fill[1] <= 160
+    assert 160 <= blended_fill[2] <= 175
+    assert rendered.getpixel((80, 80)) == (36, 54, 79)
+
+    black_text_pixels = [
+        pixel
+        for x in range(124, 276)
+        for y in range(24, 94)
+        if (pixel := rendered.getpixel((x, y)))[0] < 30 and pixel[1] < 30 and pixel[2] < 30
+    ]
+    assert black_text_pixels
+
+
+@pytest.mark.asyncio
 async def test_render_page_defaults_region_fill_opacity() -> None:
     image = Image.new("RGB", (240, 160), "white")
     buffer = io.BytesIO()
@@ -189,8 +231,9 @@ async def test_translucent_fill_composites_only_region_bounds(
 
     assert image_size not in rgba_allocations
     assert image_size not in composite_sizes
-    assert rgba_allocations == [(101, 81)]
-    assert composite_sizes == [(101, 81)]
+    assert (101, 81) in rgba_allocations
+    assert all(width <= 101 and height <= 81 for width, height in rgba_allocations)
+    assert composite_sizes == [(101, 81), (96, 76)]
 
     rendered = Image.open(io.BytesIO(output)).convert("RGB")
     assert all(120 <= channel <= 135 for channel in rendered.getpixel((120, 140)))

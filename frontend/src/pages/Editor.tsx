@@ -860,7 +860,7 @@ function EditorWorkspace({ projectId }: { projectId: string }) {
             <CanvasWorkspace
               imageUrl={assetUrlForPage(selectedPage, mode === "original" ? "original" : "editable")}
               comparisonOriginalImageUrl={assetUrlForPage(selectedPage, "original")}
-              comparisonTranslatedImageUrl={assetUrlForPage(selectedPage, "cleaned")}
+              comparisonTranslatedImageUrl={assetUrlForPage(selectedPage, "editable")}
               comparisonSplit={comparisonSplit}
               onComparisonSplitChange={(split) => dispatchEditor({ type: "patch", patch: { comparisonSplit: split } })}
               width={selectedPage.width}
