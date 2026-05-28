@@ -179,7 +179,7 @@ jobs:
           fi
 
           log "Fetching latest main"
-          git fetch --prune origin main:refs/remotes/origin/main
+          git fetch --prune origin +refs/heads/main:refs/remotes/origin/main
           fetched_main_sha="$(git rev-parse refs/remotes/origin/main)"
 
           if [ -n "${OCI_EXPECTED_SHA:-}" ] && [ "$fetched_main_sha" != "$OCI_EXPECTED_SHA" ]; then
