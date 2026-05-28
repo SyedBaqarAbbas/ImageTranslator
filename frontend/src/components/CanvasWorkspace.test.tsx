@@ -112,6 +112,23 @@ describe("CanvasWorkspace", () => {
     expect(screen.getByText("Machine translation")).toBeInTheDocument();
   });
 
+  it("renders live translated overlays in split comparison mode", () => {
+    renderWorkspace(
+      { render_style: { backgroundColor: "#336699", fillOpacity: 0.5, fontSize: 32 } },
+      "translated",
+      {
+        comparison: true,
+        comparisonSplit: 40,
+        comparisonOriginalImageUrl: "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==",
+        comparisonTranslatedImageUrl: "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==",
+      },
+    );
+
+    expect(screen.getByTestId("comparison-translated-region-layer")).toHaveStyle({ clipPath: "inset(0 0 0 40%)" });
+    expect(screen.getByTitle("Region 1")).toHaveStyle({ backgroundColor: "rgba(51, 102, 153, 0.5)" });
+    expect(screen.getByText("Machine translation")).toBeInTheDocument();
+  });
+
   it("applies saved fill opacity to legacy fill color keys", () => {
     renderWorkspace({ render_style: { fillColor: "#0f8", fillOpacity: 0 } }, "original");
 

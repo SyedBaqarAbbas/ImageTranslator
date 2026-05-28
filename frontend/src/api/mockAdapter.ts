@@ -418,22 +418,35 @@ export const mockApi: ApiAdapter = {
 
   async updateRegion(regionId: string, payload: TextRegionUpdate): Promise<TextRegionRead> {
     const region = findRegion(regionId);
-    Object.assign(region, payload, {
+    const { auto_rerender: autoRerender, ...regionPayload } = payload;
+    const now = iso();
+    Object.assign(region, regionPayload, {
       status:
-        payload.user_text !== undefined ||
-        payload.translated_text !== undefined ||
-        payload.bounding_box !== undefined ||
-        payload.render_style !== undefined
+        regionPayload.user_text !== undefined ||
+        regionPayload.translated_text !== undefined ||
+        regionPayload.bounding_box !== undefined ||
+        regionPayload.render_style !== undefined
           ? "user_edited"
-          : payload.detected_text !== undefined
-            ? payload.detected_text?.trim()
+          : regionPayload.detected_text !== undefined
+            ? regionPayload.detected_text?.trim()
               ? "detected"
               : "needs_review"
             : region.status,
-      ocr_confidence: payload.detected_text !== undefined ? null : region.ocr_confidence,
-      failure_reason: payload.detected_text !== undefined ? null : region.failure_reason,
-      updated_at: iso(),
+      ocr_confidence: regionPayload.detected_text !== undefined ? null : region.ocr_confidence,
+      failure_reason: regionPayload.detected_text !== undefined ? null : region.failure_reason,
+      updated_at: now,
     });
+    if (autoRerender) {
+      const page = store.pages.find((item) => item.id === region.page_id);
+      const pageAsset = page?.original_asset ?? page?.preview_asset ?? page?.final_asset;
+      if (page && pageAsset) {
+        page.preview_asset = { ...pageAsset, kind: "preview", updated_at: now };
+        page.preview_asset_id = page.preview_asset.id;
+        page.final_asset = { ...pageAsset, kind: "final", updated_at: now };
+        page.final_asset_id = page.final_asset.id;
+        page.updated_at = now;
+      }
+    }
     return delay(region);
   },
 

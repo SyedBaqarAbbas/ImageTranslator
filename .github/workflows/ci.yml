@@ -170,9 +170,23 @@ jobs:
         run: npm run build
 
       - name: Install Playwright browsers
+        if: >
+          github.ref == 'refs/heads/main' ||
+          (
+            github.event_name == 'pull_request' &&
+            github.base_ref == 'main' &&
+            contains(fromJSON('["opened","synchronize","reopened"]'), github.event.action)
+          )
         run: npx playwright install --with-deps chromium
 
       - name: Run frontend Playwright smoke tests
+        if: >
+          github.ref == 'refs/heads/main' ||
+          (
+            github.event_name == 'pull_request' &&
+            github.base_ref == 'main' &&
+            contains(fromJSON('["opened","synchronize","reopened"]'), github.event.action)
+          )
         env:
           VITE_API_MODE: mock
         run: npm run test:e2e
