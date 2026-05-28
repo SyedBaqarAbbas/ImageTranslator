@@ -362,6 +362,37 @@ describe("Editor", () => {
     expect(await screen.findByText(/Saved/)).toBeInTheDocument();
   });
 
+  it("uses the editable page image for compare split translated overlays", async () => {
+    const originalUrl = "http://assets.test/original.png";
+    const cleanedUrl = "http://assets.test/cleaned.png";
+    mocks.api.listPages.mockResolvedValueOnce([
+      {
+        ...page,
+        original_asset: page.original_asset ? { ...page.original_asset, url: originalUrl } : null,
+        cleaned_asset_id: "asset-cleaned",
+        cleaned_asset: page.original_asset
+          ? {
+              ...page.original_asset,
+              id: "asset-cleaned",
+              kind: "cleaned",
+              key: "cleaned.png",
+              filename: "cleaned.png",
+              url: cleanedUrl,
+            }
+          : null,
+      },
+    ]);
+
+    renderEditor();
+    await screen.findByText(project.name);
+
+    fireEvent.click(screen.getByRole("button", { name: /compare split/i }));
+
+    const translatedImage = await screen.findByAltText("Translated page");
+    expect(translatedImage).toHaveAttribute("src", originalUrl);
+    expect(translatedImage).not.toHaveAttribute("src", cleanedUrl);
+  });
+
   it("persists selected style drafts when saving the workspace", async () => {
     renderEditor();
     await screen.findByText(project.name);

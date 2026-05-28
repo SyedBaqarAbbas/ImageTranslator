@@ -12,6 +12,7 @@ from app.providers.rendering import (
     RenderRegion,
     _bbox_tuple,
     _fit_text,
+    _font,
     _style_color,
     _style_float,
     _style_int,
@@ -111,6 +112,50 @@ async def test_render_page_applies_region_fill_opacity() -> None:
 
 
 @pytest.mark.asyncio
+async def test_render_page_honors_editor_style_on_original_pixels() -> None:
+    image = Image.new("RGB", (400, 300), "#24364f")
+    buffer = io.BytesIO()
+    image.save(buffer, format="PNG")
+
+    engine = PillowRenderEngine()
+    output = await engine.render_page(
+        buffer.getvalue(),
+        [
+            RenderRegion(
+                bounding_box={"x": 124, "y": 24, "width": 152, "height": 70},
+                original_text=None,
+                translated_text="A",
+                render_style={
+                    "backgroundColor": "#ffffff",
+                    "fillOpacity": 0.5,
+                    "textColor": "#000000",
+                    "fontSize": 40,
+                    "padding": 6,
+                },
+            )
+        ],
+        ReplacementMode.REPLACE.value,
+    )
+
+    rendered = Image.open(io.BytesIO(output)).convert("RGB")
+    blended_fill = rendered.getpixel((144, 36))
+    assert 140 <= blended_fill[0] <= 152
+    assert 148 <= blended_fill[1] <= 160
+    assert 160 <= blended_fill[2] <= 175
+    assert rendered.getpixel((80, 80)) == (36, 54, 79)
+
+    black_text_pixels = [
+        (x, y)
+        for x in range(124, 276)
+        for y in range(24, 94)
+        if (pixel := rendered.getpixel((x, y)))[0] < 30 and pixel[1] < 30 and pixel[2] < 30
+    ]
+    assert black_text_pixels
+    assert max(x for x, _ in black_text_pixels) - min(x for x, _ in black_text_pixels) >= 18
+    assert max(y for _, y in black_text_pixels) - min(y for _, y in black_text_pixels) >= 24
+
+
+@pytest.mark.asyncio
 async def test_render_page_defaults_region_fill_opacity() -> None:
     image = Image.new("RGB", (240, 160), "white")
     buffer = io.BytesIO()
@@ -189,8 +234,9 @@ async def test_translucent_fill_composites_only_region_bounds(
 
     assert image_size not in rgba_allocations
     assert image_size not in composite_sizes
-    assert rgba_allocations == [(101, 81)]
-    assert composite_sizes == [(101, 81)]
+    assert (101, 81) in rgba_allocations
+    assert all(width <= 101 and height <= 81 for width, height in rgba_allocations)
+    assert composite_sizes == [(101, 81), (96, 76)]
 
     rendered = Image.open(io.BytesIO(output)).convert("RGB")
     assert all(120 <= channel <= 135 for channel in rendered.getpixel((120, 140)))
@@ -312,11 +358,14 @@ def test_rendering_helper_edge_cases() -> None:
 
     draw = ImageDraw.Draw(image)
     wrapped, font = _fit_text(draw, "A very long translated sentence that must wrap", 40, 20, 200)
+    wrapped_hyphenated, hyphen_font = _fit_text(draw, "IMA-61", 140, 70, 40)
 
     assert _bbox_tuple({"x": "1", "y": 2, "width": 3, "height": 4}) == (1, 2, 4, 6)
     assert _wrap_text("first\nsecond", 6) == "first\nsecond"
     assert wrapped
     assert font is not None
+    assert wrapped_hyphenated == "IMA-\n61"
+    assert getattr(hyphen_font, "size", None) == 40
     assert _style_color(
         {"fill": [300, -2, "bad"], "backgroundColor": "invalid"},
         ("fill",),
@@ -330,3 +379,11 @@ def test_rendering_helper_edge_cases() -> None:
     assert _style_opacity({"fillOpacity": float("nan")}, "fillOpacity") == DEFAULT_FILL_OPACITY
     assert _style_opacity({"fillOpacity": 2}, "fillOpacity") == 1.0
     assert _style_opacity({"fillOpacity": -1}, "fillOpacity") == 0.0
+
+
+def test_font_loader_preserves_requested_editor_text_size() -> None:
+    font = _font(40)
+    text_bbox = font.getbbox("Sample")
+
+    assert getattr(font, "size", None) == 40
+    assert text_bbox[3] - text_bbox[1] >= 30
