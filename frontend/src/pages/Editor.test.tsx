@@ -382,6 +382,24 @@ describe("Editor", () => {
         }),
       );
     });
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /undo/i })).not.toHaveAttribute("aria-disabled", "true");
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /undo/i }));
+
+    await waitFor(() => {
+      expect(mocks.api.updateRegion).toHaveBeenCalledTimes(2);
+    });
+    expect(mocks.api.updateRegion.mock.calls.at(-1)).toEqual([
+      region.id,
+      {
+        render_style: region.render_style,
+        auto_rerender: true,
+      },
+    ]);
+    expect(await screen.findByText(/Undo applied/)).toBeInTheDocument();
+    expect(screen.getByLabelText("Text size")).toHaveValue("24");
   });
 
   it("routes Back to the project review fallback when no editor history is available", async () => {

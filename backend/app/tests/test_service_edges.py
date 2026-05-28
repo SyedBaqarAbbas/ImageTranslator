@@ -974,6 +974,7 @@ async def test_export_rerenders_current_region_styles(
     region.detected_text = "source"
     region.translated_text = "Styled"
     region.user_text = "Styled"
+    region.status = TextRegionStatus.NEEDS_REVIEW.value
     region.render_style = {
         "backgroundColor": "#000000",
         "fillOpacity": 1,
@@ -981,8 +982,9 @@ async def test_export_rerenders_current_region_styles(
         "padding": 1,
         "textColor": "#ffffff",
     }
+    page.status = PageStatus.REVIEW_REQUIRED.value
     await db_session.commit()
-    monkeypatch.setattr(processing_service_module, "get_render_engine", lambda: PillowRenderEngine())
+    monkeypatch.setattr(export_service_module, "get_render_engine", lambda: PillowRenderEngine())
 
     export = ExportJob(
         user_id=user.id,
@@ -1002,8 +1004,12 @@ async def test_export_rerenders_current_region_styles(
     await execute_export_job(export.id)
 
     await db_session.refresh(export)
+    await db_session.refresh(page)
+    await db_session.refresh(region)
     asset = await db_session.get(FileAsset, export.asset_id)
     assert export.status == JobStatus.SUCCEEDED.value
+    assert page.status == PageStatus.REVIEW_REQUIRED.value
+    assert region.status == TextRegionStatus.NEEDS_REVIEW.value
     assert asset is not None
     data = await AssetService(db_session).read_asset_bytes(asset)
     with zipfile.ZipFile(io.BytesIO(data)) as archive:

@@ -350,10 +350,7 @@ function EditorWorkspace({ projectId }: { projectId: string }) {
   }
 
   function handleSaveRegion(regionId: string, payload: TextRegionUpdate, action: EditorSaveAction) {
-    const undoEntry =
-      action === "workspace"
-        ? undefined
-        : undoEntryForUpdate(regions.find((region) => region.id === regionId), payload, nextUndoOrder(), projectId);
+    const undoEntry = undoEntryForUpdate(regions.find((region) => region.id === regionId), payload, nextUndoOrder(), projectId);
     saveMutation.mutate({ regionId, payload, action, undoEntry });
   }
 
