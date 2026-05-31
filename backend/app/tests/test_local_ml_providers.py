@@ -4,22 +4,28 @@ import io
 from pathlib import Path
 
 import pytest
-from PIL import Image
+from PIL import Image, ImageDraw
 
+import app.providers.ocr as ocr_module
 from app.core.config import settings
 from app.core.enums import RegionType
 from app.providers.ocr import (
+    DetectedTextBlock,
     EasyOCRProvider,
     MockOCRProvider,
     TesseractOCRProvider,
+    _cluster_text_line_boxes,
     _confidence_data_value,
     _contains_expected_script,
     _data_value,
+    _detect_korean_text_blocks,
     _int_data_value,
+    _is_usable_korean_text,
     _normalize_tesseract_language,
     _ocr_text_score,
     _prepare_tesseract_image,
     _regions_from_tesseract_data,
+    _should_detect_korean_text_blocks,
     _should_retry_without_preprocessing,
     _tesseract_config,
     _tesseract_row_count,
@@ -44,6 +50,19 @@ from app.providers.translation import (
 
 def _png_bytes() -> bytes:
     image = Image.new("RGB", (320, 240), "white")
+    buffer = io.BytesIO()
+    image.save(buffer, format="PNG")
+    return buffer.getvalue()
+
+
+def _pseudo_text_png_bytes() -> bytes:
+    image = Image.new("RGB", (200, 120), "white")
+    draw = ImageDraw.Draw(image)
+    for row in range(2):
+        for column in range(4):
+            left = 20 + column * 12
+            top = 20 + row * 18
+            draw.rectangle((left, top, left + 7, top + 11), fill="black")
     buffer = io.BytesIO()
     image.save(buffer, format="PNG")
     return buffer.getvalue()
@@ -163,6 +182,176 @@ async def test_tesseract_retries_raw_image_when_preprocessing_drops_korean_text(
     assert regions[0].confidence == pytest.approx(0.94)
 
 
+def test_korean_text_block_detector_groups_lines_and_preserves_polygon() -> None:
+    regions = _detect_korean_text_blocks(_pseudo_text_png_bytes())
+
+    assert regions == [
+        DetectedTextBlock(
+            bounding_box={"x": 18, "y": 18, "width": 48, "height": 16},
+            polygon=[[18, 18], [66, 18], [66, 34], [18, 34]],
+        ),
+        DetectedTextBlock(
+            bounding_box={"x": 18, "y": 36, "width": 48, "height": 16},
+            polygon=[[18, 36], [66, 36], [66, 52], [18, 52]],
+        ),
+    ]
+
+
+def test_korean_text_block_detector_keeps_sentence_rows_separate_despite_bridge_noise() -> None:
+    line_components = [
+        {"x": 20, "y": 20, "width": 8, "height": 10},
+        {"x": 32, "y": 20, "width": 8, "height": 10},
+        {"x": 44, "y": 20, "width": 8, "height": 10},
+        {"x": 44, "y": 26, "width": 8, "height": 24},
+        {"x": 44, "y": 44, "width": 8, "height": 24},
+        {"x": 20, "y": 62, "width": 8, "height": 10},
+        {"x": 32, "y": 62, "width": 8, "height": 10},
+        {"x": 44, "y": 62, "width": 8, "height": 10},
+    ]
+
+    assert _cluster_text_line_boxes(line_components) == [
+        {"x": 20, "y": 20, "width": 32, "height": 10},
+        {"x": 20, "y": 62, "width": 32, "height": 10},
+    ]
+
+
+def test_korean_text_block_detector_rejects_bounded_ocr_noise(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(settings, "tesseract_korean_min_hangul_chars", 2)
+    monkeypatch.setattr(settings, "tesseract_korean_min_hangul_ratio", 0.5)
+
+    assert _is_usable_korean_text("별로 안 매 위 요", "kor")
+    assert not _is_usable_korean_text("OCR 123 마", "kor")
+    assert not _is_usable_korean_text("나", "kor")
+    assert _is_usable_korean_text("OCR 123", "eng")
+
+
+def test_korean_text_block_detection_only_applies_to_explicit_korean(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(settings, "tesseract_korean_text_detection", True)
+
+    assert _should_detect_korean_text_blocks("ko", "kor")
+    assert _should_detect_korean_text_blocks("korean", "kor")
+    assert not _should_detect_korean_text_blocks("auto", "kor+jpn")
+    assert not _should_detect_korean_text_blocks("ja", "jpn")
+
+    monkeypatch.setattr(settings, "tesseract_korean_text_detection", False)
+    assert not _should_detect_korean_text_blocks("ko", "kor")
+
+
+@pytest.mark.asyncio
+async def test_tesseract_reads_detected_korean_blocks_as_page_coordinate_regions(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    block = DetectedTextBlock(
+        bounding_box={"x": 12, "y": 24, "width": 80, "height": 48},
+        polygon=[[12, 24], [92, 24], [92, 72], [12, 72]],
+    )
+    data = {
+        "block_num": [1, 1],
+        "par_num": [1, 1],
+        "line_num": [1, 2],
+        "left": [2, 3],
+        "top": [4, 24],
+        "width": [40, 50],
+        "height": [14, 14],
+        "conf": ["90.0", "70.0"],
+        "text": ["안녕", "하세요"],
+    }
+    crop_sizes: list[tuple[int, int]] = []
+    configs: list[str] = []
+
+    provider = TesseractOCRProvider()
+
+    def fake_image_to_data(
+        image: Image.Image,
+        _language: str,
+        config: str,
+    ) -> dict[str, list[object]]:
+        crop_sizes.append(image.size)
+        configs.append(config)
+        return data
+
+    monkeypatch.setattr(settings, "tesseract_preprocess", False)
+    monkeypatch.setattr(settings, "tesseract_korean_text_detection", True)
+    monkeypatch.setattr(ocr_module, "_detect_korean_text_blocks", lambda _image: [block])
+    monkeypatch.setattr(provider, "_image_to_data", fake_image_to_data)
+
+    regions = await provider.detect_and_read(_png_bytes(), "ko")
+
+    assert crop_sizes == [(80, 48)]
+    assert configs == ["--oem 1 --psm 7"]
+    assert regions == [
+        ocr_module.OCRRegion(
+            region_index=0,
+            bounding_box=block.bounding_box,
+            polygon=block.polygon,
+            text="안녕\n하세요",
+            language="kor",
+            confidence=pytest.approx(0.8),
+            region_type=RegionType.UNKNOWN.value,
+        )
+    ]
+
+
+@pytest.mark.asyncio
+async def test_tesseract_falls_back_when_korean_block_ocr_returns_no_text(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    block = DetectedTextBlock(
+        bounding_box={"x": 12, "y": 24, "width": 80, "height": 48},
+        polygon=[[12, 24], [92, 24], [92, 72], [12, 72]],
+    )
+    empty_data = {"text": []}
+    full_page_data = {
+        "block_num": [1],
+        "par_num": [1],
+        "line_num": [1],
+        "left": [20],
+        "top": [30],
+        "width": [100],
+        "height": [20],
+        "conf": ["88.0"],
+        "text": ["전체 페이지"],
+    }
+    sizes: list[tuple[int, int]] = []
+
+    provider = TesseractOCRProvider()
+
+    def fake_image_to_data(image: Image.Image, *_args: object) -> dict[str, list[object]]:
+        sizes.append(image.size)
+        return empty_data if len(sizes) == 1 else full_page_data
+
+    monkeypatch.setattr(settings, "tesseract_preprocess", False)
+    monkeypatch.setattr(settings, "tesseract_korean_text_detection", True)
+    monkeypatch.setattr(ocr_module, "_detect_korean_text_blocks", lambda _image: [block])
+    monkeypatch.setattr(provider, "_image_to_data", fake_image_to_data)
+
+    regions = await provider.detect_and_read(_png_bytes(), "ko")
+
+    assert sizes == [(80, 48), (320, 240)]
+    assert [region.text for region in regions] == ["전체 페이지"]
+    assert regions[0].polygon is None
+
+
+@pytest.mark.asyncio
+async def test_tesseract_propagates_korean_detector_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    provider = TesseractOCRProvider()
+
+    def fail_detection(_image: bytes) -> list[DetectedTextBlock]:
+        raise RuntimeError("Korean text-region detection failed")
+
+    monkeypatch.setattr(settings, "tesseract_korean_text_detection", True)
+    monkeypatch.setattr(ocr_module, "_detect_korean_text_blocks", fail_detection)
+
+    with pytest.raises(RuntimeError, match="Korean text-region detection failed"):
+        await provider.detect_and_read(_png_bytes(), "ko")
+
+
 def test_tesseract_language_aliases(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(settings, "tesseract_default_language", "kor")
     monkeypatch.setattr(settings, "tesseract_auto_language", "kor+jpn")
@@ -192,6 +381,7 @@ def test_tesseract_helpers_cover_preprocessing_and_data_edge_cases(
     assert scale > 1
     assert _tesseract_scale_factor((500, 200)) == 1.0
     assert '--tessdata-dir "/tmp/tessdata"' in _tesseract_config()
+    assert "--psm 7" in _tesseract_config(psm=7)
 
     data = {
         "text": ["A", "", "B"],
@@ -213,6 +403,22 @@ def test_tesseract_helpers_cover_preprocessing_and_data_edge_cases(
     regions = _regions_from_tesseract_data(data, "eng", scale=2)
     assert regions[0].bounding_box == {"x": 0, "y": 0, "width": 55, "height": 10}
     assert regions[0].confidence == pytest.approx(0.99)
+    filtered_regions = _regions_from_tesseract_data(
+        {
+            "text": ["약간", "별"],
+            "left": [0, 30],
+            "top": [0, 0],
+            "width": [24, 12],
+            "height": [12, 12],
+            "conf": ["91", "29"],
+            "block_num": [1, 1],
+            "par_num": [1, 1],
+            "line_num": [1, 1],
+        },
+        "kor",
+        minimum_word_confidence=0.5,
+    )
+    assert [region.text for region in filtered_regions] == ["약간"]
     assert _contains_expected_script("plain latin", "eng")
     assert _contains_expected_script("漢字", "jpn")
     assert not _contains_expected_script("plain latin", "jpn")

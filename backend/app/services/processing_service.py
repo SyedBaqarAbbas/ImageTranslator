@@ -240,7 +240,7 @@ async def execute_processing_job(job_id: str) -> None:
             job.completed_at = utcnow()
             await session.commit()
         except Exception as exc:
-            await _mark_job_failed(session, job, exc)
+            await _mark_job_failed(session, job_id, exc)
             raise
 
 
@@ -252,25 +252,29 @@ async def _mark_job_running(session: AsyncSession, job: ProcessingJob) -> None:
     await session.commit()
 
 
-async def _mark_job_failed(session: AsyncSession, job: ProcessingJob, exc: Exception) -> None:
+async def _mark_job_failed(session: AsyncSession, job_id: str, exc: Exception) -> None:
+    await session.rollback()
+    job = await session.get(ProcessingJob, job_id, populate_existing=True)
+    if job is None:
+        return
     job.status = JobStatus.FAILED.value
     job.error_code = exc.__class__.__name__
     job.error_message = str(exc)
     job.completed_at = utcnow()
     if job.region_id:
-        region = await session.get(TextRegion, job.region_id)
+        region = await session.get(TextRegion, job.region_id, populate_existing=True)
         if region:
             region.status = TextRegionStatus.FAILED.value
             region.failure_reason = str(exc)
         if job.job_type != JobType.RERENDER_PAGE.value:
             await session.commit()
             return
-    project = await session.get(Project, job.project_id)
+    project = await session.get(Project, job.project_id, populate_existing=True)
     if project:
         project.status = ProjectStatus.FAILED.value
         project.failure_reason = str(exc)
     if job.page_id:
-        page = await session.get(Page, job.page_id)
+        page = await session.get(Page, job.page_id, populate_existing=True)
         if page:
             page.status = PageStatus.FAILED.value
             page.failure_reason = str(exc)
