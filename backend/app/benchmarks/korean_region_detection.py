@@ -328,20 +328,20 @@ def _synthetic_fixtures() -> list[BenchmarkFixture]:
 
 def _missed_region_fixture() -> BenchmarkFixture:
     image, draw = _new_page()
-    first = _draw_pseudo_text(draw, left=24, top=30, lines=[4, 4], text="안녕하세요")
-    second = _draw_pseudo_text(draw, left=210, top=150, lines=[4, 3], text="고마워요")
+    first = _draw_pseudo_text(draw, left=24, top=30, lines=[4], text="안녕하세요")
+    second = _draw_pseudo_text(draw, left=210, top=150, lines=[4], text="고마워요")
     return _fixture("missed-region", image, [first, second], [first])
 
 
 def _fragmented_region_fixture() -> BenchmarkFixture:
     image, draw = _new_page()
-    region = _draw_pseudo_text(draw, left=130, top=80, lines=[5, 5], text="다시 만나요")
+    region = _draw_pseudo_text(draw, left=130, top=80, lines=[5], text="다시 만나요")
     first_line = BenchmarkRegion(
-        bounding_box=_padded_box({"x": 130, "y": 80, "width": 56, "height": 12}),
+        bounding_box=_padded_box({"x": 130, "y": 80, "width": 20, "height": 12}),
         text="다시",
     )
     second_line = BenchmarkRegion(
-        bounding_box=_padded_box({"x": 130, "y": 98, "width": 56, "height": 12}),
+        bounding_box=_padded_box({"x": 154, "y": 80, "width": 32, "height": 12}),
         text="만나요",
     )
     return _fixture("fragmented-region", image, [region], [first_line, second_line])

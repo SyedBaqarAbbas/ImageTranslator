@@ -351,6 +351,10 @@ Speed-oriented defaults:
 - `TESSERACT_PSM=6`
 - `TESSERACT_PREPROCESS=true`
 - `TESSERACT_KOREAN_TEXT_DETECTION=true`
+- `TESSERACT_KOREAN_LINE_PSM=7`
+- `TESSERACT_KOREAN_MIN_HANGUL_CHARS=2`
+- `TESSERACT_KOREAN_MIN_HANGUL_RATIO=0.5`
+- `TESSERACT_KOREAN_MIN_TOKEN_CONFIDENCE=0.5`
 - `TESSERACT_UPSCALE_MIN_DIMENSION=0`, so upscaling is disabled unless opted in
 
 Example:
@@ -364,7 +368,17 @@ TESSERACT_AUTO_LANGUAGE=kor+jpn
 TESSERACT_PSM=6
 TESSERACT_OEM=1
 TESSERACT_KOREAN_TEXT_DETECTION=true
+TESSERACT_KOREAN_LINE_PSM=7
+TESSERACT_KOREAN_MIN_HANGUL_CHARS=2
+TESSERACT_KOREAN_MIN_HANGUL_RATIO=0.5
+TESSERACT_KOREAN_MIN_TOKEN_CONFIDENCE=0.5
 ```
+
+For explicit Korean projects, the bounded detector clusters horizontally
+aligned components into sentence rows without recursively joining neighboring
+rows. Each crop uses the single-line page-segmentation mode and rejects OCR
+results without enough Hangul content or token confidence before processing
+falls back to the full-page path.
 
 ### Korean Text-Region Detection Benchmark
 

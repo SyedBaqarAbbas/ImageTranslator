@@ -48,13 +48,21 @@ TESSERACT_AUTO_LANGUAGE
 TESSERACT_PSM
 TESSERACT_OEM
 TESSERACT_KOREAN_TEXT_DETECTION
+TESSERACT_KOREAN_LINE_PSM
+TESSERACT_KOREAN_MIN_HANGUL_CHARS
+TESSERACT_KOREAN_MIN_HANGUL_RATIO
+TESSERACT_KOREAN_MIN_TOKEN_CONFIDENCE
 ```
 
 Prefer explicit source languages such as `kor` or `jpn` for speed and consistency.
 Explicit Korean projects use `TESSERACT_KOREAN_TEXT_DETECTION=true` by default:
 a lightweight comic text-block detector selects bounded crops before Tesseract
-recognition. The provider falls back to full-page recognition when bounded
-detection does not return usable regions.
+recognition. It keeps neighboring sentence rows separate, recognizes each crop
+with `TESSERACT_KOREAN_LINE_PSM=7`, and filters bounded OCR noise using the
+configured minimum Hangul count and ratio. The provider falls back to full-page
+recognition when bounded detection does not return usable regions. Low-confidence
+tokens within retained crops are filtered with
+`TESSERACT_KOREAN_MIN_TOKEN_CONFIDENCE=0.5`.
 
 Run the safe generated localization benchmark from `backend/`:
 

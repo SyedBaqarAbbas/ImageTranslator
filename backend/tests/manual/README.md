@@ -42,7 +42,7 @@ create a local-only fixture directory with a `manifest.json` file:
 }
 ```
 
-Each annotated region is a manual crop where OCR is expected to work. Include
+Each annotated region is a sentence-level manual crop where OCR is expected to work. Include
 examples where the automatic path misses, mis-bounds, fragments, merges, or
 falsely detects a region. Run the real Tesseract comparison with:
 

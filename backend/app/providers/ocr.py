@@ -4,6 +4,7 @@ import asyncio
 import io
 from collections import defaultdict
 from dataclasses import dataclass
+from statistics import median
 from typing import Any, Protocol
 
 from PIL import Image, ImageOps
@@ -130,9 +131,14 @@ class TesseractOCRProvider:
                 crop_bytes,
                 tesseract_language,
                 region_language,
+                psm=settings.tesseract_korean_line_psm,
+                minimum_word_confidence=settings.tesseract_korean_min_token_confidence,
             )
             text_parts = [region.text.strip() for region in crop_regions if region.text.strip()]
             if not text_parts:
+                continue
+            text = "\n".join(text_parts)
+            if not _is_usable_korean_text(text, tesseract_language):
                 continue
             confidences = [region.confidence for region in crop_regions]
             regions.append(
@@ -140,7 +146,7 @@ class TesseractOCRProvider:
                     region_index=len(regions),
                     bounding_box=block.bounding_box,
                     polygon=block.polygon,
-                    text="\n".join(text_parts),
+                    text=text,
                     language=region_language,
                     confidence=sum(confidences) / len(confidences),
                     region_type=RegionType.UNKNOWN.value,
@@ -153,15 +159,23 @@ class TesseractOCRProvider:
         image_bytes: bytes,
         tesseract_language: str,
         region_language: str | None,
+        *,
+        psm: int | None = None,
+        minimum_word_confidence: float | None = None,
     ) -> list[OCRRegion]:
         image, scale = _prepare_tesseract_image(image_bytes)
         data = await asyncio.to_thread(
             self._image_to_data,
             image,
             tesseract_language,
-            _tesseract_config(),
+            _tesseract_config(psm=psm),
         )
-        regions = _regions_from_tesseract_data(data, region_language, scale)
+        regions = _regions_from_tesseract_data(
+            data,
+            region_language,
+            scale,
+            minimum_word_confidence=minimum_word_confidence,
+        )
         if settings.tesseract_preprocess and _should_retry_without_preprocessing(
             regions,
             tesseract_language,
@@ -171,9 +185,14 @@ class TesseractOCRProvider:
                 self._image_to_data,
                 raw_image,
                 tesseract_language,
-                _tesseract_config(),
+                _tesseract_config(psm=psm),
             )
-            raw_regions = _regions_from_tesseract_data(raw_data, region_language, raw_scale)
+            raw_regions = _regions_from_tesseract_data(
+                raw_data,
+                region_language,
+                raw_scale,
+                minimum_word_confidence=minimum_word_confidence,
+            )
             if _ocr_text_score(raw_regions, tesseract_language) > _ocr_text_score(
                 regions,
                 tesseract_language,
@@ -265,7 +284,7 @@ def _detect_korean_text_blocks(image_bytes: bytes) -> list[DetectedTextBlock]:
         255,
         cv2.THRESH_BINARY_INV | cv2.THRESH_OTSU,
     )
-    label_count, labels, stats, _centroids = cv2.connectedComponentsWithStats(
+    label_count, _labels, stats, _centroids = cv2.connectedComponentsWithStats(
         foreground,
         connectivity=8,
     )
@@ -277,7 +296,6 @@ def _detect_korean_text_blocks(image_bytes: bytes) -> list[DetectedTextBlock]:
     min_component_area = max(4, round(width * height * 0.00001))
     max_component_area = max(min_component_area, round(width * height * 0.01))
 
-    component_mask = np.zeros_like(foreground)
     component_boxes: list[dict[str, int]] = []
     for label in range(1, label_count):
         left, top, box_width, box_height, area = [
@@ -289,7 +307,6 @@ def _detect_korean_text_blocks(image_bytes: bytes) -> list[DetectedTextBlock]:
             and min_component_area <= area <= max_component_area
         ):
             continue
-        component_mask[labels == label] = 255
         component_boxes.append(
             {
                 "x": left,
@@ -302,27 +319,7 @@ def _detect_korean_text_blocks(image_bytes: bytes) -> list[DetectedTextBlock]:
     if not component_boxes:
         return []
 
-    horizontal_gap = max(5, round(width * 0.018))
-    line_mask = cv2.dilate(
-        component_mask,
-        cv2.getStructuringElement(cv2.MORPH_RECT, (horizontal_gap, 1)),
-    )
-    contours, _hierarchy = cv2.findContours(
-        line_mask,
-        cv2.RETR_EXTERNAL,
-        cv2.CHAIN_APPROX_SIMPLE,
-    )
-    lines: list[dict[str, int]] = []
-    for contour in contours:
-        contour_box = _cv2_bounding_box(cv2.boundingRect(contour))
-        line_components = [
-            box for box in component_boxes if _boxes_intersect(box, contour_box)
-        ]
-        if len(line_components) < 2:
-            continue
-        lines.append(_union_boxes(line_components))
-
-    blocks = _merge_text_lines(lines)
+    blocks = _cluster_text_line_boxes(component_boxes)
     padding = max(2, round(min(width, height) * 0.008))
     padded_blocks = [
         _pad_box(block, padding=padding, image_width=width, image_height=height)
@@ -337,20 +334,6 @@ def _detect_korean_text_blocks(image_bytes: bytes) -> list[DetectedTextBlock]:
     ]
 
 
-def _cv2_bounding_box(values: tuple[int, int, int, int]) -> dict[str, int]:
-    left, top, width, height = values
-    return {"x": left, "y": top, "width": width, "height": height}
-
-
-def _boxes_intersect(first: dict[str, int], second: dict[str, int]) -> bool:
-    return not (
-        first["x"] + first["width"] <= second["x"]
-        or second["x"] + second["width"] <= first["x"]
-        or first["y"] + first["height"] <= second["y"]
-        or second["y"] + second["height"] <= first["y"]
-    )
-
-
 def _union_boxes(boxes: list[dict[str, int]]) -> dict[str, int]:
     left = min(box["x"] for box in boxes)
     top = min(box["y"] for box in boxes)
@@ -359,45 +342,123 @@ def _union_boxes(boxes: list[dict[str, int]]) -> dict[str, int]:
     return {"x": left, "y": top, "width": right - left, "height": bottom - top}
 
 
-def _merge_text_lines(lines: list[dict[str, int]]) -> list[dict[str, int]]:
-    remaining = sorted(lines, key=lambda box: (box["y"], box["x"]))
-    merged: list[dict[str, int]] = []
+def _cluster_text_line_boxes(component_boxes: list[dict[str, int]]) -> list[dict[str, int]]:
+    groups: list[list[dict[str, int]]] = []
+    for box in sorted(component_boxes, key=lambda item: (_box_vertical_center(item), item["x"])):
+        matching_indexes = [
+            index
+            for index, group in enumerate(groups)
+            if any(_should_join_text_line_components(box, member) for member in group)
+        ]
+        if not matching_indexes:
+            groups.append([box])
+            continue
+
+        first_index = matching_indexes[0]
+        groups[first_index].append(box)
+        for index in reversed(matching_indexes[1:]):
+            groups[first_index].extend(groups.pop(index))
+
+    text_lines = [
+        text_line
+        for group in groups
+        for text_line in _split_text_line_components(group)
+    ]
+    return [
+        _text_line_box(line)
+        for line in text_lines
+        if len(line) >= 3
+    ]
+
+
+def _split_text_line_components(
+    component_boxes: list[dict[str, int]],
+) -> list[list[dict[str, int]]]:
+    remaining = component_boxes
+    text_lines: list[list[dict[str, int]]] = []
     while remaining:
-        block = remaining.pop(0)
-        changed = True
-        while changed:
-            changed = False
-            next_remaining: list[dict[str, int]] = []
-            for candidate in remaining:
-                if _should_merge_text_lines(block, candidate):
-                    block = _union_boxes([block, candidate])
-                    changed = True
-                else:
-                    next_remaining.append(candidate)
-            remaining = next_remaining
-        merged.append(block)
-    return merged
+        line = _dominant_text_line_components(remaining)
+        line_ids = {id(box) for box in line}
+        remaining = [box for box in remaining if id(box) not in line_ids]
+        if len(line) >= 3:
+            text_lines.append(line)
+    return text_lines
 
 
-def _should_merge_text_lines(first: dict[str, int], second: dict[str, int]) -> bool:
-    horizontal_overlap = max(
-        0,
-        min(first["x"] + first["width"], second["x"] + second["width"])
-        - max(first["x"], second["x"]),
+def _dominant_text_line_components(
+    component_boxes: list[dict[str, int]],
+) -> list[dict[str, int]]:
+    sorted_boxes = sorted(component_boxes, key=_box_vertical_center)
+    max_center_spread = max(
+        12,
+        round(median(box["height"] for box in sorted_boxes) * 1.5),
     )
-    horizontal_overlap_ratio = horizontal_overlap / max(
+    best_start = 0
+    best_end = 0
+    start = 0
+    for end, box in enumerate(sorted_boxes):
+        while (
+            _box_vertical_center(box) - _box_vertical_center(sorted_boxes[start])
+            > max_center_spread
+        ):
+            start += 1
+        if end - start > best_end - best_start:
+            best_start = start
+            best_end = end
+    return sorted_boxes[best_start : best_end + 1]
+
+
+def _text_line_box(component_boxes: list[dict[str, int]]) -> dict[str, int]:
+    box = _union_boxes(component_boxes)
+    median_height = median(component["height"] for component in component_boxes)
+    typical_components = [
+        component
+        for component in component_boxes
+        if component["height"] <= max(median_height + 4, median_height * 2)
+    ]
+    top = min(component["y"] for component in typical_components)
+    bottom = max(component["y"] + component["height"] for component in typical_components)
+    return {
+        "x": box["x"],
+        "y": top,
+        "width": box["width"],
+        "height": bottom - top,
+    }
+
+
+def _should_join_text_line_components(
+    first: dict[str, int],
+    second: dict[str, int],
+) -> bool:
+    vertical_overlap = max(
+        0,
+        min(first["y"] + first["height"], second["y"] + second["height"])
+        - max(first["y"], second["y"]),
+    )
+    vertical_overlap_ratio = vertical_overlap / max(
         1,
-        min(first["width"], second["width"]),
+        min(first["height"], second["height"]),
     )
-    vertical_gap = max(
+    vertical_center_difference = abs(
+        _box_vertical_center(first) - _box_vertical_center(second)
+    )
+    horizontal_gap = max(
         0,
-        max(first["y"], second["y"])
-        - min(first["y"] + first["height"], second["y"] + second["height"]),
+        max(first["x"], second["x"])
+        - min(first["x"] + first["width"], second["x"] + second["width"]),
     )
     return (
-        horizontal_overlap_ratio >= 0.35
-        and vertical_gap <= max(12, round(max(first["height"], second["height"]) * 0.9))
+        (
+            vertical_overlap_ratio >= 0.35
+            or vertical_center_difference
+            <= max(3, round(min(first["height"], second["height"]) * 0.45))
+        )
+        and horizontal_gap <= max(16, round(max(first["height"], second["height"]) * 1.5))
     )
+
+
+def _box_vertical_center(box: dict[str, int]) -> float:
+    return box["y"] + box["height"] / 2
 
 
 def _pad_box(
@@ -449,13 +510,9 @@ def _ocr_text_score(regions: list[OCRRegion], language: str) -> float:
 def _contains_expected_script(text: str, language: str) -> bool:
     normalized = language.lower()
     for character in text:
-        codepoint = ord(character)
-        if "kor" in normalized and (
-            0xAC00 <= codepoint <= 0xD7AF
-            or 0x1100 <= codepoint <= 0x11FF
-            or 0x3130 <= codepoint <= 0x318F
-        ):
+        if "kor" in normalized and _is_korean_character(character):
             return True
+        codepoint = ord(character)
         if "jpn" in normalized and (
             0x3040 <= codepoint <= 0x30FF
             or 0x31F0 <= codepoint <= 0x31FF
@@ -463,6 +520,29 @@ def _contains_expected_script(text: str, language: str) -> bool:
         ):
             return True
     return not any(language_code in normalized for language_code in ("kor", "jpn"))
+
+
+def _is_usable_korean_text(text: str, language: str) -> bool:
+    if "kor" not in language.lower():
+        return True
+    meaningful_characters = [character for character in text if character.isalnum()]
+    korean_character_count = sum(
+        1 for character in meaningful_characters if _is_korean_character(character)
+    )
+    return (
+        korean_character_count >= settings.tesseract_korean_min_hangul_chars
+        and korean_character_count / max(1, len(meaningful_characters))
+        >= settings.tesseract_korean_min_hangul_ratio
+    )
+
+
+def _is_korean_character(character: str) -> bool:
+    codepoint = ord(character)
+    return (
+        0xAC00 <= codepoint <= 0xD7AF
+        or 0x1100 <= codepoint <= 0x11FF
+        or 0x3130 <= codepoint <= 0x318F
+    )
 
 
 def _tesseract_scale_factor(size: tuple[int, int]) -> float:
@@ -475,8 +555,9 @@ def _tesseract_scale_factor(size: tuple[int, int]) -> float:
     return min(settings.tesseract_upscale_max_factor, min_dimension / long_side)
 
 
-def _tesseract_config() -> str:
-    parts = [f"--oem {settings.tesseract_oem}", f"--psm {settings.tesseract_psm}"]
+def _tesseract_config(*, psm: int | None = None) -> str:
+    page_segmentation_mode = settings.tesseract_psm if psm is None else psm
+    parts = [f"--oem {settings.tesseract_oem}", f"--psm {page_segmentation_mode}"]
     if settings.tesseract_data_path:
         parts.append(f'--tessdata-dir "{settings.tesseract_data_path}"')
     return " ".join(parts)
@@ -486,12 +567,21 @@ def _regions_from_tesseract_data(
     data: dict[str, list[Any]],
     language: str | None,
     scale: float = 1.0,
+    *,
+    minimum_word_confidence: float | None = None,
 ) -> list[OCRRegion]:
     grouped_rows: dict[tuple[int, int, int], list[dict[str, Any]]] = defaultdict(list)
     row_count = _tesseract_row_count(data)
     for index in range(row_count):
         text = str(_data_value(data, "text", index, "")).strip()
         if not text:
+            continue
+        confidence = _confidence_data_value(data, "conf", index)
+        if (
+            minimum_word_confidence is not None
+            and confidence is not None
+            and confidence < minimum_word_confidence
+        ):
             continue
         grouped_rows[
             (
@@ -506,7 +596,7 @@ def _regions_from_tesseract_data(
                 "top": _int_data_value(data, "top", index),
                 "width": _int_data_value(data, "width", index),
                 "height": _int_data_value(data, "height", index),
-                "confidence": _confidence_data_value(data, "conf", index),
+                "confidence": confidence,
             }
         )
 

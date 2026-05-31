@@ -14,11 +14,13 @@ from app.providers.ocr import (
     EasyOCRProvider,
     MockOCRProvider,
     TesseractOCRProvider,
+    _cluster_text_line_boxes,
     _confidence_data_value,
     _contains_expected_script,
     _data_value,
     _detect_korean_text_blocks,
     _int_data_value,
+    _is_usable_korean_text,
     _normalize_tesseract_language,
     _ocr_text_score,
     _prepare_tesseract_image,
@@ -185,10 +187,44 @@ def test_korean_text_block_detector_groups_lines_and_preserves_polygon() -> None
 
     assert regions == [
         DetectedTextBlock(
-            bounding_box={"x": 18, "y": 18, "width": 48, "height": 34},
-            polygon=[[18, 18], [66, 18], [66, 52], [18, 52]],
-        )
+            bounding_box={"x": 18, "y": 18, "width": 48, "height": 16},
+            polygon=[[18, 18], [66, 18], [66, 34], [18, 34]],
+        ),
+        DetectedTextBlock(
+            bounding_box={"x": 18, "y": 36, "width": 48, "height": 16},
+            polygon=[[18, 36], [66, 36], [66, 52], [18, 52]],
+        ),
     ]
+
+
+def test_korean_text_block_detector_keeps_sentence_rows_separate_despite_bridge_noise() -> None:
+    line_components = [
+        {"x": 20, "y": 20, "width": 8, "height": 10},
+        {"x": 32, "y": 20, "width": 8, "height": 10},
+        {"x": 44, "y": 20, "width": 8, "height": 10},
+        {"x": 44, "y": 26, "width": 8, "height": 24},
+        {"x": 44, "y": 44, "width": 8, "height": 24},
+        {"x": 20, "y": 62, "width": 8, "height": 10},
+        {"x": 32, "y": 62, "width": 8, "height": 10},
+        {"x": 44, "y": 62, "width": 8, "height": 10},
+    ]
+
+    assert _cluster_text_line_boxes(line_components) == [
+        {"x": 20, "y": 20, "width": 32, "height": 10},
+        {"x": 20, "y": 62, "width": 32, "height": 10},
+    ]
+
+
+def test_korean_text_block_detector_rejects_bounded_ocr_noise(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(settings, "tesseract_korean_min_hangul_chars", 2)
+    monkeypatch.setattr(settings, "tesseract_korean_min_hangul_ratio", 0.5)
+
+    assert _is_usable_korean_text("별로 안 매 위 요", "kor")
+    assert not _is_usable_korean_text("OCR 123 마", "kor")
+    assert not _is_usable_korean_text("나", "kor")
+    assert _is_usable_korean_text("OCR 123", "eng")
 
 
 def test_korean_text_block_detection_only_applies_to_explicit_korean(
@@ -225,11 +261,17 @@ async def test_tesseract_reads_detected_korean_blocks_as_page_coordinate_regions
         "text": ["안녕", "하세요"],
     }
     crop_sizes: list[tuple[int, int]] = []
+    configs: list[str] = []
 
     provider = TesseractOCRProvider()
 
-    def fake_image_to_data(image: Image.Image, *_args: object) -> dict[str, list[object]]:
+    def fake_image_to_data(
+        image: Image.Image,
+        _language: str,
+        config: str,
+    ) -> dict[str, list[object]]:
         crop_sizes.append(image.size)
+        configs.append(config)
         return data
 
     monkeypatch.setattr(settings, "tesseract_preprocess", False)
@@ -240,6 +282,7 @@ async def test_tesseract_reads_detected_korean_blocks_as_page_coordinate_regions
     regions = await provider.detect_and_read(_png_bytes(), "ko")
 
     assert crop_sizes == [(80, 48)]
+    assert configs == ["--oem 1 --psm 7"]
     assert regions == [
         ocr_module.OCRRegion(
             region_index=0,
@@ -338,6 +381,7 @@ def test_tesseract_helpers_cover_preprocessing_and_data_edge_cases(
     assert scale > 1
     assert _tesseract_scale_factor((500, 200)) == 1.0
     assert '--tessdata-dir "/tmp/tessdata"' in _tesseract_config()
+    assert "--psm 7" in _tesseract_config(psm=7)
 
     data = {
         "text": ["A", "", "B"],
@@ -359,6 +403,22 @@ def test_tesseract_helpers_cover_preprocessing_and_data_edge_cases(
     regions = _regions_from_tesseract_data(data, "eng", scale=2)
     assert regions[0].bounding_box == {"x": 0, "y": 0, "width": 55, "height": 10}
     assert regions[0].confidence == pytest.approx(0.99)
+    filtered_regions = _regions_from_tesseract_data(
+        {
+            "text": ["약간", "별"],
+            "left": [0, 30],
+            "top": [0, 0],
+            "width": [24, 12],
+            "height": [12, 12],
+            "conf": ["91", "29"],
+            "block_num": [1, 1],
+            "par_num": [1, 1],
+            "line_num": [1, 1],
+        },
+        "kor",
+        minimum_word_confidence=0.5,
+    )
+    assert [region.text for region in filtered_regions] == ["약간"]
     assert _contains_expected_script("plain latin", "eng")
     assert _contains_expected_script("漢字", "jpn")
     assert not _contains_expected_script("plain latin", "jpn")

@@ -144,5 +144,5 @@ The audit fails when a visible button is unclassified, errors, emits unexpected 
 | Mock OCR/translation/rendering | Yes | Fast deterministic workflow coverage |
 | OPUS-MT missing model | Yes | Failure state and user-facing error propagation |
 | Korean text-region detector synthetic benchmark | Manual opt-in | Safe generated recall, false-positive, IoU, fragmentation, merge, CER, and runtime evidence |
-| Tesseract + OPUS-MT Korean | Opt-in | Local-only annotated manhwa fixtures compare legacy full-page detection, bounded Korean detection, manual crops, and translation usability |
+| Tesseract + OPUS-MT Korean | Opt-in | Local-only annotated manhwa fixtures compare legacy full-page detection, bounded Korean sentence-line detection and noise filtering, manual crops, and translation usability |
 | Tesseract + OPUS-MT Japanese | Opt-in | Add when a stable Japanese fixture is available |
