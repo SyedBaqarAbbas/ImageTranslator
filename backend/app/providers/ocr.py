@@ -23,6 +23,12 @@ class OCRRegion:
     region_type: str = RegionType.UNKNOWN.value
 
 
+@dataclass(frozen=True)
+class DetectedTextBlock:
+    bounding_box: dict[str, int]
+    polygon: list[list[int]]
+
+
 class OCRProvider(Protocol):
     async def detect_and_read(
         self,
@@ -95,9 +101,60 @@ class TesseractOCRProvider:
         image_bytes: bytes,
         source_language: str = "auto",
     ) -> list[OCRRegion]:
-        image, scale = _prepare_tesseract_image(image_bytes)
         tesseract_language = _normalize_tesseract_language(source_language)
         region_language = None if source_language.strip().lower() == "auto" else tesseract_language
+        if _should_detect_korean_text_blocks(source_language, tesseract_language):
+            blocks = _detect_korean_text_blocks(image_bytes)
+            if blocks:
+                regions = await self._read_detected_blocks(
+                    image_bytes,
+                    blocks,
+                    tesseract_language,
+                    region_language,
+                )
+                if regions:
+                    return regions
+        return await self._read_image(image_bytes, tesseract_language, region_language)
+
+    async def _read_detected_blocks(
+        self,
+        image_bytes: bytes,
+        blocks: list[DetectedTextBlock],
+        tesseract_language: str,
+        region_language: str | None,
+    ) -> list[OCRRegion]:
+        regions: list[OCRRegion] = []
+        for block in blocks:
+            crop_bytes = _crop_image_bytes(image_bytes, block.bounding_box)
+            crop_regions = await self._read_image(
+                crop_bytes,
+                tesseract_language,
+                region_language,
+            )
+            text_parts = [region.text.strip() for region in crop_regions if region.text.strip()]
+            if not text_parts:
+                continue
+            confidences = [region.confidence for region in crop_regions]
+            regions.append(
+                OCRRegion(
+                    region_index=len(regions),
+                    bounding_box=block.bounding_box,
+                    polygon=block.polygon,
+                    text="\n".join(text_parts),
+                    language=region_language,
+                    confidence=sum(confidences) / len(confidences),
+                    region_type=RegionType.UNKNOWN.value,
+                )
+            )
+        return regions
+
+    async def _read_image(
+        self,
+        image_bytes: bytes,
+        tesseract_language: str,
+        region_language: str | None,
+    ) -> list[OCRRegion]:
+        image, scale = _prepare_tesseract_image(image_bytes)
         data = await asyncio.to_thread(
             self._image_to_data,
             image,
@@ -168,6 +225,201 @@ def _prepare_tesseract_image(
         return grayscale, scale
     thresholded = grayscale.point(lambda pixel: 255 if pixel > threshold else 0, mode="1")
     return thresholded.convert("L"), scale
+
+
+def _crop_image_bytes(image_bytes: bytes, bounding_box: dict[str, int]) -> bytes:
+    with Image.open(io.BytesIO(image_bytes)) as image:
+        source = image.convert("RGB")
+        left = bounding_box["x"]
+        top = bounding_box["y"]
+        right = left + bounding_box["width"]
+        bottom = top + bounding_box["height"]
+        crop = source.crop((left, top, right, bottom))
+
+    buffer = io.BytesIO()
+    crop.save(buffer, format="PNG")
+    return buffer.getvalue()
+
+
+def _should_detect_korean_text_blocks(source_language: str, tesseract_language: str) -> bool:
+    if not settings.tesseract_korean_text_detection:
+        return False
+    normalized_source = source_language.strip().lower()
+    return (
+        normalized_source in {"ko", "kr", "korean", "kor"}
+        or tesseract_language.strip().lower() == "kor"
+    )
+
+
+def _detect_korean_text_blocks(image_bytes: bytes) -> list[DetectedTextBlock]:
+    import cv2
+    import numpy as np
+
+    with Image.open(io.BytesIO(image_bytes)) as image:
+        grayscale = np.array(ImageOps.grayscale(image))
+
+    height, width = grayscale.shape
+    _, foreground = cv2.threshold(
+        grayscale,
+        0,
+        255,
+        cv2.THRESH_BINARY_INV | cv2.THRESH_OTSU,
+    )
+    label_count, labels, stats, _centroids = cv2.connectedComponentsWithStats(
+        foreground,
+        connectivity=8,
+    )
+
+    min_component_width = max(2, round(width * 0.003))
+    min_component_height = max(3, round(height * 0.006))
+    max_component_width = max(min_component_width, round(width * 0.15))
+    max_component_height = max(min_component_height, round(height * 0.12))
+    min_component_area = max(4, round(width * height * 0.00001))
+    max_component_area = max(min_component_area, round(width * height * 0.01))
+
+    component_mask = np.zeros_like(foreground)
+    component_boxes: list[dict[str, int]] = []
+    for label in range(1, label_count):
+        left, top, box_width, box_height, area = [
+            int(value) for value in stats[label]
+        ]
+        if not (
+            min_component_width <= box_width <= max_component_width
+            and min_component_height <= box_height <= max_component_height
+            and min_component_area <= area <= max_component_area
+        ):
+            continue
+        component_mask[labels == label] = 255
+        component_boxes.append(
+            {
+                "x": left,
+                "y": top,
+                "width": box_width,
+                "height": box_height,
+            }
+        )
+
+    if not component_boxes:
+        return []
+
+    horizontal_gap = max(5, round(width * 0.018))
+    line_mask = cv2.dilate(
+        component_mask,
+        cv2.getStructuringElement(cv2.MORPH_RECT, (horizontal_gap, 1)),
+    )
+    contours, _hierarchy = cv2.findContours(
+        line_mask,
+        cv2.RETR_EXTERNAL,
+        cv2.CHAIN_APPROX_SIMPLE,
+    )
+    lines: list[dict[str, int]] = []
+    for contour in contours:
+        contour_box = _cv2_bounding_box(cv2.boundingRect(contour))
+        line_components = [
+            box for box in component_boxes if _boxes_intersect(box, contour_box)
+        ]
+        if len(line_components) < 2:
+            continue
+        lines.append(_union_boxes(line_components))
+
+    blocks = _merge_text_lines(lines)
+    padding = max(2, round(min(width, height) * 0.008))
+    padded_blocks = [
+        _pad_box(block, padding=padding, image_width=width, image_height=height)
+        for block in blocks
+    ]
+    return [
+        DetectedTextBlock(
+            bounding_box=block,
+            polygon=_polygon_for_box(block),
+        )
+        for block in sorted(padded_blocks, key=lambda block: (block["y"], block["x"]))
+    ]
+
+
+def _cv2_bounding_box(values: tuple[int, int, int, int]) -> dict[str, int]:
+    left, top, width, height = values
+    return {"x": left, "y": top, "width": width, "height": height}
+
+
+def _boxes_intersect(first: dict[str, int], second: dict[str, int]) -> bool:
+    return not (
+        first["x"] + first["width"] <= second["x"]
+        or second["x"] + second["width"] <= first["x"]
+        or first["y"] + first["height"] <= second["y"]
+        or second["y"] + second["height"] <= first["y"]
+    )
+
+
+def _union_boxes(boxes: list[dict[str, int]]) -> dict[str, int]:
+    left = min(box["x"] for box in boxes)
+    top = min(box["y"] for box in boxes)
+    right = max(box["x"] + box["width"] for box in boxes)
+    bottom = max(box["y"] + box["height"] for box in boxes)
+    return {"x": left, "y": top, "width": right - left, "height": bottom - top}
+
+
+def _merge_text_lines(lines: list[dict[str, int]]) -> list[dict[str, int]]:
+    remaining = sorted(lines, key=lambda box: (box["y"], box["x"]))
+    merged: list[dict[str, int]] = []
+    while remaining:
+        block = remaining.pop(0)
+        changed = True
+        while changed:
+            changed = False
+            next_remaining: list[dict[str, int]] = []
+            for candidate in remaining:
+                if _should_merge_text_lines(block, candidate):
+                    block = _union_boxes([block, candidate])
+                    changed = True
+                else:
+                    next_remaining.append(candidate)
+            remaining = next_remaining
+        merged.append(block)
+    return merged
+
+
+def _should_merge_text_lines(first: dict[str, int], second: dict[str, int]) -> bool:
+    horizontal_overlap = max(
+        0,
+        min(first["x"] + first["width"], second["x"] + second["width"])
+        - max(first["x"], second["x"]),
+    )
+    horizontal_overlap_ratio = horizontal_overlap / max(
+        1,
+        min(first["width"], second["width"]),
+    )
+    vertical_gap = max(
+        0,
+        max(first["y"], second["y"])
+        - min(first["y"] + first["height"], second["y"] + second["height"]),
+    )
+    return (
+        horizontal_overlap_ratio >= 0.35
+        and vertical_gap <= max(12, round(max(first["height"], second["height"]) * 0.9))
+    )
+
+
+def _pad_box(
+    box: dict[str, int],
+    *,
+    padding: int,
+    image_width: int,
+    image_height: int,
+) -> dict[str, int]:
+    left = max(0, box["x"] - padding)
+    top = max(0, box["y"] - padding)
+    right = min(image_width, box["x"] + box["width"] + padding)
+    bottom = min(image_height, box["y"] + box["height"] + padding)
+    return {"x": left, "y": top, "width": right - left, "height": bottom - top}
+
+
+def _polygon_for_box(box: dict[str, int]) -> list[list[int]]:
+    left = box["x"]
+    top = box["y"]
+    right = left + box["width"]
+    bottom = top + box["height"]
+    return [[left, top], [right, top], [right, bottom], [left, bottom]]
 
 
 def _should_retry_without_preprocessing(regions: list[OCRRegion], language: str) -> bool:

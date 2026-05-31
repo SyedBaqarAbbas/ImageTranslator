@@ -47,9 +47,23 @@ TESSERACT_DEFAULT_LANGUAGE
 TESSERACT_AUTO_LANGUAGE
 TESSERACT_PSM
 TESSERACT_OEM
+TESSERACT_KOREAN_TEXT_DETECTION
 ```
 
 Prefer explicit source languages such as `kor` or `jpn` for speed and consistency.
+Explicit Korean projects use `TESSERACT_KOREAN_TEXT_DETECTION=true` by default:
+a lightweight comic text-block detector selects bounded crops before Tesseract
+recognition. The provider falls back to full-page recognition when bounded
+detection does not return usable regions.
+
+Run the safe generated localization benchmark from `backend/`:
+
+```bash
+conda run -n imagetranslator python scripts/benchmark_korean_region_detection.py
+```
+
+Actual Korean manhwa comparisons use a local-only fixture manifest so private or
+copyrighted pages are not committed. See `backend/tests/manual/README.md`.
 
 ### `easyocr`
 

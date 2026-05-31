@@ -57,6 +57,7 @@ class Settings(BaseSettings):
     tesseract_psm: int = 6
     tesseract_oem: int = 1
     tesseract_preprocess: bool = True
+    tesseract_korean_text_detection: bool = True
     tesseract_default_language: str = "kor"
     tesseract_auto_language: str = "kor+jpn"
     tesseract_upscale_min_dimension: int = 0
