@@ -311,7 +311,7 @@ Provider selection is controlled by environment variables in `app/core/config.py
 
 - `OCR_PROVIDER=mock` selects the deterministic test provider. `MockOCRProvider` opens the image with Pillow, calculates one bounding box near the top of the page, and returns one `OCRRegion` with text `Sample detected text`, confidence `0.95`, and type `speech`.
 - `OCR_PROVIDER=easyocr` uses `EasyOCRProvider`. It imports `easyocr`, builds a CPU reader for the requested source language plus English, runs `reader.readtext()` in a background thread, and maps EasyOCR polygons into `OCRRegion` rows.
-- `OCR_PROVIDER=tesseract` is the Docker and local prototype default. It uses `TesseractOCRProvider`, requires the native `tesseract` binary and language data, applies optional lightweight Pillow preprocessing, calls Tesseract with `image_to_data`, groups word rows into line-level `OCRRegion` rows, and keeps `polygon=None`.
+- `OCR_PROVIDER=tesseract` is the Docker and local prototype default. It uses `TesseractOCRProvider`, requires the native `tesseract` binary and language data, and applies optional lightweight Pillow preprocessing. Explicit Korean projects first run a lightweight OpenCV comic text-block detector, then call Tesseract on bounded crops and preserve page-coordinate boxes/polygons. If block detection or bounded OCR produces no regions, the provider falls back to its previous full-page `image_to_data` line grouping path.
 - `TRANSLATION_PROVIDER=mock` selects the deterministic test provider. `MockTranslationProvider.translate_many()` returns one result per source string using the format `[target_language] source text` with confidence `0.99`.
 - `TRANSLATION_PROVIDER=opus_mt` is the Docker and local prototype default. It uses `OpusMTTranslationProvider`, requires pre-converted local CTranslate2 OPUS-MT model directories, and supports Korean/Japanese to English with int8 CPU inference.
 - `RENDER_ENGINE=pillow` is the only implemented renderer. It uses Pillow to white-fill detected boxes, wrap translated text, fit font size to each box, and render replacement, overlay, bilingual, side-panel, or subtitle output.
@@ -350,6 +350,11 @@ Speed-oriented defaults:
 - `TESSERACT_OEM=1`
 - `TESSERACT_PSM=6`
 - `TESSERACT_PREPROCESS=true`
+- `TESSERACT_KOREAN_TEXT_DETECTION=true`
+- `TESSERACT_KOREAN_LINE_PSM=7`
+- `TESSERACT_KOREAN_MIN_HANGUL_CHARS=2`
+- `TESSERACT_KOREAN_MIN_HANGUL_RATIO=0.5`
+- `TESSERACT_KOREAN_MIN_TOKEN_CONFIDENCE=0.5`
 - `TESSERACT_UPSCALE_MIN_DIMENSION=0`, so upscaling is disabled unless opted in
 
 Example:
@@ -362,7 +367,50 @@ TESSERACT_DEFAULT_LANGUAGE=kor
 TESSERACT_AUTO_LANGUAGE=kor+jpn
 TESSERACT_PSM=6
 TESSERACT_OEM=1
+TESSERACT_KOREAN_TEXT_DETECTION=true
+TESSERACT_KOREAN_LINE_PSM=7
+TESSERACT_KOREAN_MIN_HANGUL_CHARS=2
+TESSERACT_KOREAN_MIN_HANGUL_RATIO=0.5
+TESSERACT_KOREAN_MIN_TOKEN_CONFIDENCE=0.5
 ```
+
+For explicit Korean projects, the bounded detector clusters horizontally
+aligned components into sentence rows without recursively joining neighboring
+rows. Each crop uses the single-line page-segmentation mode and rejects OCR
+results without enough Hangul content or token confidence before processing
+falls back to the full-page path.
+
+### Korean Text-Region Detection Benchmark
+
+Run the committed safe synthetic benchmark from `backend/`:
+
+```bash
+conda run -n imagetranslator python scripts/benchmark_korean_region_detection.py
+```
+
+The generated fixtures cover a missed text block, fragmented lines, a false
+positive artwork block, and a merged pair of text blocks. The report separates
+detection metrics from OCR metrics and includes recall, false positives, mean
+matched IoU, fragmentation errors, merge errors, correctly OCRed detected-region
+rate, CER, the manual-vs-automatic CER delta, runtime, and peak RSS evidence.
+Synthetic OCR evidence uses a clean-crop oracle so the deterministic run isolates
+localization behavior.
+
+For actual Tesseract evidence, keep private or copyrighted manhwa pages outside
+the repository and pass a local-only fixture directory:
+
+```bash
+conda run -n imagetranslator python scripts/benchmark_korean_region_detection.py \
+  --fixture-dir /absolute/path/to/korean-region-fixtures \
+  --source-language ko
+```
+
+The local mode runs the legacy full-page baseline, Korean text-block detection,
+and manually bounded crops against the same annotated pages. It requires the
+native Tesseract binary plus Korean language data. See
+`tests/manual/README.md` for the manifest format. EasyOCR or PaddleOCR comparisons
+must use the same local manifest and be evaluated on detection quality before a
+provider change is treated as successful.
 
 ### Local OPUS-MT CTranslate2 Prototype
 

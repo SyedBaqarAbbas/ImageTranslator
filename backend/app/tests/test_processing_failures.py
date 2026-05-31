@@ -12,11 +12,12 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 import app.services.processing_service as processing_service_module
 from app.core.config import settings
-from app.core.enums import PageStatus, ProjectStatus, RegionType
+from app.core.enums import PageStatus, ProjectStatus, RegionType, TextRegionStatus
 from app.db.base import Base
 from app.db.session import get_session
 from app.main import app
 from app.providers.ocr import OCRRegion
+from app.providers.translation import TranslationResult
 from app.storage.factory import get_storage_backend
 
 
@@ -56,6 +57,61 @@ class FailingTranslationProvider:
         context: dict | None = None,
     ) -> list:
         raise FileNotFoundError("OPUS-MT model directory not found: /tmp/opus-mt/ja-en")
+
+
+class KoreanLowConfidenceOCRProvider:
+    async def detect_and_read(
+        self,
+        image_bytes: bytes,
+        source_language: str = "auto",
+    ) -> list[OCRRegion]:
+        assert image_bytes
+        assert source_language == "ko"
+        return [
+            OCRRegion(
+                region_index=0,
+                bounding_box={"x": 20, "y": 30, "width": 100, "height": 44},
+                polygon=[[20, 30], [120, 30], [120, 74], [20, 74]],
+                text="안녕하세요",
+                language="kor",
+                confidence=0.42,
+                region_type=RegionType.SPEECH.value,
+            )
+        ]
+
+
+class SuccessfulTranslationProvider:
+    async def translate_many(
+        self,
+        texts: list[str],
+        source_language: str,
+        target_language: str,
+        tone: str = "natural",
+        context: dict | None = None,
+    ) -> list[TranslationResult]:
+        assert source_language == "ko"
+        assert target_language == "en"
+        assert context
+        return [
+            TranslationResult(
+                source_text=text,
+                translated_text="Hello",
+                detected_language="kor",
+                confidence=0.91,
+            )
+            for text in texts
+        ]
+
+
+class FailingKoreanDetectionProvider:
+    async def detect_and_read(
+        self,
+        image_bytes: bytes,
+        source_language: str = "auto",
+    ) -> list[OCRRegion]:
+        assert image_bytes
+        assert source_language == "ko"
+        raise RuntimeError("Korean text-region detection failed")
 
 
 @pytest.fixture
@@ -132,3 +188,87 @@ def test_project_processing_failure_marks_current_page_failed(client: TestClient
     assert "OPUS-MT model directory not found" in page["failure_reason"]
     assert jobs[0]["status"] == "failed"
     assert jobs[0]["error_code"] == "FileNotFoundError"
+
+
+def test_project_processing_persists_korean_low_confidence_region(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        processing_service_module,
+        "get_ocr_provider",
+        lambda: KoreanLowConfidenceOCRProvider(),
+    )
+    monkeypatch.setattr(
+        processing_service_module,
+        "get_translation_provider",
+        lambda: SuccessfulTranslationProvider(),
+    )
+    project_id, page_id = _create_korean_project_page(client, "Korean Detection Project")
+
+    process_response = client.post(
+        f"/api/v1/projects/{project_id}/process",
+        json={"force": True},
+    )
+
+    assert process_response.status_code == 202
+    regions = client.get(f"/api/v1/pages/{page_id}/regions").json()
+    assert len(regions) == 1
+    assert regions[0]["bounding_box"] == {"x": 20, "y": 30, "width": 100, "height": 44}
+    assert regions[0]["polygon"] == [[20, 30], [120, 30], [120, 74], [20, 74]]
+    assert regions[0]["detected_text"] == "안녕하세요"
+    assert regions[0]["detected_language"] == "kor"
+    assert regions[0]["ocr_confidence"] == pytest.approx(0.42)
+    assert regions[0]["status"] == TextRegionStatus.OCR_LOW_CONFIDENCE.value
+
+
+def test_korean_detection_failure_marks_project_page_and_job_failed(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        processing_service_module,
+        "get_ocr_provider",
+        lambda: FailingKoreanDetectionProvider(),
+    )
+    project_id, page_id = _create_korean_project_page(client, "Failing Korean Detection")
+
+    process_response = client.post(
+        f"/api/v1/projects/{project_id}/process",
+        json={"force": True},
+    )
+
+    assert process_response.status_code == 500
+    project = client.get(f"/api/v1/projects/{project_id}").json()
+    page = client.get(f"/api/v1/pages/{page_id}").json()
+    jobs = client.get(f"/api/v1/projects/{project_id}/jobs").json()
+    assert project["status"] == ProjectStatus.FAILED.value
+    assert project["failure_reason"] == "Korean text-region detection failed"
+    assert page["status"] == PageStatus.FAILED.value
+    assert page["failure_reason"] == "Korean text-region detection failed"
+    assert jobs[0]["status"] == "failed"
+    assert jobs[0]["error_code"] == "RuntimeError"
+    assert jobs[0]["error_message"] == "Korean text-region detection failed"
+
+
+def _create_korean_project_page(client: TestClient, name: str) -> tuple[str, str]:
+    project_response = client.post(
+        "/api/v1/projects",
+        json={
+            "name": name,
+            "source_language": "ko",
+            "target_language": "en",
+            "translation_tone": "natural",
+            "replacement_mode": "replace",
+            "reading_direction": "rtl",
+        },
+    )
+    assert project_response.status_code == 201
+    project_id = project_response.json()["id"]
+
+    upload_response = client.post(
+        f"/api/v1/projects/{project_id}/pages/upload",
+        files={"files": ("page.png", _png_bytes(), "image/png")},
+    )
+    assert upload_response.status_code == 201
+    return project_id, upload_response.json()[0]["id"]
