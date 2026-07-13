@@ -80,6 +80,7 @@ run_frontend_checks() {
   (
     cd "${FRONTEND_DIR}"
     PLAYWRIGHT_PORT="${FRONTEND_PORT}" \
+    PLAYWRIGHT_REUSE_EXISTING_SERVER=1 \
     VITE_API_MODE="${VITE_API_MODE}" \
     VITE_API_BASE_URL="${VITE_API_BASE_URL}" \
     npm run test:e2e

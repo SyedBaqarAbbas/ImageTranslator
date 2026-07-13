@@ -678,7 +678,7 @@ export function RegionPanel({
       >
         <span
           className={`h-1 w-16 rounded-full transition ${
-            isResizingPanelHeight ? "bg-secondary shadow-cyan" : "bg-ink-border group-hover:bg-secondary group-focus-visible:bg-secondary"
+            isResizingPanelHeight ? "bg-secondary shadow-focus" : "bg-ink-border group-hover:bg-secondary group-focus-visible:bg-secondary"
           }`}
         />
       </div>
@@ -701,7 +701,7 @@ export function RegionPanel({
       >
         <span
           className={`h-16 w-1 rounded-full transition ${
-            isResizingPanel ? "bg-secondary shadow-cyan" : "bg-ink-border group-hover:bg-secondary group-focus-visible:bg-secondary"
+            isResizingPanel ? "bg-secondary shadow-focus" : "bg-ink-border group-hover:bg-secondary group-focus-visible:bg-secondary"
           }`}
         />
       </div>
@@ -716,7 +716,7 @@ export function RegionPanel({
             <article
               key={region.id}
               className={`w-full rounded-lg border p-2 text-left transition lg:p-3 ${
-                region.id === selectedRegion?.id ? "border-secondary bg-secondary/10" : "border-ink-border bg-surface hover:border-primary/50"
+                region.id === selectedRegion?.id ? "border-secondary bg-secondary/10" : "border-ink-border bg-surface hover:border-accent/50"
               }`}
             >
               <button
@@ -733,7 +733,7 @@ export function RegionPanel({
                   <span className="flex items-center gap-2">
                     <StatusPill status={region.status} />
                     {!region.editable ? (
-                      <span className="rounded-full border border-emerald-400/40 bg-emerald-400/10 px-2 py-0.5 text-[10px] font-bold uppercase text-emerald-200">
+                      <span className="rounded-full border border-success/40 bg-success/10 px-2 py-0.5 text-[10px] font-bold uppercase text-success-content">
                         Approved
                       </span>
                     ) : null}
@@ -784,7 +784,7 @@ export function RegionPanel({
           >
             <span
               className={`h-1.5 w-20 rounded-full transition ${
-                isResizingSelectedRegion ? "bg-secondary shadow-cyan" : "bg-ink-border group-hover:bg-secondary group-focus-visible:bg-secondary"
+                isResizingSelectedRegion ? "bg-secondary shadow-focus" : "bg-ink-border group-hover:bg-secondary group-focus-visible:bg-secondary"
               }`}
             />
           </div>
@@ -831,7 +831,7 @@ export function RegionPanel({
                     onRetranslate(selectedRegion.id, sourceDraftText, retranslateSource);
                   }}
                   disabled={!canRetranslateSelectedRegion}
-                  className="inline-flex min-w-32 items-center justify-center gap-2 rounded-instrument border border-primary/40 px-3 py-2 text-xs font-bold text-primary-soft transition hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-60"
+                  className="inline-flex min-w-32 items-center justify-center gap-2 rounded-instrument border border-accent/40 px-3 py-2 text-xs font-bold text-primary-soft transition hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   <Languages className="h-4 w-4" />
                   {isRetranslatePending ? "Translating" : translateButtonLabel}
@@ -849,7 +849,7 @@ export function RegionPanel({
                   selectedOcrFeedback.status === "error"
                     ? "text-danger"
                     : selectedOcrFeedback.status === "success"
-                      ? "text-emerald-300"
+                      ? "text-success-content"
                       : "text-secondary"
                 }`}
               >
@@ -864,7 +864,7 @@ export function RegionPanel({
                   selectedRetranslateFeedback.status === "error"
                     ? "text-danger"
                     : selectedRetranslateFeedback.status === "success"
-                      ? "text-emerald-300"
+                      ? "text-success-content"
                       : "text-secondary"
                 }`}
               >
@@ -876,7 +876,7 @@ export function RegionPanel({
             <span className="flex items-center justify-between gap-2">
               <span className="text-xs font-bold uppercase text-secondary">Target</span>
               {!selectedRegion.editable ? (
-                <span className="rounded-full border border-emerald-400/40 bg-emerald-400/10 px-2 py-0.5 text-[10px] font-bold uppercase text-emerald-200">
+                <span className="rounded-full border border-success/40 bg-success/10 px-2 py-0.5 text-[10px] font-bold uppercase text-success-content">
                   Approved
                 </span>
               ) : null}
@@ -983,7 +983,7 @@ export function RegionPanel({
               }
               disabled={!canEditSelectedRegion}
               aria-busy={isSavePending}
-              className="inline-flex items-center justify-center gap-2 rounded-instrument bg-primary px-3 py-2 text-sm font-bold text-white shadow-glow transition hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-60"
+              className="inline-flex items-center justify-center gap-2 rounded-instrument bg-primary px-3 py-2 text-sm font-bold text-white shadow-action transition hover:bg-action-hover disabled:cursor-not-allowed disabled:opacity-60"
             >
               <Save className="h-4 w-4" />
               {isSavePending ? "Saving" : "Save"}
@@ -1019,14 +1019,14 @@ export function RegionPanel({
                 selectedSaveFeedback.status === "error"
                   ? "text-danger"
                   : selectedSaveFeedback.status === "success"
-                    ? "text-emerald-300"
+                    ? "text-success-content"
                     : "text-secondary"
               }`}
             >
               {selectedSaveFeedback.message}
             </p>
           ) : !selectedRegion.editable ? (
-            <p role="status" className="mt-3 text-xs font-semibold text-emerald-300">
+            <p role="status" className="mt-3 text-xs font-semibold text-success-content">
               Approved and locked.
             </p>
           ) : null}

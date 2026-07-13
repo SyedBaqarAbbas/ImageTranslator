@@ -1,0 +1,70 @@
+export const brandColors = {
+  olive: "#636B2F",
+  hunter: "#2C5F34",
+  moss: "#7E8C54",
+} as const;
+
+export const semanticColors = {
+  canvas: "#050604",
+  surface: "#0D100C",
+  surfaceLow: "#11140F",
+  surfaceMid: "#171B14",
+  surfaceHigh: "#1D2219",
+  surfaceHigher: "#252B1F",
+  border: "#303828",
+  borderStrong: "#666D64",
+  content: "#F4F4EC",
+  contentMuted: "#B8BCAF",
+  contentSoft: "#D8DACE",
+  action: brandColors.hunter,
+  actionHover: brandColors.olive,
+  accent: brandColors.moss,
+  focus: brandColors.moss,
+  success: brandColors.moss,
+  successContent: "#F4F4EC",
+  warning: "#E0B85B",
+  warningSurface: "#75551E",
+  danger: "#FF8A80",
+  dangerSurface: "#8C2F2B",
+} as const;
+
+export const themeColors = {
+  brand: brandColors,
+  canvas: semanticColors.canvas,
+  background: semanticColors.canvas,
+  surface: semanticColors.surface,
+  "surface-low": semanticColors.surfaceLow,
+  "surface-mid": semanticColors.surfaceMid,
+  "surface-high": semanticColors.surfaceHigh,
+  "surface-higher": semanticColors.surfaceHigher,
+  border: semanticColors.border,
+  "border-strong": semanticColors.borderStrong,
+  "ink-border": semanticColors.border,
+  "ink-border-strong": semanticColors.borderStrong,
+  content: semanticColors.content,
+  "content-muted": semanticColors.contentMuted,
+  "content-soft": semanticColors.contentSoft,
+  action: {
+    DEFAULT: semanticColors.action,
+    hover: semanticColors.actionHover,
+  },
+  accent: semanticColors.accent,
+  focus: semanticColors.focus,
+  success: semanticColors.success,
+  "success-content": semanticColors.successContent,
+  warning: semanticColors.warning,
+  "warning-surface": semanticColors.warningSurface,
+  danger: semanticColors.danger,
+  "danger-surface": semanticColors.dangerSurface,
+  "text-main": semanticColors.content,
+  "text-muted": semanticColors.contentMuted,
+  "text-soft": semanticColors.contentSoft,
+  // Temporary aliases keep current routes legible while page tickets migrate.
+  primary: semanticColors.action,
+  "primary-soft": semanticColors.accent,
+  secondary: semanticColors.accent,
+  tertiary: semanticColors.warning,
+} as const;
+
+export const interfaceFontFamily = ["Inter Variable", "Inter", "system-ui", "sans-serif"] as const;
+export const comicFontFamily = ["Comic Sans MS", "Comic Sans", "cursive"] as const;

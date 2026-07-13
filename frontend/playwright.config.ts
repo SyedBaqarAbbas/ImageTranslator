@@ -2,6 +2,7 @@ import { defineConfig, devices } from "@playwright/test";
 
 const port = process.env.PLAYWRIGHT_PORT ?? "5174";
 const baseURL = `http://127.0.0.1:${port}`;
+const reuseExistingServer = process.env.PLAYWRIGHT_REUSE_EXISTING_SERVER === "1";
 
 export default defineConfig({
   testDir: "./e2e",
@@ -20,7 +21,7 @@ export default defineConfig({
       VITE_API_MODE: process.env.VITE_API_MODE ?? "mock",
     },
     url: baseURL,
-    reuseExistingServer: true,
+    reuseExistingServer,
     timeout: 15_000,
   },
   projects: [

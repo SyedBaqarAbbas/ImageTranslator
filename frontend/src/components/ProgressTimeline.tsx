@@ -26,7 +26,7 @@ export function ProgressTimeline({ progress, failed = false }: { progress: numbe
               {failed && active ? (
                 <XCircle className="h-5 w-5 text-danger" />
               ) : complete ? (
-                <CheckCircle2 className="h-5 w-5 text-emerald-300" />
+                <CheckCircle2 className="h-5 w-5 text-success" />
               ) : active ? (
                 <Loader2 className="h-5 w-5 animate-spin text-secondary" />
               ) : (

@@ -225,7 +225,7 @@ export function ProjectSetup() {
                 type="checkbox"
                 checked={preserveSfx}
                 onChange={(event) => setProjectSetupState({ preserveSfx: event.target.checked })}
-                className="h-5 w-5 rounded border-ink-border bg-surface text-primary focus:ring-primary"
+                className="h-5 w-5 rounded border-ink-border bg-surface accent-accent focus:ring-focus"
                 aria-labelledby="preserve-sfx-label"
                 aria-describedby="preserve-sfx-description"
               />
@@ -236,7 +236,7 @@ export function ProjectSetup() {
             <p className="mt-4 rounded-instrument border border-danger/40 bg-danger/10 p-3 text-sm text-danger">{error ?? runtimeLanguageError}</p>
           ) : null}
 
-          <button disabled={startMutation.isPending || pendingFiles.length === 0 || !runtimeLanguage} className="mt-6 inline-flex w-full items-center justify-center gap-3 rounded-lg bg-primary px-6 py-4 text-base font-bold text-white shadow-glow transition hover:bg-violet-500 disabled:opacity-50">
+          <button disabled={startMutation.isPending || pendingFiles.length === 0 || !runtimeLanguage} className="mt-6 inline-flex w-full items-center justify-center gap-3 rounded-lg bg-primary px-6 py-4 text-base font-bold text-white shadow-action transition hover:bg-action-hover disabled:opacity-50">
             {startMutation.isPending ? <Loader2 className="h-5 w-5 animate-spin" /> : <Play className="h-5 w-5" />}
             Start AI Processing
           </button>

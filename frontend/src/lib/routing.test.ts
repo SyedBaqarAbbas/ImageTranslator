@@ -45,18 +45,18 @@ describe("project routing helpers", () => {
   });
 
   it("maps status tones for all visible status families", () => {
-    expect(statusTone("failed")).toBe("red");
-    expect(statusTone("processing")).toBe("cyan");
-    expect(statusTone("ocr_running")).toBe("cyan");
-    expect(statusTone("review_required")).toBe("amber");
-    expect(statusTone("needs_review")).toBe("amber");
-    expect(statusTone("ocr_low_confidence")).toBe("amber");
-    expect(statusTone("completed")).toBe("green");
-    expect(statusTone("export_ready")).toBe("green");
-    expect(statusTone("succeeded")).toBe("green");
-    expect(statusTone("user_edited")).toBe("green");
-    expect(statusTone("draft")).toBe("violet");
-    expect(statusTone("ready")).toBe("violet");
-    expect(statusTone("uploaded")).toBe("slate");
+    expect(statusTone("failed")).toBe("danger");
+    expect(statusTone("processing")).toBe("active");
+    expect(statusTone("ocr_running")).toBe("active");
+    expect(statusTone("review_required")).toBe("warning");
+    expect(statusTone("needs_review")).toBe("warning");
+    expect(statusTone("ocr_low_confidence")).toBe("warning");
+    expect(statusTone("completed")).toBe("success");
+    expect(statusTone("export_ready")).toBe("success");
+    expect(statusTone("succeeded")).toBe("success");
+    expect(statusTone("user_edited")).toBe("success");
+    expect(statusTone("draft")).toBe("accent");
+    expect(statusTone("ready")).toBe("accent");
+    expect(statusTone("uploaded")).toBe("neutral");
   });
 });

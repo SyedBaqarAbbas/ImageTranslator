@@ -40,7 +40,7 @@ export function Team() {
                 placeholder="teammate@example.com"
                 type="email"
               />
-              <button onClick={handleInvite} className="inline-flex items-center justify-center gap-2 rounded-instrument bg-primary px-4 py-2 text-sm font-bold text-white shadow-glow transition hover:bg-violet-500">
+              <button onClick={handleInvite} className="inline-flex items-center justify-center gap-2 rounded-instrument bg-primary px-4 py-2 text-sm font-bold text-white shadow-action transition hover:bg-action-hover">
                 <MailPlus className="h-4 w-4" />
                 Draft invite
               </button>

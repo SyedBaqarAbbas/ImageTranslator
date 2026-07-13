@@ -17,6 +17,7 @@
     "audit:buttons:editor": "node tests/button-audit/pages/editor.cjs"
   },
   "dependencies": {
+    "@fontsource-variable/inter": "5.2.8",
     "@tanstack/react-query": "^5.74.7",
     "lucide-react": "^1.14.0",
     "react": "^19.2.5",

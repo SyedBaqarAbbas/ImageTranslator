@@ -4,7 +4,7 @@ import { useState } from "react";
 import { WorkspaceShell } from "../components/WorkspaceShell";
 
 export function Account() {
-  const [displayName, setDisplayName] = useState("ComicFlow Operator");
+  const [displayName, setDisplayName] = useState("ImageTranslator Operator");
   const [status, setStatus] = useState("Current");
 
   return (
@@ -29,7 +29,7 @@ export function Account() {
                 className="mt-2 h-11 w-full rounded-instrument border border-ink-border bg-background px-3 text-sm text-text-main outline-none focus:border-secondary"
               />
             </label>
-            <button onClick={() => setStatus("Profile saved")} className="mt-5 inline-flex items-center justify-center gap-2 rounded-instrument bg-primary px-4 py-3 text-sm font-bold text-white shadow-glow transition hover:bg-violet-500">
+            <button onClick={() => setStatus("Profile saved")} className="mt-5 inline-flex items-center justify-center gap-2 rounded-instrument bg-primary px-4 py-3 text-sm font-bold text-white shadow-action transition hover:bg-action-hover">
               <Check className="h-4 w-4" />
               Save profile
             </button>
