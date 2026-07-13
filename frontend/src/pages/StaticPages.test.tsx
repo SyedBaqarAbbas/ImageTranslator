@@ -85,7 +85,7 @@ describe("static workspace pages", () => {
   it("saves account profile feedback", async () => {
     renderWithProviders("/account", "/account", <Account />);
 
-    fireEvent.change(await screen.findByDisplayValue("ComicFlow Operator"), { target: { value: "Release Operator" } });
+    fireEvent.change(await screen.findByDisplayValue("ImageTranslator Operator"), { target: { value: "Release Operator" } });
     fireEvent.click(screen.getByRole("button", { name: /save profile/i }));
 
     expect(screen.getByText("Profile saved")).toBeInTheDocument();

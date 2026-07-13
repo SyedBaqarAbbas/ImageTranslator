@@ -4,9 +4,20 @@
 
 :root {
   color-scheme: dark;
-  background: #080a12;
-  color: #f3f4f6;
-  font-family: Inter, system-ui, sans-serif;
+  --brand-olive: #636b2f;
+  --brand-hunter: #2c5f34;
+  --brand-moss: #7e8c54;
+  --canvas: #050604;
+  --surface: #0d100c;
+  --surface-raised: #171b14;
+  --border: #303828;
+  --content: #f4f4ec;
+  --content-muted: #b8bcaf;
+  --warning: #e0b85b;
+  --danger: #ff8a80;
+  background: var(--canvas);
+  color: var(--content);
+  font-family: "Inter Variable", Inter, system-ui, sans-serif;
 }
 
 * {
@@ -23,11 +34,11 @@ body {
   min-width: 320px;
   margin: 0;
   background:
-    radial-gradient(circle at top left, rgba(139, 92, 246, 0.12), transparent 34rem),
-    radial-gradient(circle at bottom right, rgba(34, 211, 238, 0.08), transparent 30rem),
-    #080a12;
-  color: #f3f4f6;
-  font-family: Inter, system-ui, sans-serif;
+    radial-gradient(circle at 12% -8%, rgba(44, 95, 52, 0.24), transparent 32rem),
+    radial-gradient(circle at 100% 92%, rgba(99, 107, 47, 0.16), transparent 30rem),
+    var(--canvas);
+  color: var(--content);
+  font-family: "Inter Variable", Inter, system-ui, sans-serif;
   letter-spacing: 0;
 }
 
@@ -46,16 +57,20 @@ button:disabled {
   cursor: not-allowed;
 }
 
+:where(a, button, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--brand-moss);
+  outline-offset: 2px;
+}
+
 ::selection {
-  background: rgba(139, 92, 246, 0.55);
-  color: white;
+  background: var(--brand-moss);
+  color: var(--canvas);
 }
 
 .glass-panel {
-  border: 1px solid rgba(37, 43, 58, 0.92);
-  background: rgba(17, 19, 26, 0.82);
-  box-shadow: 0 18px 80px rgba(0, 0, 0, 0.28);
-  backdrop-filter: blur(20px);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  box-shadow: 0 22px 64px rgba(0, 0, 0, 0.34);
 }
 
 .scrollbar-thin::-webkit-scrollbar {
@@ -65,7 +80,7 @@ button:disabled {
 
 .scrollbar-thin::-webkit-scrollbar-thumb {
   border-radius: 999px;
-  background: #374151;
+  background: var(--brand-moss);
 }
 
 .ai-progress {
@@ -78,7 +93,7 @@ button:disabled {
   inset: 0;
   width: 35%;
   content: "";
-  background: linear-gradient(90deg, transparent, #8b5cf6, #22d3ee, transparent);
+  background: linear-gradient(90deg, transparent, var(--brand-moss), var(--brand-olive), transparent);
   animation: ai-progress 2.2s ease-in-out infinite;
 }
 
@@ -93,5 +108,23 @@ button:disabled {
   to {
     transform: translateX(330%);
     opacity: 0.55;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+
+  .ai-progress::after {
+    width: 100%;
+    animation: none;
+    opacity: 1;
+    transform: none;
   }
 }

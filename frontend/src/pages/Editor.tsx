@@ -830,7 +830,7 @@ function EditorWorkspace({ projectId }: { projectId: string }) {
               >
                 <Plus className="h-4 w-4" />
               </button>
-              <Link to={`/projects/${projectId}/export`} className="inline-flex items-center gap-2 rounded-instrument bg-primary px-3 py-2 text-sm font-bold text-white shadow-glow transition hover:bg-violet-500">
+              <Link to={`/projects/${projectId}/export`} className="inline-flex items-center gap-2 rounded-instrument bg-primary px-3 py-2 text-sm font-bold text-white shadow-action transition hover:bg-action-hover">
                 <Download className="h-4 w-4" />
                 Export
               </Link>
@@ -848,7 +848,7 @@ function EditorWorkspace({ projectId }: { projectId: string }) {
                     }}
                     disabled={selectedPage.id === page.id}
                     aria-current={selectedPage.id === page.id ? "true" : undefined}
-                    className={`w-full rounded-instrument border p-1 transition disabled:cursor-default ${selectedPage.id === page.id ? "border-secondary bg-secondary/10" : "border-ink-border bg-background hover:border-primary/50"}`}
+                    className={`w-full rounded-instrument border p-1 transition disabled:cursor-default ${selectedPage.id === page.id ? "border-secondary bg-secondary/10" : "border-ink-border bg-background hover:border-accent/50"}`}
                   >
                     {assetUrlForPage(page) ? <img src={assetUrlForPage(page)} alt={`Page ${page.page_number}`} className="aspect-[3/4] w-full rounded-[2px] object-cover grayscale" /> : null}
                     <span className="mt-1 block text-xs font-bold text-text-muted">P{page.page_number}</span>

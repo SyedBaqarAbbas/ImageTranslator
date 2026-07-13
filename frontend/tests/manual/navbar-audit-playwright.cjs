@@ -92,7 +92,7 @@ async function runAction(page, group, name, startPath, action) {
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
 
   await runAction(page, "top_nav", "Brand link", "/projects", async (page) => {
-    await page.getByRole("link", { name: /ComicFlow AI/i }).click();
+    await page.getByRole("link", { name: /ImageTranslator/i }).click();
   });
 
   for (const label of ["Projects", "Assets", "Settings"]) {

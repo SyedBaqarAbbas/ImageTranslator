@@ -21,6 +21,16 @@ function renderTopNav(path = "/projects") {
 }
 
 describe("TopNav", () => {
+  it("shows the ImageTranslator brand linked to the project dashboard", () => {
+    renderTopNav();
+
+    expect(screen.getByRole("link", { name: "ImageTranslator" })).toHaveAttribute(
+      "href",
+      "/projects",
+    );
+    expect(screen.queryByText(/ComicFlow/i)).not.toBeInTheDocument();
+  });
+
   it("searches projects and clears menus on route changes", async () => {
     renderTopNav();
 

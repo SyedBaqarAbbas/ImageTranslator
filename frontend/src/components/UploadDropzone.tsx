@@ -53,7 +53,7 @@ export function UploadDropzone({ onFiles }: { onFiles: (files: File[]) => void }
           commitFiles(event.dataTransfer.files);
         }}
         className={`group relative flex min-h-[320px] w-full flex-col items-center justify-center overflow-hidden rounded-lg border-2 border-dashed p-8 text-center transition ${
-          isDragging ? "border-secondary bg-secondary/10 shadow-cyan" : "border-ink-border-strong bg-surface-mid/80 hover:border-primary hover:shadow-glow"
+          isDragging ? "border-secondary bg-secondary/10 shadow-focus" : "border-ink-border-strong bg-surface-mid/80 hover:border-accent hover:shadow-action"
         }`}
       >
         <span className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(139,92,246,0.14),transparent_34rem)] opacity-0 transition group-hover:opacity-100" />
@@ -62,7 +62,7 @@ export function UploadDropzone({ onFiles }: { onFiles: (files: File[]) => void }
         </span>
         <span className="relative font-display text-2xl font-bold text-white">Drag and drop comic pages here</span>
         <span className="relative mt-2 text-sm text-text-muted">or click to browse from your device</span>
-        <span className="relative mt-6 inline-flex items-center gap-2 rounded-instrument bg-primary px-5 py-3 text-sm font-bold text-white shadow-glow">
+        <span className="relative mt-6 inline-flex items-center gap-2 rounded-instrument bg-primary px-5 py-3 text-sm font-bold text-white shadow-action">
           <FileUp className="h-4 w-4" />
           Upload comic pages
         </span>

@@ -166,7 +166,7 @@ export function Export() {
                   onClick={() => setExportState({ format: value as ExportFormat })}
                   aria-pressed={format === value}
                   className={`rounded-lg border p-4 text-left transition ${
-                    format === value ? "border-secondary bg-secondary/10 text-white shadow-cyan" : "border-ink-border bg-background text-text-muted hover:border-primary/50 hover:text-white"
+                    format === value ? "border-secondary bg-secondary/10 text-white shadow-focus" : "border-ink-border bg-background text-text-muted hover:border-accent/50 hover:text-white"
                   }`}
                 >
                   <Icon className="mb-4 h-6 w-6" />
@@ -191,7 +191,7 @@ export function Export() {
                     type="checkbox"
                     checked={includeOriginals}
                     onChange={(event) => setExportState({ includeOriginals: event.target.checked })}
-                    className="h-5 w-5 rounded border-ink-border bg-surface text-primary focus:ring-primary"
+                    className="h-5 w-5 rounded border-ink-border bg-surface accent-accent focus:ring-focus"
                     aria-labelledby="include-originals-label"
                     aria-describedby="include-originals-description"
                   />
@@ -209,7 +209,7 @@ export function Export() {
                   <div className="h-full rounded-full bg-gradient-to-r from-primary to-secondary" style={{ width: `${currentExport.progress}%` }} />
                 </div>
                 {downloadUrl ? (
-                  <a className="mt-4 inline-flex items-center gap-2 rounded-instrument bg-primary px-4 py-2 text-sm font-bold text-white shadow-glow transition hover:bg-violet-500" href={downloadUrl} download>
+                  <a className="mt-4 inline-flex items-center gap-2 rounded-instrument bg-primary px-4 py-2 text-sm font-bold text-white shadow-action transition hover:bg-action-hover" href={downloadUrl} download>
                     <Download className="h-4 w-4" />
                     Download export
                   </a>
@@ -223,7 +223,7 @@ export function Export() {
               </p>
             ) : null}
 
-            <button type="submit" disabled={isExportActive} className="mt-6 inline-flex w-full items-center justify-center gap-3 rounded-lg bg-primary px-6 py-4 text-sm font-bold uppercase text-white shadow-glow transition hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-60">
+            <button type="submit" disabled={isExportActive} className="mt-6 inline-flex w-full items-center justify-center gap-3 rounded-lg bg-primary px-6 py-4 text-sm font-bold uppercase text-white shadow-action transition hover:bg-action-hover disabled:cursor-not-allowed disabled:opacity-60">
               {isExportActive ? <Loader2 className="h-5 w-5 animate-spin" /> : <PackageCheck className="h-5 w-5" />}
               {submitLabel}
             </button>

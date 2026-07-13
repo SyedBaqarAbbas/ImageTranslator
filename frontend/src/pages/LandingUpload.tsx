@@ -69,7 +69,7 @@ export function LandingUpload() {
           </div>
           <button
             onClick={() => navigate("/projects")}
-            className="inline-flex items-center justify-center gap-2 rounded-instrument border border-primary/40 px-4 py-3 text-sm font-bold text-primary-soft transition hover:bg-primary/10"
+            className="inline-flex items-center justify-center gap-2 rounded-instrument border border-accent/40 px-4 py-3 text-sm font-bold text-primary-soft transition hover:bg-primary/10"
           >
             Open dashboard
             <ArrowRight className="h-4 w-4" />

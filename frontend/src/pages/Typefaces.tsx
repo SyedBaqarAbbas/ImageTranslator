@@ -65,7 +65,7 @@ export function Typefaces() {
                         disabled={updateMutation.isPending}
                         aria-pressed={selectedFont === font}
                         className={`flex min-h-16 items-center justify-between rounded-instrument border px-3 py-2 text-left transition ${
-                          selectedFont === font ? "border-secondary bg-secondary/10 text-white" : "border-ink-border bg-background text-text-muted hover:border-primary/50 hover:text-white"
+                          selectedFont === font ? "border-secondary bg-secondary/10 text-white" : "border-ink-border bg-background text-text-muted hover:border-accent/50 hover:text-white"
                         } disabled:opacity-60`}
                       >
                         <span className="font-display text-sm font-bold">{font}</span>

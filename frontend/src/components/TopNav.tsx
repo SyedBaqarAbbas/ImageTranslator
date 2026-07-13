@@ -103,7 +103,7 @@ function TopNavContent({ location }: { location: RouterLocation }) {
       <div className="flex h-16 items-center justify-between gap-3 px-4 sm:px-6 lg:px-8">
         <div className="flex min-w-0 items-center gap-7">
           <Link to="/projects" className="shrink-0 font-display text-xl font-black uppercase tracking-normal text-white">
-            ComicFlow AI
+            ImageTranslator
           </Link>
           <nav className="hidden items-center gap-1 lg:flex">
             {navLinks.map(([label, href]) => (
@@ -196,7 +196,7 @@ function TopNavContent({ location }: { location: RouterLocation }) {
             onClick={() => navigate("/")}
             aria-label="New project"
             aria-current={location.pathname === "/" ? "page" : undefined}
-            className="inline-flex items-center gap-2 rounded-instrument bg-primary px-3 py-2 text-sm font-semibold text-white shadow-glow transition hover:bg-violet-500"
+            className="inline-flex items-center gap-2 rounded-instrument bg-primary px-3 py-2 text-sm font-semibold text-white shadow-action transition hover:bg-action-hover"
           >
             <UploadCloud className="h-4 w-4" />
             <span className="hidden xl:inline">New Project</span>

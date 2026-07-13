@@ -36,7 +36,7 @@ export function WorkspaceShell({ children, fullHeight = false }: { children: Rea
 
           <button
             onClick={() => navigate("/")}
-            className="mx-4 mb-6 flex items-center justify-center gap-2 rounded-instrument bg-primary px-3 py-3 text-sm font-semibold text-white shadow-glow transition hover:bg-violet-500"
+            className="mx-4 mb-6 flex items-center justify-center gap-2 rounded-instrument bg-primary px-3 py-3 text-sm font-semibold text-white shadow-action transition hover:bg-action-hover"
           >
             <PenLine className="h-4 w-4 shrink-0" />
             <span className="w-0 overflow-hidden whitespace-nowrap opacity-0 transition-all [aside:hover_&]:w-auto [aside:hover_&]:opacity-100">
@@ -53,7 +53,7 @@ export function WorkspaceShell({ children, fullHeight = false }: { children: Rea
                   className={({ isActive }) =>
                     `flex items-center gap-4 overflow-hidden border-l-4 px-5 py-3 text-sm font-semibold transition ${
                       isActive
-                        ? "border-primary bg-primary/12 text-primary-soft"
+                        ? "border-accent bg-primary/12 text-primary-soft"
                         : "border-transparent text-text-muted hover:bg-surface-high hover:text-white"
                     }`
                   }

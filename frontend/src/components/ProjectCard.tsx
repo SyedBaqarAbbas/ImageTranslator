@@ -24,7 +24,7 @@ export function ProjectCard({
   const route = routeForProject(project);
 
   return (
-    <article className="group relative overflow-hidden rounded-lg border border-ink-border bg-surface transition hover:-translate-y-0.5 hover:border-primary/60 hover:shadow-glow">
+    <article className="group relative overflow-hidden rounded-lg border border-ink-border bg-surface transition hover:-translate-y-0.5 hover:border-accent/60 hover:shadow-action">
       <div className="relative aspect-[4/3] overflow-hidden border-b border-ink-border bg-surface-low">
         {coverUrl ? (
           <img className="h-full w-full object-cover opacity-75 grayscale transition duration-500 group-hover:scale-105 group-hover:opacity-100 group-hover:grayscale-0" src={coverUrl} alt="" />

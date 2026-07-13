@@ -30,11 +30,11 @@ export function statusLabel(status: string): string {
     .join(" ");
 }
 
-export function statusTone(status: string): "violet" | "cyan" | "amber" | "red" | "green" | "slate" {
-  if (status === "failed") return "red";
-  if (status === "processing" || status.endsWith("running")) return "cyan";
-  if (status === "review_required" || status === "needs_review" || status === "ocr_low_confidence") return "amber";
-  if (status === "completed" || status === "export_ready" || status === "succeeded" || status === "user_edited") return "green";
-  if (status === "draft" || status === "ready") return "violet";
-  return "slate";
+export function statusTone(status: string): "accent" | "active" | "warning" | "danger" | "success" | "neutral" {
+  if (status === "failed") return "danger";
+  if (status === "processing" || status.endsWith("running")) return "active";
+  if (status === "review_required" || status === "needs_review" || status === "ocr_low_confidence") return "warning";
+  if (status === "completed" || status === "export_ready" || status === "succeeded" || status === "user_edited") return "success";
+  if (status === "draft" || status === "ready") return "accent";
+  return "neutral";
 }

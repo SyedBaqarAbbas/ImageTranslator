@@ -112,7 +112,7 @@ export function Review() {
                 <PenLine className="h-4 w-4" />
                 Open Editor
               </Link>
-              <Link to={`/projects/${projectId}/export`} className="inline-flex items-center gap-2 rounded-instrument bg-primary px-4 py-2 text-sm font-bold text-white shadow-glow transition hover:bg-violet-500">
+              <Link to={`/projects/${projectId}/export`} className="inline-flex items-center gap-2 rounded-instrument bg-primary px-4 py-2 text-sm font-bold text-white shadow-action transition hover:bg-action-hover">
                 Export Project
                 <ExternalLink className="h-4 w-4" />
               </Link>
@@ -141,7 +141,7 @@ export function Review() {
                 approvalFeedback.status === "error"
                   ? "border-danger/40 bg-danger/10 text-danger"
                   : approvalFeedback.status === "success"
-                    ? "border-emerald-400/40 bg-emerald-400/10 text-emerald-200"
+                    ? "border-success/40 bg-success/10 text-success"
                     : "border-secondary/40 bg-secondary/10 text-secondary"
               }`}
             >
@@ -151,7 +151,7 @@ export function Review() {
 
           {reviewRegions.length === 0 ? (
             <section className="rounded-lg border border-ink-border bg-surface-low p-10 text-center">
-              <Check className="mx-auto mb-4 h-12 w-12 text-emerald-300" />
+              <Check className="mx-auto mb-4 h-12 w-12 text-success" />
               <h2 className="font-display text-2xl font-bold text-white">Review queue is clear</h2>
               <p className="mt-2 text-sm text-text-muted">All currently detected regions meet the review threshold.</p>
             </section>
@@ -188,7 +188,7 @@ export function Review() {
                         onClick={() => approveMutation.mutate(region)}
                         disabled={approveMutation.isPending}
                         aria-busy={isApprovePending}
-                        className="inline-flex flex-1 items-center justify-center gap-2 rounded-instrument bg-primary px-4 py-2 text-sm font-bold text-white shadow-glow transition hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-60"
+                        className="inline-flex flex-1 items-center justify-center gap-2 rounded-instrument bg-primary px-4 py-2 text-sm font-bold text-white shadow-action transition hover:bg-action-hover disabled:cursor-not-allowed disabled:opacity-60"
                       >
                         <Check className="h-4 w-4" />
                         {isApprovePending ? "Approving" : "Approve"}

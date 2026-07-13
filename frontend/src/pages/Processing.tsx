@@ -65,12 +65,12 @@ export function Processing() {
 
               <div className="mt-8 flex flex-wrap gap-3">
                 {done ? (
-                  <Link to={`/projects/${projectId}/review`} className="inline-flex items-center gap-2 rounded-lg bg-primary px-5 py-3 text-sm font-bold text-white shadow-glow transition hover:bg-violet-500">
+                  <Link to={`/projects/${projectId}/review`} className="inline-flex items-center gap-2 rounded-lg bg-primary px-5 py-3 text-sm font-bold text-white shadow-action transition hover:bg-action-hover">
                     Review flagged regions
                     <ArrowRight className="h-4 w-4" />
                   </Link>
                 ) : (
-                  <button disabled={processMutation.isPending} onClick={() => processMutation.mutate()} className="inline-flex items-center gap-2 rounded-lg bg-primary px-5 py-3 text-sm font-bold text-white shadow-glow transition hover:bg-violet-500 disabled:opacity-60">
+                  <button disabled={processMutation.isPending} onClick={() => processMutation.mutate()} className="inline-flex items-center gap-2 rounded-lg bg-primary px-5 py-3 text-sm font-bold text-white shadow-action transition hover:bg-action-hover disabled:opacity-60">
                     {processMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
                     Rerun processing
                   </button>

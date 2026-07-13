@@ -70,7 +70,7 @@ export function BatchOCR() {
                     <button
                       disabled={processMutation.isPending}
                       onClick={() => processMutation.mutate(project)}
-                      className="inline-flex items-center justify-center gap-2 rounded-instrument bg-primary px-4 py-2 text-sm font-bold text-white shadow-glow transition hover:bg-violet-500 disabled:opacity-60"
+                      className="inline-flex items-center justify-center gap-2 rounded-instrument bg-primary px-4 py-2 text-sm font-bold text-white shadow-action transition hover:bg-action-hover disabled:opacity-60"
                     >
                       {isProcessing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
                       Run OCR

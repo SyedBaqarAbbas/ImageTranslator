@@ -356,7 +356,7 @@ function CanvasRegion({
         }
       }}
       className={`absolute select-none rounded-[3px] text-left transition ${
-        active ? "border-2 border-secondary bg-secondary/12 shadow-cyan" : "border-2 border-dashed border-secondary/80 bg-secondary/5 hover:bg-secondary/10"
+        active ? "border-2 border-secondary bg-secondary/12 shadow-focus" : "border-2 border-dashed border-secondary/80 bg-secondary/5 hover:bg-secondary/10"
       } ${interactive ? "cursor-move" : "pointer-events-none cursor-crosshair"}`}
       style={{
         left: `${left}%`,
@@ -380,7 +380,7 @@ function CanvasRegion({
               key={handle}
               aria-hidden="true"
               onPointerDown={(event) => onStartResize(event, region, handle)}
-              className={`absolute h-3 w-3 rounded-[2px] border border-background bg-secondary shadow-cyan ${handleClassName[handle]}`}
+              className={`absolute h-3 w-3 rounded-[2px] border border-background bg-secondary shadow-focus ${handleClassName[handle]}`}
             />
           ))
         : null}
@@ -786,7 +786,7 @@ export function CanvasWorkspace({
               className={`pointer-events-none absolute rounded-[3px] border-2 ${
                 createDrag.tool === "highlight_ocr"
                   ? "border-dashed border-tertiary bg-tertiary/15 shadow-[0_0_18px_rgba(250,204,21,0.2)]"
-                  : "border-primary bg-primary/15 shadow-glow"
+                  : "border-accent bg-primary/15 shadow-action"
               }`}
               style={{
                 left: `${(createDrag.box.x / canvasWidth) * 100}%`,
@@ -826,8 +826,8 @@ export function CanvasWorkspace({
                 className="group absolute inset-y-0 z-40 w-9 -translate-x-1/2 cursor-ew-resize touch-none focus-visible:outline-none"
                 style={{ left: `${activeComparisonSplit}%` }}
               >
-                <span className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-secondary shadow-cyan" />
-                <span className="absolute left-1/2 top-1/2 flex h-11 w-5 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-secondary/70 bg-background/90 text-secondary shadow-cyan transition group-focus-visible:outline group-focus-visible:outline-2 group-focus-visible:outline-offset-2 group-focus-visible:outline-secondary">
+                <span className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-secondary shadow-focus" />
+                <span className="absolute left-1/2 top-1/2 flex h-11 w-5 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-secondary/70 bg-background/90 text-secondary shadow-focus transition group-focus-visible:outline group-focus-visible:outline-2 group-focus-visible:outline-offset-2 group-focus-visible:outline-secondary">
                   <span className="h-6 w-px rounded-full bg-secondary/80" />
                 </span>
               </div>

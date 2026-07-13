@@ -104,7 +104,7 @@ export function Dashboard() {
                 placeholder="Search projects..."
               />
             </label>
-            <button onClick={() => navigate("/")} className="inline-flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-3 text-sm font-bold text-white shadow-glow transition hover:bg-violet-500">
+            <button onClick={() => navigate("/")} className="inline-flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-3 text-sm font-bold text-white shadow-action transition hover:bg-action-hover">
               <Plus className="h-4 w-4" />
               New Project
             </button>
@@ -122,7 +122,7 @@ export function Dashboard() {
               onClick={() => setFilter(value as "all" | "active" | "completed")}
               aria-pressed={filter === value}
               className={`rounded-instrument px-4 py-2 text-sm font-bold transition ${
-                filter === value ? "border border-primary/40 bg-primary/15 text-primary-soft" : "text-text-muted hover:bg-surface-high hover:text-white"
+                filter === value ? "border border-accent/40 bg-primary/15 text-primary-soft" : "text-text-muted hover:bg-surface-high hover:text-white"
               }`}
             >
               {label}
@@ -179,12 +179,12 @@ export function Dashboard() {
         {!projectsQuery.isLoading && !projectsQuery.isError && filteredProjects.length === 0 ? (
           <section className="flex min-h-[520px] items-center justify-center rounded-lg border border-dashed border-ink-border bg-surface-low p-8 text-center">
             <div className="max-w-md">
-              <div className="mx-auto mb-5 flex h-20 w-20 items-center justify-center rounded-full border border-primary/30 bg-primary/10 text-primary-soft">
+              <div className="mx-auto mb-5 flex h-20 w-20 items-center justify-center rounded-full border border-accent/30 bg-primary/10 text-primary-soft">
                 <Plus className="h-9 w-9" />
               </div>
               <h2 className="font-display text-2xl font-bold text-white">No projects yet</h2>
               <p className="mt-2 text-sm leading-6 text-text-muted">Start with raw manga pages or a ZIP archive and the workspace will appear here after setup.</p>
-              <button onClick={() => navigate("/")} className="mt-6 inline-flex items-center gap-2 rounded-lg bg-primary px-5 py-3 text-sm font-bold text-white shadow-glow transition hover:bg-violet-500">
+              <button onClick={() => navigate("/")} className="mt-6 inline-flex items-center gap-2 rounded-lg bg-primary px-5 py-3 text-sm font-bold text-white shadow-action transition hover:bg-action-hover">
                 <Plus className="h-4 w-4" />
                 Start New Project
               </button>
@@ -204,7 +204,7 @@ export function Dashboard() {
                 isDeleting={deleteMutation.isPending && deleteMutation.variables === project.id}
               />
             ))}
-            <button onClick={() => navigate("/")} className="min-h-[360px] rounded-lg border border-dashed border-ink-border bg-background p-6 text-text-muted transition hover:border-primary hover:bg-primary/5 hover:text-primary-soft">
+            <button onClick={() => navigate("/")} className="min-h-[360px] rounded-lg border border-dashed border-ink-border bg-background p-6 text-text-muted transition hover:border-accent hover:bg-primary/5 hover:text-primary-soft">
               <Plus className="mx-auto mb-4 h-10 w-10" />
               <span className="font-display text-lg font-bold">Create New Project</span>
             </button>

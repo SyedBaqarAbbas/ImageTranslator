@@ -31,7 +31,7 @@ export function Support() {
               className="min-h-36 w-full rounded-instrument border border-ink-border bg-background p-3 text-sm text-text-main outline-none focus:border-secondary"
               placeholder="Describe the issue..."
             />
-            <button onClick={handleSubmit} className="mt-4 inline-flex items-center justify-center gap-2 rounded-instrument bg-primary px-4 py-3 text-sm font-bold text-white shadow-glow transition hover:bg-violet-500">
+            <button onClick={handleSubmit} className="mt-4 inline-flex items-center justify-center gap-2 rounded-instrument bg-primary px-4 py-3 text-sm font-bold text-white shadow-action transition hover:bg-action-hover">
               <LifeBuoy className="h-4 w-4" />
               Draft request
             </button>
