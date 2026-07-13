@@ -141,7 +141,7 @@ export function Review() {
                 approvalFeedback.status === "error"
                   ? "border-danger/40 bg-danger/10 text-danger"
                   : approvalFeedback.status === "success"
-                    ? "border-success/40 bg-success/10 text-success"
+                    ? "border-success/40 bg-success/10 text-success-content"
                     : "border-secondary/40 bg-secondary/10 text-secondary"
               }`}
             >

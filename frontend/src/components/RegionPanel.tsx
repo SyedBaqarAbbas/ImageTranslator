@@ -733,7 +733,7 @@ export function RegionPanel({
                   <span className="flex items-center gap-2">
                     <StatusPill status={region.status} />
                     {!region.editable ? (
-                      <span className="rounded-full border border-success/40 bg-success/10 px-2 py-0.5 text-[10px] font-bold uppercase text-success">
+                      <span className="rounded-full border border-success/40 bg-success/10 px-2 py-0.5 text-[10px] font-bold uppercase text-success-content">
                         Approved
                       </span>
                     ) : null}
@@ -849,7 +849,7 @@ export function RegionPanel({
                   selectedOcrFeedback.status === "error"
                     ? "text-danger"
                     : selectedOcrFeedback.status === "success"
-                      ? "text-success"
+                      ? "text-success-content"
                       : "text-secondary"
                 }`}
               >
@@ -864,7 +864,7 @@ export function RegionPanel({
                   selectedRetranslateFeedback.status === "error"
                     ? "text-danger"
                     : selectedRetranslateFeedback.status === "success"
-                      ? "text-success"
+                      ? "text-success-content"
                       : "text-secondary"
                 }`}
               >
@@ -876,7 +876,7 @@ export function RegionPanel({
             <span className="flex items-center justify-between gap-2">
               <span className="text-xs font-bold uppercase text-secondary">Target</span>
               {!selectedRegion.editable ? (
-                <span className="rounded-full border border-success/40 bg-success/10 px-2 py-0.5 text-[10px] font-bold uppercase text-success">
+                <span className="rounded-full border border-success/40 bg-success/10 px-2 py-0.5 text-[10px] font-bold uppercase text-success-content">
                   Approved
                 </span>
               ) : null}
@@ -1019,14 +1019,14 @@ export function RegionPanel({
                 selectedSaveFeedback.status === "error"
                   ? "text-danger"
                   : selectedSaveFeedback.status === "success"
-                    ? "text-success"
+                    ? "text-success-content"
                     : "text-secondary"
               }`}
             >
               {selectedSaveFeedback.message}
             </p>
           ) : !selectedRegion.editable ? (
-            <p role="status" className="mt-3 text-xs font-semibold text-success">
+            <p role="status" className="mt-3 text-xs font-semibold text-success-content">
               Approved and locked.
             </p>
           ) : null}

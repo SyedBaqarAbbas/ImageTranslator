@@ -11,8 +11,11 @@
   --surface: #0d100c;
   --surface-raised: #171b14;
   --border: #303828;
+  --border-strong: #666d64;
   --content: #f4f4ec;
   --content-muted: #b8bcaf;
+  --success: var(--brand-moss);
+  --success-content: var(--content);
   --warning: #e0b85b;
   --danger: #ff8a80;
   background: var(--canvas);

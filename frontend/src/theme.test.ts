@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import indexHtml from "../index.html?raw";
+import uploadDropzoneSource from "./components/UploadDropzone.tsx?raw";
+import globalStyles from "./styles.css?raw";
 import {
   brandColors,
   comicFontFamily,
@@ -32,6 +34,23 @@ function contrastRatio(foreground: string, background: string): number {
   return (lighter + 0.05) / (darker + 0.05);
 }
 
+function compositeHex(foreground: string, background: string, alpha: number): string {
+  const foregroundChannels = foreground.replace("#", "").match(/.{2}/g);
+  const backgroundChannels = background.replace("#", "").match(/.{2}/g);
+
+  if (!foregroundChannels || !backgroundChannels) {
+    throw new Error("Expected six-digit hex colors");
+  }
+
+  const channels = foregroundChannels.map((channel, index) => {
+    const foregroundValue = Number.parseInt(channel, 16);
+    const backgroundValue = Number.parseInt(backgroundChannels[index], 16);
+    return Math.round(foregroundValue * alpha + backgroundValue * (1 - alpha));
+  });
+
+  return `#${channels.map((channel) => channel.toString(16).padStart(2, "0")).join("")}`;
+}
+
 describe("ImageTranslator theme foundation", () => {
   it("publishes the exact brand palette through semantic and Tailwind roles", () => {
     expect(brandColors).toEqual({
@@ -45,6 +64,7 @@ describe("ImageTranslator theme foundation", () => {
       accent: brandColors.moss,
       focus: brandColors.moss,
       success: brandColors.moss,
+      successContent: semanticColors.content,
     });
 
     expect(themeColors.brand).toEqual(brandColors);
@@ -57,6 +77,7 @@ describe("ImageTranslator theme foundation", () => {
     expect(themeColors.accent).toBe(semanticColors.accent);
     expect(themeColors.focus).toBe(semanticColors.focus);
     expect(themeColors.success).toBe(semanticColors.success);
+    expect(themeColors["success-content"]).toBe(semanticColors.successContent);
     expect(themeColors.warning).toBe(semanticColors.warning);
     expect(themeColors.danger).toBe(semanticColors.danger);
   });
@@ -77,6 +98,12 @@ describe("ImageTranslator theme foundation", () => {
     expect(indexHtml).not.toMatch(/Space Grotesk|ComicFlow/i);
   });
 
+  it("keeps shipped foundation chrome free of prototype purple and cyan effects", () => {
+    const foundationSource = `${indexHtml}\n${globalStyles}\n${uploadDropzoneSource}`;
+
+    expect(foundationSource).not.toMatch(/#8b5cf6|#22d3ee|rgba\(139\s*,\s*92\s*,\s*246|rgba\(34\s*,\s*211\s*,\s*238/i);
+  });
+
   it.each([
     ["content on canvas", semanticColors.content, semanticColors.canvas],
     ["muted content on canvas", semanticColors.contentMuted, semanticColors.canvas],
@@ -87,5 +114,17 @@ describe("ImageTranslator theme foundation", () => {
     ["danger on canvas", semanticColors.danger, semanticColors.canvas],
   ])("meets WCAG AA contrast for %s", (_name, foreground, background) => {
     expect(contrastRatio(foreground, background)).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it("keeps success copy and strong interactive boundaries contrast-safe", () => {
+    const successSurface = compositeHex(
+      semanticColors.success,
+      semanticColors.surfaceHigh,
+      0.1,
+    );
+
+    expect(contrastRatio(semanticColors.successContent, successSurface)).toBeGreaterThanOrEqual(4.5);
+    expect(contrastRatio(semanticColors.borderStrong, semanticColors.surfaceHigh)).toBeGreaterThanOrEqual(3);
+    expect(contrastRatio(semanticColors.borderStrong, semanticColors.canvas)).toBeGreaterThanOrEqual(3);
   });
 });

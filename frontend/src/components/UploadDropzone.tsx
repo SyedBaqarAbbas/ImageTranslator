@@ -56,7 +56,7 @@ export function UploadDropzone({ onFiles }: { onFiles: (files: File[]) => void }
           isDragging ? "border-secondary bg-secondary/10 shadow-focus" : "border-ink-border-strong bg-surface-mid/80 hover:border-accent hover:shadow-action"
         }`}
       >
-        <span className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(139,92,246,0.14),transparent_34rem)] opacity-0 transition group-hover:opacity-100" />
+        <span className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(44,95,52,0.18),transparent_34rem)] opacity-0 transition group-hover:opacity-100" />
         <span className="relative mb-5 flex h-20 w-20 items-center justify-center rounded-full border border-ink-border bg-surface text-primary-soft transition group-hover:scale-105">
           <UploadCloud className="h-10 w-10" />
         </span>
